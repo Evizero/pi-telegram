@@ -10,6 +10,8 @@ import { ActivityRenderer, ActivityReporter, type ActivityUpdatePayload } from "
 import { unregisterSessionFromBroker, markSessionOfflineInBroker } from "./broker/sessions.js";
 import { createRuntimeUpdateHandlers } from "./broker/updates.js";
 import { clientQueryModels as buildClientQueryModels, clientSetModel as setClientModel, clientStatusText as buildClientStatusText } from "./client/info.js";
+import { clientCompactSession } from "./client/compact.js";
+import { clientDeliverTelegramTurn } from "./client/turn-delivery.js";
 import { AssistantFinalRetryQueue } from "./client/final-delivery.js";
 import { TelegramCommandRouter } from "./broker/commands.js";
 import { AssistantFinalDeliveryLedger } from "./broker/finals.js";
@@ -763,27 +765,19 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	}
 
 	async function clientDeliverTurn(turn: PendingTelegramTurn): Promise<{ accepted: true }> {
-		if (completedTurnIds.has(turn.turnId)) {
-			const pendingFinal = assistantFinalQueue.find(turn.turnId);
-			if (pendingFinal) {
-				await sendAssistantFinalToBroker(pendingFinal);
-				return { accepted: true };
-			}
-			await acknowledgeConsumedTurn(turn.turnId);
-			return { accepted: true };
-		}
-		if (activeTelegramTurn?.turnId === turn.turnId || queuedTelegramTurns.some((candidate) => candidate.turnId === turn.turnId)) return { accepted: true };
-		const ctx = latestCtx;
-		const isBusy = ctx ? !ctx.isIdle() : Boolean(activeTelegramTurn);
-		if (isBusy && turn.deliveryMode !== "followUp") {
-			ensureCurrentTurnMirroredToTelegram(ctx, "Telegram steering message received during an active pi turn; mirroring from this point on.");
-			pi.sendUserMessage(turn.content, { deliverAs: "steer" });
-			await acknowledgeConsumedTurn(turn.turnId);
-			return { accepted: true };
-		}
-		queuedTelegramTurns.push(turn);
-		if (ctx?.isIdle()) startNextTelegramTurn();
-		return { accepted: true };
+		return await clientDeliverTelegramTurn({
+			turn,
+			completedTurnIds,
+			queuedTelegramTurns,
+			getActiveTelegramTurn: () => activeTelegramTurn,
+			getCtx: () => latestCtx,
+			findPendingFinal: (turnId) => assistantFinalQueue.find(turnId),
+			sendAssistantFinalToBroker,
+			acknowledgeConsumedTurn,
+			ensureCurrentTurnMirroredToTelegram,
+			sendUserMessage: (content, options) => pi.sendUserMessage(content, options),
+			startNextTelegramTurn,
+		});
 	}
 
 	async function clientAbortTurn(): Promise<{ text: string; clearedTurnIds: string[] }> {
@@ -823,18 +817,15 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	}
 
 	function clientCompact(): { text: string } {
-		const ctx = latestCtx;
-		if (!ctx) return { text: "Session context unavailable." };
-		if (!ctx.isIdle()) return { text: "Cannot compact while this session is busy. Send stop first." };
-		ctx.compact({
-			onComplete: () => {
-				if (isRoutableRoute(connectedRoute)) void sendAssistantFinalToBroker({ turn: { turnId: randomId("cmd"), sessionId, chatId: connectedRoute.chatId, messageThreadId: connectedRoute.messageThreadId, replyToMessageId: 0, queuedAttachments: [], content: [], historyText: "" }, text: "Compaction completed.", attachments: [] });
-			},
-			onError: (error) => {
-				if (isRoutableRoute(connectedRoute)) void sendAssistantFinalToBroker({ turn: { turnId: randomId("cmd"), sessionId, chatId: connectedRoute.chatId, messageThreadId: connectedRoute.messageThreadId, replyToMessageId: 0, queuedAttachments: [], content: [], historyText: "" }, text: `Compaction failed: ${errorMessage(error)}`, attachments: [] });
-			},
+		return clientCompactSession({
+			ctx: latestCtx,
+			sessionId,
+			getConnectedRoute: () => connectedRoute,
+			isRoutableRoute,
+			sendAssistantFinalToBroker,
+			createTurnId: () => randomId("cmd"),
+			formatError: errorMessage,
 		});
-		return { text: "Compaction started." };
 	}
 
 

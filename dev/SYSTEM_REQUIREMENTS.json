@@ -694,6 +694,30 @@
           "format-pi-user-telegram"
         ]
       }
+    },
+    {
+      "id": "SyRS-compact-busy-session",
+      "origin": "derived",
+      "label": "Compact busy sessions remotely",
+      "statement": "The system shall invoke pi manual compaction for an authorized Telegram /compact command on the selected session so that pi interrupts any active turn before compacting according to native manual compaction semantics.",
+      "traces_to": [
+        "StRS-mid-turn-control",
+        "StRS-remote-session-supervision",
+        "StRS-local-first-authority"
+      ],
+      "rationale": "Native pi treats /compact as a control command that interrupts an active turn and compacts; Telegram control should preserve the same remote-session expectation instead of rejecting busy sessions.",
+      "acceptance_criteria": "A focused test shows that /compact sent to a busy selected session invokes pi manual compaction, interrupts the active turn through that path, and produces the normal compaction completion or failure reply rather than the busy-session rejection, while ordinary busy Telegram messages still steer and /follow still queues.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "inbox": [
+          "telegram-compact-should-match"
+        ]
+      }
     }
   ]
 }

@@ -13,3 +13,6 @@ execFileSync(process.execPath, [join(outDir, "scripts", "check-activity-renderin
 execFileSync(process.execPath, [join(outDir, "scripts", "check-pairing-and-format.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-final-delivery.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-preview-manager.js")], { stdio: "inherit" });
+execFileSync(process.execPath, [join(outDir, "scripts", "check-client-compact.js")], { stdio: "inherit" });
+execFileSync(process.execPath, [join(outDir, "scripts", "check-client-turn-delivery.js")], { stdio: "inherit" });
+execFileSync(process.execPath, [join(outDir, "scripts", "check-telegram-command-routing.js")], { stdio: "inherit" });
