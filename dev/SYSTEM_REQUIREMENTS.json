@@ -8,19 +8,24 @@
     {
       "id": "SyRS-pair-one-user",
       "origin": "derived",
-      "label": "Pair exactly one user",
-      "statement": "The system shall bind Telegram control to exactly one allowed user through an explicit pairing code before accepting session-control messages.",
+      "label": "Pair through attended PIN",
+      "statement": "The system shall bind Telegram control to exactly one allowed user through an explicit attended pairing PIN before accepting session-control messages.",
       "traces_to": [
         "StRS-paired-user-control"
       ],
-      "rationale": "A personal Telegram bridge must fail closed until the intended operator is paired, and later messages must be attributable to that one operator.",
-      "acceptance_criteria": "A setup or pairing test demonstrates that a valid /start code records one allowed Telegram user, plain /start is insufficient after code setup, and messages from other users do not become pi turns.",
+      "rationale": "A personal Telegram bridge must fail closed until the intended operator is paired, while first-time setup should not force mobile users to type a long high-entropy code during an attended local setup window.",
+      "acceptance_criteria": "A setup or pairing test demonstrates that setup creates a four-digit PIN valid for five minutes, private-chat plain PIN text and /start PIN input can pair the first valid user, wrong or expired PINs do not pair, repeated failed PIN attempts are bounded for the setup window, pairing records exactly one allowed Telegram user/chat and clears the pending secret, and messages from other users do not become pi turns.",
       "verification": {
         "method": "test"
       },
       "status": "draft",
       "created": "2026-04-25",
-      "updated": "2026-04-25"
+      "updated": "2026-04-25",
+      "sources": {
+        "inbox": [
+          "simpler-mobile-pairing-pin"
+        ]
+      }
     },
     {
       "id": "SyRS-reject-unauthorized-telegram",
@@ -664,6 +669,29 @@
       "sources": {
         "inbox": [
           "telegram-reload-should-be"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-mirror-local-user-input",
+      "origin": "derived",
+      "label": "Mirror local input clearly",
+      "statement": "The system shall mirror local interactive pi user messages to the connected Telegram route with formatting that clearly identifies them as local pi user input.",
+      "traces_to": [
+        "StRS-activity-final-feedback",
+        "StRS-remote-session-supervision"
+      ],
+      "rationale": "Remote supervision is clearer when Telegram shows not only assistant progress and finals but also local user input that happened in the connected pi session, without making those mirrored messages look like unstructured assistant output.",
+      "acceptance_criteria": "A test or inspection demonstrates that a non-command interactive pi input on a connected route sends one Telegram message to the same route/thread with a distinct local-user title, preserves the message content and image-count notice, and still ignores slash commands or Telegram prompt text.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "inbox": [
+          "format-pi-user-telegram"
         ]
       }
     }

@@ -1,5 +1,5 @@
 import type { Server } from "node:http";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomInt } from "node:crypto";
 import { mkdir, realpath, rm, stat, writeFile, chmod } from "node:fs/promises";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -12,7 +12,7 @@ import { createRuntimeUpdateHandlers } from "./broker/updates.js";
 import { clientQueryModels as buildClientQueryModels, clientSetModel as setClientModel, clientStatusText as buildClientStatusText } from "./client/info.js";
 import { AssistantFinalRetryQueue, isTerminalTelegramFinalDeliveryError, terminalTelegramFinalDeliveryReason } from "./client/final-delivery.js";
 import { TelegramCommandRouter } from "./broker/commands.js";
-import { chunkParagraphs, routeId, topicNameFor } from "./shared/format.js";
+import { chunkParagraphs, formatLocalUserMirrorMessage, routeId, topicNameFor } from "./shared/format.js";
 import { ensurePrivateDir, errorMessage, hashSecret, now, processExists, randomId, readJson, writeJson } from "./shared/utils.js";
 import { createIpcServer as createIpcServerBase, postIpc as postIpcBase } from "./shared/ipc.js";
 import { callTelegram as callTelegramBase, callTelegramMultipart as callTelegramMultipartBase, downloadTelegramFile as downloadTelegramFileBase, getTelegramRetryAfterMs } from "./telegram/api.js";
@@ -22,6 +22,7 @@ import { collectSessionRegistration as buildSessionRegistration } from "./client
 import { PreviewManager } from "./telegram/previews.js";
 import { sendQueuedAttachment } from "./telegram/attachments.js";
 import { registerRuntimePiHooks } from "./pi/hooks.js";
+import { formatPairingPin, PAIRING_PIN_TTL_MS } from "./shared/pairing.js";
 import { pairingInstructions, telegramStatusText } from "./shared/ui-status.js";
 export function registerTelegramExtension(pi: ExtensionAPI) {
 	const ownerId = randomId("own");
@@ -122,8 +123,8 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		ctx.ui.setStatus("telegram", "");
 	}
 	function refreshTelegramStatus(): void { if (latestCtx) updateStatus(latestCtx); }
-	function showPairingInstructions(ctx: ExtensionContext, code: string): void {
-		const text = pairingInstructions(config.botUsername, code);
+	function showPairingInstructions(ctx: ExtensionContext, pin: string): void {
+		const text = pairingInstructions(config.botUsername, pin);
 		ctx.ui.notify(text, "info");
 		pi.sendMessage({ customType: "telegram_setup", content: text, display: true }, { triggerTurn: false });
 	}
@@ -441,12 +442,15 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			nextConfig.botUsername = data.result.username;
 			configureBrokerScope(nextConfig.botId);
 			nextConfig.topicsEnabled = data.result.has_topics_enabled;
-			const code = randomBytes(5).toString("base64url");
-			nextConfig.pairingCodeHash = hashSecret(code);
-			nextConfig.pairingExpiresAtMs = now() + 10 * 60 * 1000;
+			const pairingPin = formatPairingPin(randomInt(10_000));
+			const pairingStartedAtMs = now();
+			nextConfig.pairingCodeHash = hashSecret(pairingPin);
+			nextConfig.pairingCreatedAtMs = pairingStartedAtMs;
+			nextConfig.pairingExpiresAtMs = pairingStartedAtMs + PAIRING_PIN_TTL_MS;
+			nextConfig.pairingFailedAttempts = 0;
 			config = nextConfig;
 			await writeConfig(config);
-			showPairingInstructions(ctx, code);
+			showPairingInstructions(ctx, pairingPin);
 			return true;
 		} finally {
 			setupInProgress = false;
@@ -477,8 +481,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		if (!brokerState || !sourceSessionId) return { ok: true };
 		const route = Object.values(brokerState.routes).find((candidate) => candidate.sessionId === sourceSessionId && candidate.chatId !== 0);
 		if (!route) return { ok: true };
-		const suffix = payload.imagesCount && payload.imagesCount > 0 ? `\n\n[${payload.imagesCount} image(s) attached in pi]` : "";
-		await sendTextReply(route.chatId, route.messageThreadId, `pi user:\n\n${payload.text}${suffix}`);
+		await sendTextReply(route.chatId, route.messageThreadId, formatLocalUserMirrorMessage(payload.text, payload.imagesCount));
 		return { ok: true };
 	}
 	async function registerSession(registration: SessionRegistration): Promise<TelegramRoute> {

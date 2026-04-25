@@ -10,7 +10,9 @@ export interface TelegramConfig {
 	fallbackSupergroupChatId?: number | string;
 	lastUpdateId?: number;
 	pairingCodeHash?: string;
+	pairingCreatedAtMs?: number;
 	pairingExpiresAtMs?: number;
+	pairingFailedAttempts?: number;
 	topicsEnabled?: boolean;
 	topicMode?: "auto" | "private_topics" | "forum_supergroup" | "single_chat_selector" | "disabled";
 	fallbackMode?: "forum_supergroup" | "single_chat_selector" | "disabled";
@@ -97,6 +99,7 @@ export interface TelegramFileInfo {
 export interface TelegramMessage {
 	message_id: number;
 	message_thread_id?: number;
+	date?: number;
 	edit_date?: number;
 	is_topic_message?: boolean;
 	chat: TelegramChat;

@@ -89,9 +89,9 @@ Check status:
 After token setup and `/telegram-connect`:
 
 1. Open the DM with your bot in Telegram
-2. Send the exact `/start <code>` shown by pi during setup
+2. Send the 4-digit PIN shown by pi within 5 minutes
 
-The user who sends the valid pairing code becomes the allowed Telegram user for the bridge. Plain `/start` is not enough once pairing-code setup is active.
+The user who sends the valid current PIN becomes the allowed Telegram user for the bridge. `/start <PIN>` also works for Telegram deep-link or fallback clients, but the PIN expires and repeated failed attempts require rerunning setup.
 
 ## Usage
 

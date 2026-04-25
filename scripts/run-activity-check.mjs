@@ -10,3 +10,4 @@ const tscBin = process.platform === "win32" ? "npx.cmd" : "npx";
 execFileSync(tscBin, ["tsc", "--project", "tsconfig.activity-check.json", "--outDir", outDir], { stdio: "inherit" });
 writeFileSync(join(outDir, "package.json"), '{"type":"module"}\n');
 execFileSync(process.execPath, [join(outDir, "scripts", "check-activity-rendering.js")], { stdio: "inherit" });
+execFileSync(process.execPath, [join(outDir, "scripts", "check-pairing-and-format.js")], { stdio: "inherit" });

@@ -3,8 +3,8 @@ title: "Simpler mobile pairing PIN"
 type: "request"
 created: "2026-04-25"
 author: "Christof Salis"
-status: "open"
-planned_as: []
+status: "planned"
+planned_as: ["implement-attended-pin-pairing-flow"]
 ---
 Source note from user (2026-04-25):
 

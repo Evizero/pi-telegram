@@ -1,6 +1,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { RECENT_UPDATE_LIMIT, SESSION_OFFLINE_MS, TELEGRAM_MEDIA_GROUP_DEBOUNCE_MS } from "../shared/config.js";
+import { clearPairingState, isMessageBeforePairingWindow, isPairingPending, PAIRING_MAX_FAILED_ATTEMPTS, pairingCandidateFromText } from "../shared/pairing.js";
 import type { BrokerLease, BrokerState, TelegramConfig, TelegramMediaGroupState, TelegramMessage, TelegramUpdate } from "../shared/types.js";
 import type { TelegramCommandRouter } from "./commands.js";
 import { telegramCommandName } from "./commands.js";
@@ -70,28 +71,17 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 	async function handleUpdate(update: TelegramUpdate, ctx: ExtensionContext): Promise<void> {
 		const message = update.message || update.edited_message;
 		if (!message || !message.from || message.from.is_bot) return;
-		if (await tryHandleTopicSetupMessage(message)) return;
-		if (!deps.isAllowedTelegramChat(message)) return;
 		const config = deps.getConfig();
 		if (config.allowedUserId === undefined) {
-			if (message.chat.type !== "private") return;
-			const text = (message.text ?? "").trim();
-			const code = text.startsWith("/start") ? text.split(/\s+/)[1] : undefined;
-			if (code && config.pairingCodeHash && config.pairingExpiresAtMs && config.pairingExpiresAtMs > now() && hashSecret(code) === config.pairingCodeHash) {
-				const nextConfig = { ...config, allowedUserId: message.from.id, allowedChatId: message.chat.id, pairingCodeHash: undefined, pairingExpiresAtMs: undefined };
-				deps.setConfig(nextConfig);
-				await deps.writeConfig(nextConfig);
-				await deps.sendTextReply(message.chat.id, message.message_thread_id, "Telegram bridge paired with this account.");
-				await deps.ensureRoutesAfterPairing();
-			} else {
-				await deps.sendTextReply(message.chat.id, message.message_thread_id, "Pair this bot from pi with /telegram-setup first.").catch(() => undefined);
-			}
+			await handlePairingUpdate(message, config);
 			return;
 		}
 		if (message.from.id !== config.allowedUserId) {
-			await deps.sendTextReply(message.chat.id, message.message_thread_id, "This bot is not authorized for your account.").catch(() => undefined);
+			if (deps.isAllowedTelegramChat(message)) await deps.sendTextReply(message.chat.id, message.message_thread_id, "This bot is not authorized for your account.").catch(() => undefined);
 			return;
 		}
+		if (await tryHandleTopicSetupMessage(message)) return;
+		if (!deps.isAllowedTelegramChat(message)) return;
 		if (message.chat.type === "private" && config.allowedChatId === undefined) {
 			const nextConfig = { ...config, allowedChatId: message.chat.id };
 			deps.setConfig(nextConfig);
@@ -99,6 +89,46 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 			await deps.ensureRoutesAfterPairing();
 		}
 		await deps.commandRouter.dispatch([message]);
+	}
+
+	async function handlePairingUpdate(message: TelegramMessage, config: TelegramConfig): Promise<void> {
+		if (message.chat.type !== "private") return;
+		if (!isPairingPending(config, now())) {
+			const nextConfig = clearPairingState(config);
+			deps.setConfig(nextConfig);
+			await deps.writeConfig(nextConfig);
+			await deps.sendTextReply(message.chat.id, message.message_thread_id, "Pair this bot from pi with /telegram-setup first.").catch(() => undefined);
+			return;
+		}
+		if (isMessageBeforePairingWindow(message, config)) {
+			await deps.sendTextReply(message.chat.id, message.message_thread_id, "That pairing message is older than the current setup window. Send the current PIN shown in pi.").catch(() => undefined);
+			return;
+		}
+		const candidate = pairingCandidateFromText(message.text);
+		if (candidate && config.pairingCodeHash && hashSecret(candidate) === config.pairingCodeHash) {
+			const nextConfig = { ...clearPairingState(config), allowedUserId: message.from!.id, allowedChatId: message.chat.id };
+			deps.setConfig(nextConfig);
+			await deps.writeConfig(nextConfig);
+			await deps.sendTextReply(message.chat.id, message.message_thread_id, "Telegram bridge paired with this account.");
+			await deps.ensureRoutesAfterPairing();
+			return;
+		}
+		if (candidate) {
+			const failedAttempts = (config.pairingFailedAttempts ?? 0) + 1;
+			if (failedAttempts >= PAIRING_MAX_FAILED_ATTEMPTS) {
+				const nextConfig = clearPairingState(config);
+				deps.setConfig(nextConfig);
+				await deps.writeConfig(nextConfig);
+				await deps.sendTextReply(message.chat.id, message.message_thread_id, "Too many incorrect pairing PIN attempts. Run /telegram-setup in pi again.").catch(() => undefined);
+				return;
+			}
+			const nextConfig = { ...config, pairingFailedAttempts: failedAttempts };
+			deps.setConfig(nextConfig);
+			await deps.writeConfig(nextConfig);
+			await deps.sendTextReply(message.chat.id, message.message_thread_id, `Incorrect pairing PIN. ${PAIRING_MAX_FAILED_ATTEMPTS - failedAttempts} attempt(s) remaining.`).catch(() => undefined);
+			return;
+		}
+		await deps.sendTextReply(message.chat.id, message.message_thread_id, "Send the 4-digit pairing PIN shown in pi, or run /telegram-setup first.").catch(() => undefined);
 	}
 
 	async function handleUpdateGroup(updates: TelegramUpdate[], ctx: ExtensionContext): Promise<void> {
@@ -123,6 +153,11 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 		const message = update.message || update.edited_message;
 		if (!message?.media_group_id) return undefined;
 		return `${message.chat.id}:${message.message_thread_id ?? "default"}:${message.media_group_id}`;
+	}
+
+	function shouldQueueMediaGroupUpdate(message: TelegramMessage): boolean {
+		const config = deps.getConfig();
+		return Boolean(message.from && !message.from.is_bot && config.allowedUserId !== undefined && message.from.id === config.allowedUserId && deps.isAllowedTelegramChat(message));
 	}
 
 	async function queueMediaGroupUpdate(update: TelegramUpdate, ctx: ExtensionContext): Promise<void> {
@@ -194,8 +229,7 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 		const brokerState = deps.getBrokerState();
 		if (!brokerState || brokerState.lastProcessedUpdateId !== undefined) return;
 		const config = deps.getConfig();
-		const pairingPending = config.allowedUserId === undefined && Boolean(config.pairingCodeHash) && Boolean(config.pairingExpiresAtMs && config.pairingExpiresAtMs > now());
-		if (pairingPending) return;
+		if (isPairingPending(config, now())) return;
 		const updates = await deps.callTelegram<TelegramUpdate[]>("getUpdates", { offset: -1, limit: 1, timeout: 0, allowed_updates: ["message", "edited_message"] }, { signal });
 		const latest = updates.at(-1);
 		if (latest) {
@@ -251,7 +285,7 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 						continue;
 					}
 					const message = update.message || update.edited_message;
-					if (message?.media_group_id) await queueMediaGroupUpdate(update, ctx);
+					if (message?.media_group_id && shouldQueueMediaGroupUpdate(message)) await queueMediaGroupUpdate(update, ctx);
 					else await handleUpdate(update, ctx);
 					brokerState.recentUpdateIds.push(update.update_id);
 					if (brokerState.recentUpdateIds.length > RECENT_UPDATE_LIMIT) brokerState.recentUpdateIds.splice(0, brokerState.recentUpdateIds.length - RECENT_UPDATE_LIMIT);

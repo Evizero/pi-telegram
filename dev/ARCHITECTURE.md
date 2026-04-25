@@ -351,8 +351,9 @@ architecture-relevant because they constrain future changes.
 ### Telegram configuration
 
 `TelegramConfig` stores bot token and identity, paired user/chat IDs, pairing
-code hash and expiry, topic mode, fallback mode, and fallback supergroup chat.
-It is the local authority for pairing and routing setup.
+PIN hash, setup-window timing, failed-attempt count, topic mode, fallback mode,
+and fallback supergroup chat. It is the local authority for pairing and routing
+setup.
 Token-bearing config must remain private and must not be echoed to Telegram or
 logs in normal operation.
 
@@ -534,9 +535,12 @@ activity rendering stops being the natural owner.
 ### Setup and pairing
 
 The pi setup command collects the bot token and writes local config.
+It then displays an attended 4-digit PIN with a 5-minute setup window.
 The broker polls Telegram after deleting any webhook.
-Before pairing, only a private `/start <code>` matching the hashed current code
-can bind `allowedUserId` and `allowedChatId`.
+Before pairing, only a private message containing the current PIN, or a private
+`/start <PIN>` deep-link fallback, can bind `allowedUserId` and `allowedChatId`.
+The pairing gate rejects stale pre-setup updates, expired PINs, group messages,
+bot messages, and repeated failed guesses before command or turn dispatch.
 After pairing, updates from other users are rejected before command or turn
 dispatch.
 

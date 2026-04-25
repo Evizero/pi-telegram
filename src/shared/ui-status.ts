@@ -22,7 +22,7 @@ export function telegramStatusText(options: {
 	return `${label} ${theme.fg("muted", "disconnected")}`;
 }
 
-export function pairingInstructions(botUsername: string | undefined, code: string): string {
+export function pairingInstructions(botUsername: string | undefined, pin: string): string {
 	const bot = botUsername ? `@${botUsername}` : "your Telegram bot";
-	return `Telegram bot configured: ${bot}\n\nOpen ${bot} in Telegram and send this exact message within 10 minutes:\n\n/start ${code}`;
+	return `Telegram bot configured: ${bot}\n\nOpen ${bot} in Telegram and send this 4-digit PIN within 5 minutes:\n\n${pin}\n\nIf needed, /start ${pin} also works.`;
 }

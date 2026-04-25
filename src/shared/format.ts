@@ -109,6 +109,11 @@ export function routeId(chatId: number | string, messageThreadId?: number): stri
 	return `${chatId}:${messageThreadId ?? "default"}`;
 }
 
+export function formatLocalUserMirrorMessage(text: string, imagesCount?: number): string {
+	const suffix = imagesCount && imagesCount > 0 ? `\n\n[${imagesCount} image(s) attached in pi]` : "";
+	return `PI User Message\n\n${text}${suffix}`;
+}
+
 export function topicNameFor(reg: Pick<SessionRegistration, "projectName" | "gitBranch" | "piSessionName" | "sessionId">): string {
 	const pieces = [reg.projectName];
 	if (reg.gitBranch) pieces.push(reg.gitBranch);

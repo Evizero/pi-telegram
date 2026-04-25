@@ -77,7 +77,7 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 	});
 
 	pi.registerCommand("telegram-setup", {
-		description: "Configure Telegram bot token and pairing code",
+		description: "Configure Telegram bot token and pairing PIN",
 		handler: async (_args, ctx) => {
 			deps.setLatestCtx(ctx);
 			const configured = await deps.promptForConfig(ctx);

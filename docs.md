@@ -108,8 +108,8 @@ Current project policy:
 
 - We only request message-like updates needed by the bridge.
 - We drop old backlog during non-pairing initialization, but not repeatedly.
-- Pairing mode should not skip updates because the first `/start <code>` must be
-  delivered.
+- Pairing mode should not skip updates because the first valid PIN message, or
+  `/start <PIN>` fallback, must be delivered.
 
 ## Webhooks
 
@@ -383,8 +383,12 @@ locally.
 
 Bridge policy:
 
-- Pair only via a generated `/start <code>`.
-- The first user with a valid current code becomes `allowedUserId`.
+- Pair only via an attended 4-digit PIN shown by pi during setup.
+- Accept the current PIN as private-chat text, and accept `/start <PIN>` for
+  Telegram deep-link or fallback clients.
+- The first user with a valid current PIN becomes `allowedUserId`.
+- Expire the PIN after 5 minutes, reject stale pre-setup updates, and bound
+  failed PIN attempts so setup must be rerun after repeated guesses.
 - Ignore or reject messages from other users.
 - During pairing, do not drop pending Telegram updates via negative offset or
   webhook deletion.
