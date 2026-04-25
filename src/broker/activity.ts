@@ -56,13 +56,13 @@ function compactToolArgs(toolName: string, args: unknown): string {
 }
 
 export function toolActivityLine(toolName: string, args?: unknown, done?: boolean, isError?: boolean): string {
-	const icon = isError ? "❌" : "🔧";
+	const icon = isError ? "❌" : toolName === "bash" ? "💻" : "🔧";
 	const suffix = args === undefined || done ? "" : ` ${compactToolArgs(toolName, args)}`;
 	return `${done ? "" : "*"}${icon} ${toolName}${suffix}`;
 }
 
 export function thinkingActivityLine(done: boolean, title?: string): string {
-	return `${done ? "" : "*"}🧠 ${title || "thinking"}`;
+	return `${done ? "" : "*"}🧠 ${title || "thinking ..."}`;
 }
 
 export class ActivityReporter {
