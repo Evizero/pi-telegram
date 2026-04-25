@@ -571,27 +571,19 @@ This scenario protects `SyRS-deliver-telegram-turn`,
 `SyRS-durable-update-consumption`, `SyRS-media-group-batching`,
 `SyRS-busy-message-steers`, and `SyRS-follow-queues-next-turn`.
 
-### Telegram-triggered reload and reattachment
+### Unsupported Telegram runtime reload
 
-A Telegram `/reload` command is a control command for the addressed pi session,
-not user content for the agent.
-The broker should authorize and resolve it through the same route-selection
-model as other Telegram commands, then ask the target client to invoke pi's
-reload flow through a command-context path.
-Because pi invalidates extension contexts during reload, the old runtime should
-record a one-shot reload intent before invoking reload and then treat reload as
-terminal for that handler.
+Telegram does not expose a `/reload` bridge command. The current pi extension
+API exposes runtime reload only to command handlers, not to ordinary extension
+contexts or LLM-callable tools, and injecting an internal slash command through
+`sendUserMessage()` can surface the command as user content instead of executing
+it. The bridge therefore intentionally omits Telegram-triggered runtime reload
+rather than advertising a control path that requires laptop access or can leak
+internal commands into the conversation.
 
-After `session_start` with reload reason, the new runtime should consume that
-intent, reconnect through the existing broker/client registration path, and
-report the outcome to the original Telegram chat/thread when possible.
-The route should be reused through logical session identity; reload must not be
-modeled as explicit disconnect/unregister.
-
-This scenario protects `SyRS-telegram-reload-command`,
-`SyRS-reload-reattach-route`, `SyRS-reload-intent-recovery`,
-`SyRS-register-session-route`, `SyRS-topic-routes-per-session`, and
-`SyRS-offline-without-deleting-state`.
+If pi later exposes a safe direct reload API for extension contexts, Telegram
+reload can be reconsidered as a new feature with durable route reattachment.
+Until then, runtime reload remains a local pi action outside the Telegram bridge.
 
 ### Activity, preview, and final response
 
@@ -636,16 +628,18 @@ Losing route identity is equivalent to losing session control.
 
 A pi session's Telegram route identity must be tied to the logical pi session,
 not merely to the current extension runtime instance.
-Extension reload tears down in-memory closures, IPC sockets, and broker/client
-process state, but it should not by itself create a new Telegram session route
-for the same pi session.
+Ordinary extension/runtime churn tears down in-memory closures, IPC sockets, and
+broker/client process state, but it should not by itself create a new Telegram
+session route for the same pi session when the bridge reconnects.
 
 Runtime instance identifiers are appropriate for ephemeral concerns such as IPC
 socket filenames, owner IDs, leases, and heartbeat liveness.
 Logical session identifiers are appropriate for broker registration, route reuse,
-selector choices, and reload reattachment.
-Current implementation keeps those identities separate so reload behaves like
-offline-and-reconnect rather than disconnect-and-new-route.
+and selector choices.
+Current implementation keeps those identities separate so offline-and-reconnect
+can reuse route state; Telegram-triggered runtime reload and reload reattachment
+are intentionally unsupported until pi exposes a safe direct reload API for
+extension contexts.
 
 ### Durable versus ephemeral state
 

@@ -605,17 +605,17 @@
         "StRS-telegram-reload-continuity",
         "StRS-delivery-continuity"
       ],
-      "rationale": "The old extension context becomes stale after ctx.reload(), so the bridge needs durable handoff state to complete or fail the remote workflow from the new runtime.",
-      "acceptance_criteria": "Tests or inspection show that the broker persists a reload intent keyed by logical session id before invoking pi reload, includes source chat/thread/session context, consumes the intent at most once after successful re-registration or explicit terminal failure/expiry, reports success or failure to the original route when usable, and avoids stale old ctx/pi usage after ctx.reload().",
+      "rationale": "Deprecated 2026-04-25: Durable Telegram reload intents are removed along with the unsupported Telegram reload command.",
+      "acceptance_criteria": "Inspection confirms reload intent state and retry/reporting plumbing for Telegram-triggered runtime reload are absent or ignored as legacy persisted state.",
       "verification": {
         "method": "test"
       },
-      "status": "draft",
+      "status": "deprecated",
       "created": "2026-04-25",
       "updated": "2026-04-25",
       "sources": {
         "inbox": [
-          "telegram-reload-should-reload"
+          "telegram-reload-should-be"
         ]
       }
     },
@@ -629,17 +629,17 @@
         "StRS-paired-user-control",
         "StRS-session-lifecycle-control"
       ],
-      "rationale": "The Telegram command is the remote operator interface for pi's reload capability, but it must stay inside the paired-user routing model and avoid accidentally sending /reload to the LLM as ordinary work.",
-      "acceptance_criteria": "Tests or inspection show that /reload from the paired user in a valid session route persists a reload request for that target session, queues the reload to run after any active Telegram/pi turn reaches a safe follow-up boundary, rejects unauthorized/unrouted/offline requests with clear text, and never converts the command into a normal PendingTelegramTurn for the agent.",
+      "rationale": "Deprecated 2026-04-25: The Telegram /reload command is removed because it cannot be implemented safely with the current public pi extension API and must not be surfaced as a normal agent turn.",
+      "acceptance_criteria": "Inspection confirms /reload is not advertised or specially handled by Telegram command routing, and no internal /telegram-reload-runtime command is injected as user content.",
       "verification": {
         "method": "test"
       },
-      "status": "draft",
+      "status": "deprecated",
       "created": "2026-04-25",
       "updated": "2026-04-25",
       "sources": {
         "inbox": [
-          "telegram-reload-should-reload"
+          "telegram-reload-should-be"
         ]
       }
     },
@@ -653,17 +653,17 @@
         "StRS-delivery-continuity",
         "StRS-session-lifecycle-control"
       ],
-      "rationale": "Reload tears down and recreates the extension runtime; route continuity requires treating reload as offline-and-reconnect, not explicit disconnect or a new Telegram session.",
-      "acceptance_criteria": "Tests or inspection show that a reloaded logical pi session re-registers using stable session identity, reuses its existing topic route or selector-mode selection without creating duplicate routes/topics, preserves durable pending route state, and sends reload completion status to the initiating route when possible.",
+      "rationale": "Deprecated 2026-04-25: Route reattachment after Telegram-triggered reload is removed because Telegram-triggered reload itself is unsupported.",
+      "acceptance_criteria": "Inspection confirms session registration and routing no longer consume Telegram reload intents or report Telegram reload completion.",
       "verification": {
         "method": "test"
       },
-      "status": "draft",
+      "status": "deprecated",
       "created": "2026-04-25",
       "updated": "2026-04-25",
       "sources": {
         "inbox": [
-          "telegram-reload-should-reload"
+          "telegram-reload-should-be"
         ]
       }
     }

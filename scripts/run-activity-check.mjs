@@ -1,0 +1,12 @@
+import { execFileSync } from "node:child_process";
+import { rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const outDir = join(tmpdir(), "pi-telegram-activity-check");
+rmSync(outDir, { recursive: true, force: true });
+
+const tscBin = process.platform === "win32" ? "npx.cmd" : "npx";
+execFileSync(tscBin, ["tsc", "--project", "tsconfig.activity-check.json", "--outDir", outDir], { stdio: "inherit" });
+writeFileSync(join(outDir, "package.json"), '{"type":"module"}\n');
+execFileSync(process.execPath, [join(outDir, "scripts", "check-activity-rendering.js")], { stdio: "inherit" });

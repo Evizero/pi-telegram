@@ -29,8 +29,6 @@ export interface RuntimePiHooksDeps {
 	isRoutableRoute: (route: TelegramRoute | undefined) => route is TelegramRoute;
 	resolveAllowedAttachmentPath: (inputPath: string) => Promise<string | undefined>;
 	postIpc: <TResponse>(socketPath: string, type: string, payload: unknown, targetSessionId?: string) => Promise<TResponse>;
-	markTelegramReloadStarted: (intentId: string) => Promise<unknown>;
-	markTelegramReloadFailed: (intentId: string, message: string) => Promise<unknown>;
 	promptForConfig: (ctx: ExtensionContext) => Promise<boolean>;
 	connectTelegram: (ctx: ExtensionContext, notify?: boolean) => Promise<void>;
 	unregisterSession: (sessionId: string) => Promise<unknown>;
@@ -141,24 +139,6 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 		},
 	});
 
-	pi.registerCommand("telegram-reload-runtime", {
-		description: "Internal Telegram bridge command that reloads the pi runtime",
-		handler: async (args, ctx) => {
-			deps.setLatestCtx(ctx);
-			const intentId = args.trim();
-			let reloadStarted = false;
-			try {
-				if (intentId) await deps.markTelegramReloadStarted(intentId);
-				reloadStarted = true;
-				await ctx.reload();
-				return;
-			} catch (error) {
-				if (intentId && reloadStarted) await deps.markTelegramReloadFailed(intentId, errorMessage(error)).catch(() => undefined);
-				throw error;
-			}
-		},
-	});
-
 	pi.on("session_start", async (event, ctx) => {
 		deps.setLatestCtx(ctx);
 		await deps.onSessionStart(ctx, event.reason);
@@ -249,6 +229,7 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 		deps.updateStatus(ctx);
 		if (turn) {
 			const assistant = extractAssistantText(event.messages);
+			await deps.activityReporter.flush();
 			await deps.sendAssistantFinalToBroker({ turn, text: assistant.text, stopReason: assistant.stopReason, errorMessage: assistant.errorMessage, attachments: turn.queuedAttachments });
 			deps.rememberCompletedLocalTurn(turn.turnId);
 			deps.setActiveTelegramTurn(undefined);

@@ -1,7 +1,7 @@
 import { MODEL_LIST_TTL_MS } from "../shared/config.js";
 import { routeId } from "../shared/format.js";
 import type { BrokerState, ModelSummary, PendingTelegramTurn, SessionRegistration, TelegramMessage, TelegramRoute } from "../shared/types.js";
-import { errorMessage, now, randomId } from "../shared/utils.js";
+import { errorMessage, now } from "../shared/utils.js";
 
 export function telegramCommandName(text: string): string {
 	const command = text.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
@@ -75,7 +75,7 @@ export class TelegramCommandRouter {
 			return;
 		}
 		if ((command === "/help" || command === "/start") && !route) {
-			await this.deps.sendTextReply(firstMessage.chat.id, firstMessage.message_thread_id, "Commands: /sessions, /use <number>, /status, /model, /compact, /reload, /follow, /stop, /disconnect, /broker.");
+			await this.deps.sendTextReply(firstMessage.chat.id, firstMessage.message_thread_id, "Commands: /sessions, /use <number>, /status, /model, /compact, /follow, /stop, /disconnect, /broker.");
 			return;
 		}
 		if (!route) {
@@ -122,64 +122,6 @@ export class TelegramCommandRouter {
 			}
 			return;
 		}
-		if (command === "/reload") {
-			brokerState.reloadIntents ??= {};
-			const existingIntent = brokerState.reloadIntents[session.sessionId];
-			if (existingIntent?.state === "reloading") {
-				await this.deps.sendTextReply(route.chatId, route.messageThreadId, "This pi session is already reloading.").catch(() => undefined);
-				return;
-			}
-			if (existingIntent?.state === "accepted" && existingIntent.acceptedOwnerId === session.ownerId) {
-				await this.deps.sendTextReply(route.chatId, route.messageThreadId, "This pi session is already queued to reload.").catch(() => undefined);
-				return;
-			}
-			if (existingIntent?.state === "queued" || existingIntent?.state === "accepted") {
-				try {
-					const result = await this.deps.postIpc<{ text: string }>(session.clientSocketPath, "reload_runtime", { intentId: existingIntent.intentId }, session.sessionId);
-					existingIntent.state = "accepted";
-					existingIntent.acceptedAtMs = now();
-					existingIntent.acceptedOwnerId = session.ownerId;
-					existingIntent.updatedAtMs = now();
-					await this.deps.persistBrokerState();
-					await this.deps.sendTextReply(route.chatId, route.messageThreadId, result.text).catch(() => undefined);
-				} catch (error) {
-					session.status = "offline";
-					existingIntent.state = "queued";
-					existingIntent.updatedAtMs = now();
-					await this.deps.persistBrokerState();
-					await this.deps.sendTextReply(route.chatId, route.messageThreadId, `Reload remains queued; retry failed because the pi runtime is unavailable: ${errorMessage(error)}`).catch(() => undefined);
-				}
-				return;
-			}
-			const intentId = randomId("rel");
-			brokerState.reloadIntents[session.sessionId] = {
-				intentId,
-				sessionId: session.sessionId,
-				routeId: route.routeId,
-				chatId: route.chatId,
-				messageThreadId: route.messageThreadId,
-				state: "queued",
-				requestedAtMs: now(),
-				updatedAtMs: now(),
-			};
-			await this.deps.persistBrokerState();
-			try {
-				const result = await this.deps.postIpc<{ text: string }>(session.clientSocketPath, "reload_runtime", { intentId }, session.sessionId);
-				const intent = brokerState.reloadIntents[session.sessionId];
-				intent.state = "accepted";
-				intent.acceptedAtMs = now();
-				intent.acceptedOwnerId = session.ownerId;
-				intent.updatedAtMs = now();
-				await this.deps.persistBrokerState();
-				await this.deps.sendTextReply(route.chatId, route.messageThreadId, result.text).catch(() => undefined);
-			} catch (error) {
-				if (brokerState.reloadIntents?.[session.sessionId]?.intentId === intentId) delete brokerState.reloadIntents[session.sessionId];
-				session.status = "offline";
-				await this.deps.persistBrokerState();
-				await this.deps.sendTextReply(route.chatId, route.messageThreadId, `Failed to queue reload: ${errorMessage(error)}`).catch(() => undefined);
-			}
-			return;
-		}
 		if (command === "/model") {
 			try {
 				await this.handleModelCommand(route, session, rawText);
@@ -197,7 +139,7 @@ export class TelegramCommandRouter {
 			return;
 		}
 		if (command === "/help" || command === "/start") {
-			await this.deps.sendTextReply(route.chatId, route.messageThreadId, "Send a message to steer this pi session. Use /follow <message> to queue a follow-up. Commands: /status, /model, /compact, /reload, /follow, /stop, /disconnect, /sessions.");
+			await this.deps.sendTextReply(route.chatId, route.messageThreadId, "Send a message to steer this pi session. Use /follow <message> to queue a follow-up. Commands: /status, /model, /compact, /follow, /stop, /disconnect, /sessions.");
 			return;
 		}
 		let turnMessages = messages;

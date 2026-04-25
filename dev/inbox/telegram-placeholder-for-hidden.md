@@ -3,8 +3,8 @@ title: "Telegram placeholder for hidden thinking traces"
 type: "observation"
 created: "2026-04-25"
 author: "Christof Salis"
-status: "open"
-planned_as: []
+status: "planned"
+planned_as: ["polish-telegram-activity-rendering"]
 ---
 Source note from user (2026-04-25):
 
@@ -56,3 +56,8 @@ Design preference emerging: hidden/empty thinking should still visibly reassure 
 ## UI preference update (2026-04-25)
 
 User preference: use the hourglass variant for the transient hidden/empty-thinking placeholder. Proposed active rendering: `*⏳ working ...`, displayed bold in Telegram while active, and removed/replaced instead of persisted unless a real pi-visible thinking trace appears.
+
+
+## Planned with activity label polish (2026-04-25)
+
+Planned together with `hide-bash-label-in` as task `polish-telegram-activity-rendering`, traced to `SyRS-activity-history-rendering`.

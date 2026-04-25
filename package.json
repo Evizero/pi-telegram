@@ -27,7 +27,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck"
+    "check:activity": "node scripts/run-activity-check.mjs",
+    "check": "npm run typecheck && npm run check:activity"
   },
   "devDependencies": {
     "@mariozechner/pi-agent-core": "^0.70.2",
