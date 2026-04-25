@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "title": "pi-telegram",
+    "version": "0.1.0",
+    "last_updated": "2026-04-25"
+  },
+  "stakeholders": [
+    {
+      "id": "remote-pi-operator",
+      "name": "Remote pi operator",
+      "role": "Primary user",
+      "description": "Developer or agent operator who starts pi sessions on a local computer and supervises them from Telegram while away from that machine."
+    },
+    {
+      "id": "repository-maintainer",
+      "name": "Repository maintainer",
+      "role": "Maintainer",
+      "description": "Human or coding-agent maintainer responsible for evolving pi-telegram without breaking its remote supervision purpose or Telegram API constraints."
+    }
+  ]
+}

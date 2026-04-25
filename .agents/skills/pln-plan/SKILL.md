@@ -1,0 +1,162 @@
+---
+name: pln-plan
+description: Turn an inbox item or raw idea into well-traced work by clarifying stakeholder needs, writing or revising stakeholder requirements, deriving or refining implementable system/software behavior requirements, creating or revising architecture only when it is justified by upstream planning, and creating implementation tasks only when the work is concrete enough. Use when the user wants to plan work, talk about what to work on, write or edit stakeholder requirements or system requirements, connect an idea to requirements, deduplicate proposed work, ground raw source material in the traceability chain, work on architecture, or write or edit a task that is grounded in the codebase and traceability chain. Also read when conversation requires any type of planning.
+---
+
+# Plan
+
+## Workflow
+- Read the triggering inbox item if one exists. If that inbox item is a spec-shaped working document, treat it as source material to interpret and normalize rather than normative text to copy forward mechanically.
+- Read `dev/INTENDED_PURPOSE.md` near the start of every planning session, then read the local planning state with `pln strs summary`, `pln syrs summary`, and `pln task list`. Use `pln strs list` or `pln syrs list` when you need full requirement statements in view, and keep the compact summaries in context as the default requirement map.
+- If `dev/INTENDED_PURPOSE.md` is missing, still scaffold text, or is too thin to explain who the product is for, what problem it solves, what use environment it is meant for, where it stops, and what motivating orientation should guide later ambiguous decisions, stop and establish or revise intended purpose before pushing lower-layer planning further.
+- Decide which planning layer is actually in scope: stakeholder requirements, system requirements, architecture, task writing, or only source capture.
+- Read the relevant guide in full before drafting. Use `references/requirements-writing.md` for StRS and SyRS work, `references/task-writing.md` for substantial task-body work, and `references/architecture-writing.md` for architecture work. Do not draft from memory, partial excerpts, or stale repo assumptions.
+- Clarify the stakeholder need, problem, desired outcome, and source material behind the request. If the work is bug-shaped, identify that explicitly early. Reproduce before planning or recommending a fix when practical. If deterministic reproduction is not yet practical, say that plainly instead of pretending the bug basis is already settled.
+- Map the idea to existing requirements before drafting anything new. Prefer updating an existing StRS or SyRS when the need is already present but needs sharper scope, clearer criteria, or better wording. Keep StRS at stakeholder-need level and SyRS at verified implementable system/software behavior.
+- Read `dev/ARCHITECTURE.md` only after you have the relevant requirement context, or when checking an existing task or change against current implementation boundaries. If architecture is in scope, inspect the relevant code paths, module boundaries, and active tasks first so the document is grounded in the real repository.
+- Explicitly assess whether the planned change introduces or revises a persistent architectural seam, runtime surface, repository-owned guidance layer, or ownership boundary. Update `dev/ARCHITECTURE.md` when that impact is already clear enough, or say plainly what architectural concerns or sections should change later.
+- Read the relevant CLI help before mutating artifacts, especially for `pln strs`, `pln syrs`, `pln inbox`, and `pln task`. Use the CLI for structured metadata, traceability, and lifecycle changes, and only create a traced task when the implementation direction is concrete enough.
+- After drafting or revising requirements or task bodies, run the required read-only review subagent loop: use an `explorer` pinned to `gpt-5.5` with medium reasoning, or `Opus 4.6` with medium reasoning only when `gpt-5.5` is genuinely unavailable; have it read the relevant writing guide, drafted artifacts, requirement inventories, and `dev/INTENDED_PURPOSE.md`; require a strict output contract of either `Findings:` or `No findings. ...`; do not use `fork_context: true` by default; treat vague or transport-only replies as failures; retry once with a narrower prompt and no `fork_context` if the reply is not concrete; keep artifact status truthful if that retry still fails to return a concrete verdict; fix findings; rerun review on the latest artifacts; wait for the active reviewer before declaring the loop complete; and close the completed review agent after you record that result.
+- Do not use `fork_context: true` by default.
+- Treat any review-subagent reply that does not actually contain `Findings:` or `No findings. ...` as a failed review attempt rather than a pass.
+- Wait for the reviewer's concrete result before proceeding.
+- Do not declare the planning review loop complete until the latest review on the latest artifacts is concrete and clean.
+- Stop at the planning stage by default. Do not autonomously slide into implementation or close-out because of generic momentum, agent initiative, or an "obvious next step" alone. Only move into the next stage when the user explicitly asks for it or strongly implies that next-stage transition with specific direction.
+- Put differently: stop at the planning stage by default.
+
+## Further Instructions
+- Treat planning as the bridge between capture and implementation.
+- Preserve the existing required post-drafting review loop. Treat an additional review-subagent pass beyond that required post-drafting review loop as non-default planning rigor, not the new baseline for every planning edit.
+- Do not act as a scribe. Planning should sharpen vague input, separate mixed layers, and make decisions explicit rather than preserving ambiguity in a prettier format.
+- Treat intended purpose, requirements, and architecture as the current normative project state, not as an accreted changelog. Write them as the coherent plan the project now stands behind, even when that plan emerged through pivots, corrections, or discarded earlier assumptions.
+- Capture pivots, rejected alternatives, and historical reasoning only where they help interpret the current decision: rationale fields, source references, traceability notes, deferred scope, or decision/context prose. Do not let normative purpose, requirement, or architecture text read like layered evolution history.
+- Prefer the CLI when creating planning artifacts, including tasks and inbox items, because it establishes metadata, traceability, and the correct artifact shape while still allowing body text to be provided.
+- Use `pln strs` and `pln syrs` to create and update stakeholder requirements and system requirements; do not hand-edit registry-backed requirement data.
+- When project-specific terminology matters, inspect active definitions through `pln defs` or task context instead of reconstructing meaning from scattered prose.
+- When creating or revising requirements, finalize the statement first, then derive the label and stable semantic ID suffix from that finished statement instead of inventing either up front.
+- More bluntly: derive stable semantic ID suffixes and labels from finalized requirement text rather than choosing either before the statement is settled.
+- When creating a new StRS or SyRS, use the CLI to supply the explicit semantic suffix without the `StRS-` or `SyRS-` prefix. Treat that suffix as frozen after creation even if the statement or label improves later.
+- Keep labels separate from IDs. In other words, keep labels separate from IDs so the label can evolve as an ultra-condensed reading aid while the semantic ID remains the stable handle.
+- Prefer short, legible semantic suffixes over long restatements. Natural abbreviations such as `repo`, `cli`, `ctx`, `diag`, `impl`, `instr`, and `subdir` are good style guidance when they remain immediately understandable, but they are examples rather than a whitelist.
+- If the chosen semantic suffix collides after normalization, prefer semantic disambiguation over numeric suffixes when collisions happen. First ask whether the requirement should update an existing record instead of creating a sibling.
+- Assign requirement origin deliberately rather than leaving it implicit. Use `imposed`, `derived`, `assumed`, and `self-derived` for distinct authority situations, and make sure rationale and sources match that choice.
+- When verbatim governing text matters, preserve that basis through captured references instead of hiding it in paraphrase or weaker freeform source fields.
+- When the current CLI supports inline directive capture for an imposed requirement, prefer that path so the requirement and captured governing basis are created together.
+- Notice strong human emphasis explicitly. If the user is clearly signaling a non-negotiable, preserved behavior, scope boundary, product-identity rule, or "this has to work this way" directive, treat that as potential authoritative project direction rather than ordinary colorful phrasing.
+- Separate the fixed directive from any nearby flexible brainstorming before you draft artifacts. Do not flatten a mixed message into either "all settled" or "all exploratory."
+- When a directive is clearly authoritative, preserve its raw wording promptly as a captured reference even before the final normalized intended-purpose or requirement text is fully settled.
+- Promote authoritative human direction to the highest appropriate layer. Use intended purpose when it defines product identity, scope boundaries, motivating orientation, or enduring philosophy; use stakeholder requirements when it expresses stakeholder need, preserved behavior, workflow expectation, or a constraint the system must satisfy.
+- Treat the captured reference as informative interpretive basis and the intended-purpose or requirement prose as the normative record. Do not copy raw directive wording forward as a substitute for normalized project truth.
+- Do not leave authoritative human direction stranded only in chat, task prose, or inbox prose once planning has judged it authoritative.
+- If the current language is genuinely ambiguous about whether a point is enduring authoritative direction, a local preference, or open brainstorming, clarify with the user when that difference matters instead of silently promoting or discarding it.
+- If that clarification is not yet available, preserve the wording as source basis and record a durable planning follow-up or handoff in repository artifacts pending the upstream decision instead of leaving detached preserved text behind.
+- For targeted body updates to task or inbox items, edit the markdown file directly rather than replacing the entire body through the CLI. The CLI `--body` flag replaces the whole body, which is impractical for section-level changes. Do not hand-edit frontmatter.
+- Start stakeholder-first: ask who wants this, what problem it solves, what outcome matters, how success would be recognized, and what raw source material or observations led to the request.
+- Treat the intended purpose as the alignment anchor above requirements. Use it not only as a scope filter but also, when relevant, as the source of motivating problem shape, grounded context, governing thesis, conceptual distinctions, the default attractor the product must resist (the obvious average version of the product an uninstructed agent would drift toward), and the things the human actually cares about enough to guide ambiguous later choices. Keep those as purpose-level context unless they translate into actual stakeholder or system obligations. If a proposed requirement does not serve the product purpose, call that out instead of forcing it into the chain.
+- Do not let architecture get ahead of requirements. Architecture is downstream of intended purpose, stakeholder requirements, and system requirements. Use architecture to describe how justified behavior is realized under real constraints, not to invent product behavior before the relevant requirements exist.
+- Prefer updating existing requirements over creating duplicates.
+- Keep a lightweight map of the whole requirement space in context. In normal projects, compact StRS and SyRS summary inventories are cheap enough to keep visible and they help catch overlap, dependency, and conflict early.
+- If the idea sharpens scope, adds measurable criteria, or clarifies an existing need, revise the existing StRS instead of creating a sibling requirement.
+- Apply the same duplicate check to SyRS before adding new system requirements.
+- Before creating or revising architecture, identify the relevant requirement drivers, quality concerns, constraints, provenance expectations, and code areas in scope.
+- When you identify an architecture impact but the session is not yet revising `dev/ARCHITECTURE.md`, say so plainly and recommend what architectural concerns, sections, or repository mappings should be updated.
+- Architecture should be written as a normative design contract and planning document. Use the codebase to ground and constrain it, but do not frame the document as an implementation diary.
+- Architecture should document major building blocks, important runtime flows, cross-cutting concepts, key decisions, quality goals, risks, provenance expectations, and repository mapping when those help answer the driving concerns.
+- Separate architecture contract, implemented behavior notes, and migration notes when they differ materially. Do not blur them into one narrative.
+- Ground architecture in the real codebase: mention actual files, modules, directories, interfaces, and ownership boundaries when they matter.
+- Architecture should not become a second requirements spec, a task list, or a code walkthrough. Keep behavior justification upstream and implementation steps downstream.
+- Before creating or revising a task, check the compact requirement summary inventories for other requirements that the planned change might affect, constrain, preserve, or accidentally conflict with.
+- If the task could interact with adjacent requirements, carry that forward explicitly in the task language instead of assuming the implementation agent will rediscover it later.
+- A good task should not only say what to change. It should also say what important behavior, boundaries, or neighboring requirements must remain true.
+- For stakeholder requirements, stay at the user/business need level.
+- Treat stakeholder requirements as requirements to be validated with stakeholders, users, or other appropriate source evidence.
+- For system requirements, define concrete implementable system/software behavior without prescribing architecture.
+- Treat system requirements as requirements to be verified through tests, analysis, demonstration, or inspection.
+- When drafting SyRS or implementation-oriented task content, ask "what happens when..." for important edge cases, invalid inputs, or failure conditions instead of writing only the happy path.
+- Demand non-goals and boundaries at each layer. A requirement, architecture document, or task becomes much more useful when it is clear what it does not cover.
+- When the user mixes stakeholder needs, source material, system behavior, architecture, and implementation ideas, separate those layers explicitly before writing artifacts.
+- Explain recategorization briefly when you move input from one layer to another instead of silently rewriting it.
+- Flag contradictions immediately when source material, intended purpose, existing requirements, architecture, or the requested change pull in incompatible directions.
+- Raw inbox material may serve as source input for stakeholder requirements even when it is contradictory, speculative, abstract, or ultimately rejected later.
+- A spec-shaped inbox document is still source material. Do not treat it as normative just because it is long, structured, or already uses spec language.
+- Planning is responsible for tightening that source material into coherent intended-purpose, requirement, architecture, or task text before any of those downstream artifacts become authoritative.
+- When a spec-shaped inbox item mixes good ideas with contradictions, over-scope, or wrong-layer statements, rewrite and normalize it deliberately instead of copying its prose forward unchanged.
+- Distinguish "this inbox item is a source for a stakeholder requirement" from "this inbox item should be accepted into a task". Only use `pln inbox accept` when you are actually creating planned implementation work.
+- Treat implementation preferences as stakeholder requirements only when the technical approach itself is part of the stakeholder-visible value proposition.
+- Stop at the right planning layer instead of forcing the whole chain every time.
+- If the conversation only establishes a stakeholder need, it is acceptable to stop at StRS.
+- If stakeholder need is clear but system behavior is still uncertain, stop after StRS or draft SyRS cautiously.
+- If the conversation is still at the level of source capture, preserve it in inbox or other cited source material rather than forcing it into a premature requirement.
+- If relevant requirements do not exist yet, do not respond by drafting architecture first. Stop at the right requirement layer, or capture architectural ideas as notes for later once the requirement basis is real.
+- If implementation shape is still unclear, do not force a ready task.
+- Treat task-writing as a distinct planning activity, not as a quick note-taking afterthought. A task should make the intended implementation slice executable, not merely record that someone remembered to work on it.
+- Ground task bodies in the real codebase: mention files, modules, interfaces, expected validation, and acceptance criteria.
+- Write task language so implementation normally does not need to perform first-pass requirement-conflict analysis, architecture-boundary rediscovery, or basic scope discovery from scratch. Planning should already have surfaced the important nearby constraints, preserved behavior, and non-goals.
+- If requirement links are still uncertain, it is acceptable to create an untraced or draft task temporarily, but say so explicitly and plan to close the traceability gap.
+- Do not treat a task in `ready` or `active` status as implementation-ready unless it traces to at least one SyRS. If such a task still lacks a SyRS trace, call that out explicitly as a planning gap instead of proceeding silently or treating the status alone as enough.
+- When planning verification coverage, do not create placeholder locator files or invent future evidence paths merely to make verification output look clean. Use locator-free planned verification intent when the evidence location is not yet known, and use a missing concrete locator only when the future evidence location is genuinely planned but not created yet.
+- Mark a task as ready only when an implementation agent could start without redoing the planning session and the task is still fresh enough against current requirements, architecture, and codebase reality to support that start responsibly.
+- If an older task is directionally correct but no longer concrete or current enough to start safely, refresh the task body instead of carrying stale wording forward unchanged.
+- For cross-cutting, risky, or multi-file tasks, include or provide a short pre-edit impact preview so implementation and later review can see the expected blast radius before broad edits begin. A useful preview can name likely code touchpoints, affected planning artifacts, intended validation scope, and the main risks or uncertainties, but it should stay lightweight rather than ceremonial.
+- In the required review pass, the prompt must name the exact scope under review, what unrelated worktree changes to ignore unless directly relevant, explicit review criteria, and the strict `Findings:` / `No findings. ...` output contract. Make the review criteria concrete: bugs, regressions, requirement mismatches, missing tests, and edge cases. The reviewer checks the artifacts against the relevant guide checklist, and task-body reviews should include `references/task-writing.md`.
+- In that review pass, explicitly check whether labels, origins, rationale, and source links agree with one another instead of reviewing only statement grammar.
+- A clean review means a fresh review run over the current artifacts after the latest fixes. Fixing findings from an earlier review is not enough by itself.
+- If you run an additional review-subagent pass beyond the required post-drafting loop, justify it from explicit user-requested rigor or broad/high-risk planning scope rather than generic perfectionism or habit. That usually means the user explicitly asks for stronger confidence, completeness, or audit-style review, or the planning change is broad or high-risk enough to justify the additional rigor.
+- For any such non-default additional review-subagent pass, make the prompt name the exact review scope, the required references to read, unrelated worktree changes to ignore unless directly relevant, explicit review criteria, and the exact literal verdict forms `Findings:` and `No findings. ...`.
+- Even if a review is scoped to just specific requirements, it should check for overlap, conflict, or tension with other requirements in the inventory rather than treating the new or revised requirement as if it exists in a vacuum.
+- The reviewer should report findings with reasoning so borderline judgment calls are visible rather than mechanical.
+- Prefer a dedicated `reviewer` agent if one actually exists in the current environment; otherwise use a read-only `explorer` review subagent for review-only passes instead of a worker.
+- When creating a new inbox item or task during planning, determine and pass `--author` explicitly instead of relying on command defaults.
+- If the artifact's substance comes from the user, prefer explicit third-party attribution when the user names or clearly implies another author; if a third-party author seems likely but is still ambiguous, ask. Otherwise use local git identity (`git config --get user.name`, falling back to `git config --get user.email`).
+- If the artifact is an agent-originated follow-up from planning analysis, use a stable agent identity.
+- When planning from inbox, prefer `pln inbox accept` so the inbox item is linked and updated correctly when the outcome is a task; preserve inherited inbox authorship unless the conversation clearly establishes a better override.
+
+## Gotchas
+- Do not write StRS as design docs.
+- Do not write SyRS as implementation steps.
+- Do not write, propose, or edit stakeholder or system requirement text until you have read `references/requirements-writing.md` in full for the current session.
+- Do not draft or substantially revise task bodies until you have read `references/task-writing.md` in full for the current session.
+- Do not write or substantially revise architecture until you have read `references/architecture-writing.md` in full for the current session.
+- Do not jump from a vague idea straight to a task when the stakeholder need is not yet clear.
+- Do not collapse raw source material, legal excerpts, contradictory feedback, or rough notes directly into a polished requirement without saying what was normalized or filtered out.
+- Do not create SyRS without a clear upstream stakeholder need unless you say explicitly that the trace is temporary and needs closure.
+- Do not mistake implementation preferences for stakeholder requirements unless the technical approach itself carries stakeholder-visible value.
+- Do not draft or revise architecture as a substitute for missing stakeholder requirements or system requirements.
+- Do not write architecture as an implementation diary, a requirement list, a task checklist, or a code-tour transcript.
+- Do not hand-edit registry-backed requirement data, JSON, or task/inbox frontmatter.
+- Avoid duplicate tasks by checking existing open work first.
+- Replace placeholder task content when enough implementation direction is known.
+- Do not overstate task readiness when key scope or solution questions are still unresolved.
+- A vague requirement, architecture note, or task is worse than an obviously incomplete one. If the wording is not clear enough to guide later work, sharpen it or stop.
+- Do not skip the writing-quality review or treat a fix pass as equivalent to a clean review run.
+- Do not declare the planning review loop complete just because you addressed an earlier finding; rerun the reviewer and wait for a concrete clean result.
+
+## Validation
+Before finishing:
+- Verify you read `references/requirements-writing.md` in full before drafting or revising any StRS or SyRS in this session.
+- Verify you read `references/task-writing.md` in full before drafting or substantially revising any task body in this session.
+- Verify you read `references/architecture-writing.md` in full before drafting or substantially revising architecture in this session.
+- Verify every new StRS represents a distinct stakeholder need or a justified refinement of an existing one.
+- Verify the StRS meaningfully reflects its stakeholder/source basis rather than hiding unresolved contradictions in the source material.
+- Verify every new SyRS traces to at least one real StRS.
+- Verify architecture content is downstream of relevant purpose and requirements rather than inventing new product behavior.
+- Verify architecture is written as a normative design contract, uses the codebase as grounding evidence, and clearly separates contract statements from migration notes when they differ.
+- Verify architecture makes important boundaries, decisions, quality goals, provenance expectations, risks, and repository mapping explicit when those matter for the work.
+- Verify every task trace refers to existing SyRS IDs.
+- Verify the requirement chain is explicit, or the temporary traceability gap is called out honestly.
+- Verify clearly authoritative human directives were either promoted into intended purpose or stakeholder requirements, or were preserved with an explicit durable planning handoff pending that promotion.
+- Verify intended purpose, requirements, and architecture read as the current coherent project truth rather than a patch log of how the project got there.
+- Verify ambiguous strong wording was not silently promoted into project doctrine without clarification or an explicit planning follow-up.
+- Verify no task in `ready` or `active` status is being treated as implementation-ready without at least one SyRS trace, and treat any such case as a planning gap rather than as silent readiness.
+- Verify the planned change does not silently conflict with other known requirements, or that any real tension is explicitly written into the task.
+- Verify the task body is specific enough and fresh enough that an implementation agent can start without re-planning the whole feature.
+- Verify the task body carries forward important preserved behavior, nearby requirement interactions, validation expectations, and non-goals when those matter.
+- Verify any included pre-edit impact preview remains concise and decision-useful rather than ceremonial.
+- Verify the task body no longer relies on a scaffold placeholder when the work has been clarified enough to replace it.
+- Verify a task is only marked ready when its implementation objective, relevant code areas, and acceptance checks are concrete enough.
+- Verify the produced artifacts match the maturity of the conversation instead of pretending the whole chain is settled.
+- Verify any spec-shaped inbox item used as planning input was treated as non-normative source material and was normalized before downstream artifacts were treated as authoritative.
+- Verify the proposed work aligns with `dev/ARCHITECTURE.md` or explicitly updates architecture direction when the change intentionally revises it.
+- Verify you explicitly assessed whether the planned change should update `dev/ARCHITECTURE.md`, and either made that update or clearly recommended what should change.
+- Verify the latest requirement or task writing-quality review run happened after the latest changes and reported no findings.
+- Verify you did not use `pln inbox accept` for source-only inbox material that is not yet becoming a task.

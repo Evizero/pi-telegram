@@ -1,0 +1,310 @@
+{
+  "meta": {
+    "title": "pi-telegram",
+    "version": "0.1.0",
+    "last_updated": "2026-04-25"
+  },
+  "requirements": [
+    {
+      "id": "StRS-remote-session-supervision",
+      "origin": "imposed",
+      "label": "Supervise local sessions remotely",
+      "statement": "Remote pi operators shall be able to supervise local pi agent sessions from Telegram while execution remains on the originating computer.",
+      "rationale": "The intended purpose identifies continuity of control as the product's core value: the operator should be able to babysit a local pi session from a phone without moving execution off the local machine.",
+      "stakeholders": [
+        "remote-pi-operator"
+      ],
+      "priority": 1,
+      "validation": {
+        "method": "review",
+        "criteria": "Review the intended purpose and user-facing workflow to confirm a paired operator can observe and control a local pi session from Telegram while the session's tools, files, credentials, and runtime remain on the local computer."
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "refs": [
+          "dev/INTENDED_PURPOSE.md#motivation",
+          "dev/INTENDED_PURPOSE.md#traceability"
+        ],
+        "references": [
+          "remote-babysitting-purpose",
+          "phone-control-purpose",
+          "local-execution-boundary"
+        ]
+      }
+    },
+    {
+      "id": "StRS-mid-turn-control",
+      "origin": "imposed",
+      "label": "Control sessions mid-turn",
+      "statement": "Remote pi operators shall be able to connect to and control a pi session even when an agent turn is already running.",
+      "rationale": "The operator may leave while a turn is active; connecting only before a run starts would fail the babysitting use case at the moment it matters most.",
+      "stakeholders": [
+        "remote-pi-operator"
+      ],
+      "priority": 1,
+      "validation": {
+        "method": "review",
+        "criteria": "Review a representative active-turn workflow and confirm Telegram connection during the turn gives the operator useful activity visibility and a way to influence or stop the active work."
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "refs": [
+          "dev/INTENDED_PURPOSE.md#use-environment"
+        ],
+        "references": [
+          "mid-turn-connection-purpose"
+        ]
+      }
+    },
+    {
+      "id": "StRS-multi-session-supervision",
+      "origin": "imposed",
+      "label": "Direct multiple sessions",
+      "statement": "Remote pi operators shall be able to distinguish and direct work across multiple concurrently connected pi sessions.",
+      "rationale": "The intended use includes several pi sessions running across projects; the operator needs session awareness and routing rather than a single ambiguous bot conversation.",
+      "stakeholders": [
+        "remote-pi-operator"
+      ],
+      "priority": 1,
+      "validation": {
+        "method": "review",
+        "criteria": "Review the Telegram-facing session workflow to confirm the operator can identify available sessions, tell which one is selected or addressed, and direct work to the intended session without ambiguity."
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "refs": [
+          "dev/INTENDED_PURPOSE.md#operating-model"
+        ],
+        "references": [
+          "multiple-session-supervision-purpose"
+        ]
+      }
+    },
+    {
+      "id": "StRS-busy-turn-intent",
+      "origin": "derived",
+      "label": "Choose steer or follow-up",
+      "statement": "Remote pi operators shall be able to choose whether a message sent during a busy turn steers current work or becomes follow-up work.",
+      "rationale": "Remote control is lifecycle-sensitive: urgent corrections should steer the active turn, while non-urgent next steps should wait until the current run completes.",
+      "stakeholders": [
+        "remote-pi-operator"
+      ],
+      "priority": 1,
+      "validation": {
+        "method": "review",
+        "criteria": "Review the documented Telegram command behavior to confirm ordinary busy-turn messages and explicit follow-up messages have distinct, stakeholder-understandable outcomes."
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "refs": [
+          "dev/INTENDED_PURPOSE.md#essential-capabilities"
+        ]
+      }
+    },
+    {
+      "id": "StRS-activity-final-feedback",
+      "origin": "derived",
+      "label": "See progress and results",
+      "statement": "Remote pi operators shall receive enough live activity and final-response feedback in Telegram to judge session progress and decide whether to intervene.",
+      "rationale": "Babysitting requires more than final notifications; the operator needs progress visibility that preserves the meaning of thinking, tool use, stopping, failure, and completion.",
+      "stakeholders": [
+        "remote-pi-operator"
+      ],
+      "priority": 1,
+      "validation": {
+        "method": "review",
+        "criteria": "Review a representative long-running session transcript or demo to confirm the Telegram view shows current activity, preserves important history, and delivers a non-duplicated final answer."
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "refs": [
+          "dev/INTENDED_PURPOSE.md#operating-model"
+        ]
+      }
+    },
+    {
+      "id": "StRS-attachment-exchange",
+      "origin": "derived",
+      "label": "Exchange files safely",
+      "statement": "Remote pi operators shall be able to exchange relevant Telegram files and generated artifacts with local pi sessions while protecting unrelated local files, obvious secrets, and downloaded Telegram data from unintended exposure.",
+      "rationale": "Remote supervision often requires showing the agent an image, document, or voice-derived instruction and receiving generated files, but Telegram files and local artifacts cross a trust boundary that must remain privacy-aware.",
+      "stakeholders": [
+        "remote-pi-operator"
+      ],
+      "priority": 2,
+      "validation": {
+        "method": "review",
+        "criteria": "Review inbound-file and outbound-artifact workflows to confirm relevant Telegram files can reach the local session, generated artifacts are sent back only when pi explicitly attaches them, downloaded Telegram data is treated as private, and obvious secret or unrelated local paths are not exposed unintentionally."
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "refs": [
+          "dev/INTENDED_PURPOSE.md#essential-capabilities",
+          "dev/INTENDED_PURPOSE.md#scope-boundaries"
+        ]
+      }
+    },
+    {
+      "id": "StRS-delivery-continuity",
+      "origin": "derived",
+      "label": "Preserve delivery continuity",
+      "statement": "Remote pi operators shall not lose queued work, final responses, or session routing continuity because of ordinary Telegram retry windows, update redelivery, session shutdown, or broker turnover.",
+      "rationale": "The bridge exists for remote continuity; predictable transient failures must not silently erase work or make the operator guess which session is still reachable.",
+      "stakeholders": [
+        "remote-pi-operator"
+      ],
+      "priority": 1,
+      "validation": {
+        "method": "review",
+        "criteria": "Review failure-mode evidence for Telegram rate limiting, duplicate updates, client shutdown, and broker takeover to confirm pending turns, final responses, and routes remain intelligible and recoverable."
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "refs": [
+          "dev/INTENDED_PURPOSE.md#operating-model",
+          "docs.md#flood-control-and-retry-behavior"
+        ]
+      }
+    },
+    {
+      "id": "StRS-paired-user-control",
+      "origin": "derived",
+      "label": "Pair one controlling user",
+      "statement": "Remote pi operators shall be able to pair exactly one Telegram user through an explicit setup flow, and only that paired user shall control connected pi sessions.",
+      "rationale": "The bridge connects a personal Telegram account to powerful local agent sessions; stakeholder trust depends on a clear single-operator pairing model rather than open or team-wide bot access.",
+      "stakeholders": [
+        "remote-pi-operator"
+      ],
+      "priority": 1,
+      "validation": {
+        "method": "review",
+        "criteria": "Review setup and message-handling behavior to confirm one Telegram user is paired through the documented setup flow and that only this paired user can route commands, files, steering, follow-ups, or stop requests into connected sessions."
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "refs": [
+          "dev/INTENDED_PURPOSE.md#essential-capabilities",
+          "dev/INTENDED_PURPOSE.md#scope-boundaries"
+        ]
+      }
+    },
+    {
+      "id": "StRS-local-first-authority",
+      "origin": "imposed",
+      "label": "Keep authority local-first",
+      "statement": "Remote pi operators shall keep code execution, shell access, workspace authority, credentials, and model/session configuration on the local computer while using Telegram as the control surface.",
+      "rationale": "The product is a local-first remote control bridge, not a hosted agent service or remote IDE; preserving this boundary protects scope, trust, and operational simplicity.",
+      "stakeholders": [
+        "remote-pi-operator"
+      ],
+      "priority": 1,
+      "validation": {
+        "method": "review",
+        "criteria": "Review architecture and setup documentation to confirm Telegram is used for control and message/file exchange while execution authority and workspace state remain local."
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "refs": [
+          "dev/INTENDED_PURPOSE.md#scope-boundaries"
+        ],
+        "references": [
+          "local-execution-boundary"
+        ]
+      }
+    },
+    {
+      "id": "StRS-api-constrained-maintenance",
+      "origin": "derived",
+      "label": "Evaluate constrained changes",
+      "statement": "Repository maintainers shall be able to evaluate Telegram bridge changes against the Bot API constraints and remote-supervision purpose they affect.",
+      "rationale": "The bridge depends on Telegram-specific constraints that are easy to regress; maintainers and coding agents need durable guidance that ties API details back to the product purpose.",
+      "stakeholders": [
+        "repository-maintainer"
+      ],
+      "priority": 2,
+      "validation": {
+        "method": "review",
+        "criteria": "Review maintainer guidance and planning artifacts to confirm a future change can be checked against the intended purpose and the relevant official Telegram Bot API constraints without relying only on chat history."
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "refs": [
+          "dev/INTENDED_PURPOSE.md#traceability",
+          "docs.md"
+        ]
+      }
+    },
+    {
+      "id": "StRS-session-lifecycle-control",
+      "origin": "derived",
+      "label": "Connect sessions without restart",
+      "statement": "Remote pi operators shall be able to connect and disconnect pi sessions from Telegram reachability without restarting the project, the bot, or other connected sessions.",
+      "rationale": "Remote babysitting must fit sessions that start, stop, and reconnect across projects; requiring a bot or project restart would break continuity and make multi-session supervision brittle.",
+      "stakeholders": [
+        "remote-pi-operator"
+      ],
+      "priority": 1,
+      "validation": {
+        "method": "review",
+        "criteria": "Review the documented connection lifecycle to confirm a session can become reachable from Telegram and can be disconnected without restarting the pi project, recreating the Telegram bot, or disrupting unrelated connected sessions."
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "refs": [
+          "dev/INTENDED_PURPOSE.md#essential-capabilities",
+          "dev/INTENDED_PURPOSE.md#use-environment"
+        ]
+      }
+    },
+    {
+      "id": "StRS-no-inbound-server-operation",
+      "origin": "imposed",
+      "label": "Avoid external broker daemon",
+      "statement": "Remote pi operators shall be able to use Telegram supervision without maintaining a separate relay server, external broker service, or extra daemon outside the pi extension.",
+      "rationale": "The project owner explicitly wants the extension itself to own brokering so the user does not have to install, operate, or trust extra external software beyond pi and Telegram.",
+      "stakeholders": [
+        "remote-pi-operator"
+      ],
+      "priority": 2,
+      "validation": {
+        "method": "review",
+        "criteria": "Review setup and operating documentation to confirm the normal bridge workflow uses the pi extension itself for brokering and does not require a separate relay server, external broker service, extra daemon, or inbound workstation endpoint."
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "refs": [
+          "dev/INTENDED_PURPOSE.md#intended-users",
+          "dev/INTENDED_PURPOSE.md#operating-model",
+          "dev/INTENDED_PURPOSE.md#scope-boundaries"
+        ],
+        "references": [
+          "no-external-broker-daemon"
+        ]
+      }
+    }
+  ]
+}

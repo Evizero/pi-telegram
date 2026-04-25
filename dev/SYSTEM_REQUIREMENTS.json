@@ -1,0 +1,600 @@
+{
+  "meta": {
+    "title": "pi-telegram",
+    "version": "0.1.0",
+    "last_updated": "2026-04-25"
+  },
+  "requirements": [
+    {
+      "id": "SyRS-pair-one-user",
+      "origin": "derived",
+      "label": "Pair exactly one user",
+      "statement": "The system shall bind Telegram control to exactly one allowed user through an explicit pairing code before accepting session-control messages.",
+      "traces_to": [
+        "StRS-paired-user-control"
+      ],
+      "rationale": "A personal Telegram bridge must fail closed until the intended operator is paired, and later messages must be attributable to that one operator.",
+      "acceptance_criteria": "A setup or pairing test demonstrates that a valid /start code records one allowed Telegram user, plain /start is insufficient after code setup, and messages from other users do not become pi turns.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-reject-unauthorized-telegram",
+      "origin": "derived",
+      "label": "Reject unauthorized Telegram input",
+      "statement": "The system shall reject Telegram updates from users or chats that are not authorized for the paired bridge.",
+      "traces_to": [
+        "StRS-paired-user-control",
+        "StRS-local-first-authority"
+      ],
+      "rationale": "Telegram is a powerful remote control surface for local agent sessions, so unauthorized updates must not reach pi as commands, files, turns, steering, or follow-ups.",
+      "acceptance_criteria": "Tests or inspection show that unauthorized update authors receive no control path into connected sessions and cannot enqueue turns, stop runs, switch sessions, or upload files into pi.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-extension-owned-broker",
+      "origin": "imposed",
+      "label": "Broker inside extension",
+      "statement": "The system shall perform Telegram polling, routing, and client brokering inside connected pi extension processes without requiring a separate external daemon, relay server, or broker service.",
+      "traces_to": [
+        "StRS-no-inbound-server-operation",
+        "StRS-local-first-authority",
+        "StRS-multi-session-supervision"
+      ],
+      "rationale": "The project owner explicitly rejected an extra daemon; the bridge must own brokering as part of the extension package.",
+      "acceptance_criteria": "Repository inspection confirms broker election, polling, IPC, and routing are implemented by the extension runtime and documented setup does not require installing or running any separate broker daemon or relay service.",
+      "verification": {
+        "method": "inspection"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "references": [
+          "no-external-broker-daemon"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-no-inbound-workstation-endpoint",
+      "origin": "derived",
+      "label": "Avoid inbound workstation endpoint",
+      "statement": "The system shall use Telegram long polling for the normal bridge workflow without requiring an inbound network endpoint on the local workstation.",
+      "traces_to": [
+        "StRS-no-inbound-server-operation",
+        "StRS-local-first-authority"
+      ],
+      "rationale": "The intended user should not have to expose the local machine to inbound traffic to supervise local sessions from Telegram.",
+      "acceptance_criteria": "Inspection confirms the normal runtime removes webhooks before polling with getUpdates, does not start a public webhook server, and setup documentation requires only bot token configuration and local pi commands.",
+      "verification": {
+        "method": "inspection"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-register-session-route",
+      "origin": "derived",
+      "label": "Register connected session route",
+      "statement": "The system shall register a pi session with the active broker and create or reuse a Telegram route when /telegram-connect is run.",
+      "traces_to": [
+        "StRS-session-lifecycle-control",
+        "StRS-multi-session-supervision",
+        "StRS-remote-session-supervision"
+      ],
+      "rationale": "A session must become reachable from Telegram on demand without restarting the bot or other sessions.",
+      "acceptance_criteria": "A connection workflow demonstrates that running /telegram-connect makes the current session visible and addressable from Telegram, and repeated registration reuses existing route state instead of creating duplicate routes.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-unregister-session-route",
+      "origin": "derived",
+      "label": "Disconnect one session route",
+      "statement": "The system shall unregister a pi session and remove its Telegram route on explicit disconnect without disconnecting unrelated sessions.",
+      "traces_to": [
+        "StRS-session-lifecycle-control",
+        "StRS-multi-session-supervision"
+      ],
+      "rationale": "Remote reachability must be revocable per session while preserving other supervised sessions.",
+      "acceptance_criteria": "A disconnect workflow demonstrates that /telegram-disconnect removes the selected session route or topic and leaves other connected sessions listed and reachable.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-offline-without-deleting-state",
+      "origin": "derived",
+      "label": "Keep retryable offline state",
+      "statement": "The system shall mark a shutting-down session offline without deleting durable routes, pending turns, or retryable final responses that may still be recovered.",
+      "traces_to": [
+        "StRS-delivery-continuity",
+        "StRS-session-lifecycle-control"
+      ],
+      "rationale": "Ordinary session shutdown is not the same as explicit disconnect; deleting state on shutdown would lose remote continuity.",
+      "acceptance_criteria": "Tests or inspection show session shutdown clears active liveness and typing state but preserves durable route and pending work state until explicit unregister or successful delivery cleanup.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-list-and-select-sessions",
+      "origin": "derived",
+      "label": "List and select sessions",
+      "statement": "The system shall expose Telegram commands that let the paired user list connected sessions and select the session that receives subsequent unrouted messages.",
+      "traces_to": [
+        "StRS-multi-session-supervision"
+      ],
+      "rationale": "Multi-session supervision requires the operator to distinguish sessions and avoid sending work to an ambiguous target.",
+      "acceptance_criteria": "A Telegram workflow demonstrates that /sessions shows available sessions with useful status and /use or equivalent selection makes later ordinary messages route to the chosen session.",
+      "verification": {
+        "method": "demonstration"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-topic-routes-per-session",
+      "origin": "derived",
+      "label": "Preserve session route context",
+      "statement": "The system shall preserve per-session Telegram topic or route identifiers so messages, previews, activity, uploads, and final responses return to the correct session context.",
+      "traces_to": [
+        "StRS-multi-session-supervision",
+        "StRS-activity-final-feedback",
+        "StRS-delivery-continuity"
+      ],
+      "rationale": "Session identity must survive across the different Telegram methods used to show progress, send files, and deliver final answers.",
+      "acceptance_criteria": "Tests or inspection show all routed send paths use the selected route and message_thread_id where applicable, and concurrent sessions do not cross-post activity or finals into each other's routes.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-deliver-telegram-turn",
+      "origin": "derived",
+      "label": "Deliver Telegram input to pi",
+      "statement": "The system shall convert authorized Telegram text and prepared attachments into a pi user turn for the selected session when that session is available.",
+      "traces_to": [
+        "StRS-remote-session-supervision",
+        "StRS-attachment-exchange",
+        "StRS-local-first-authority"
+      ],
+      "rationale": "Telegram is the remote input surface, but execution remains in pi; inbound messages must become normal local session input rather than a separate Telegram-side runtime.",
+      "acceptance_criteria": "A delivery test demonstrates that an authorized Telegram message reaches the selected pi session with expected text and attachment metadata while tool execution still occurs in the local pi session.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-busy-message-steers",
+      "origin": "derived",
+      "label": "Steer active turn by default",
+      "statement": "The system shall deliver an ordinary authorized Telegram message sent while the selected pi session is busy as steering for the active turn.",
+      "traces_to": [
+        "StRS-busy-turn-intent",
+        "StRS-mid-turn-control"
+      ],
+      "rationale": "When the user speaks during an active run, the default remote-control intent is usually to correct or guide the current work.",
+      "acceptance_criteria": "A busy-session test demonstrates that an ordinary Telegram message is sent to pi with steering delivery semantics and is not persisted for later duplicate retry as a normal queued turn.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-follow-queues-next-turn",
+      "origin": "derived",
+      "label": "Queue explicit follow-up",
+      "statement": "The system shall deliver an authorized /follow message as follow-up work queued after the active turn instead of steering the active turn.",
+      "traces_to": [
+        "StRS-busy-turn-intent"
+      ],
+      "rationale": "The operator needs an explicit way to distinguish next-step work from active-turn steering.",
+      "acceptance_criteria": "A busy-session test demonstrates that /follow text is delivered with follow-up semantics, runs after the active turn, and is not mixed into current-turn steering.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-stop-active-turn",
+      "origin": "derived",
+      "label": "Stop active turn remotely",
+      "statement": "The system shall let the paired Telegram user abort the selected session's active turn with a stop command.",
+      "traces_to": [
+        "StRS-mid-turn-control",
+        "StRS-remote-session-supervision"
+      ],
+      "rationale": "Remote babysitting requires a safe escape hatch when the active agent run is wrong, expensive, or no longer desired.",
+      "acceptance_criteria": "A stop workflow demonstrates that /stop or stop aborts the selected active turn, stops associated activity indicators, and sends a single clear confirmation to Telegram.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-mirror-current-turn-on-connect",
+      "origin": "derived",
+      "label": "Mirror turn after mid-connect",
+      "statement": "The system shall start mirroring current activity and final response delivery to Telegram when /telegram-connect is invoked during an already-running pi turn.",
+      "traces_to": [
+        "StRS-mid-turn-control",
+        "StRS-activity-final-feedback"
+      ],
+      "rationale": "The user may decide to leave after a turn has already started; connecting then must attach to the current run rather than only future runs.",
+      "acceptance_criteria": "A mid-turn connection test demonstrates that current activity becomes visible in Telegram after connection and that the active turn's final response is delivered to Telegram.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-activity-history-rendering",
+      "origin": "derived",
+      "label": "Preserve activity while debouncing",
+      "statement": "The system shall preserve ordered thinking and tool activity history while throttling Telegram message sends and edits used to render that activity.",
+      "traces_to": [
+        "StRS-activity-final-feedback",
+        "StRS-delivery-continuity"
+      ],
+      "rationale": "Debouncing is necessary for Telegram limits, but the remote operator still needs the meaningful sequence of activity events.",
+      "acceptance_criteria": "Tests show multiple activity updates are retained in order, thinking updates do not rewrite older completed history, and Telegram edit/send operations are debounced without dropping collected events.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-final-preview-deduplication",
+      "origin": "derived",
+      "label": "Deduplicate preview finalization",
+      "statement": "The system shall finalize streamed assistant previews into final Telegram messages without duplicating preview text, final chunks, or attachment notifications.",
+      "traces_to": [
+        "StRS-activity-final-feedback",
+        "StRS-delivery-continuity"
+      ],
+      "rationale": "The Telegram view must be readable and trustworthy; duplicate previews or chunks make remote supervision confusing.",
+      "acceptance_criteria": "Tests cover short and long final responses and show the existing preview is edited or cleared correctly, long finals are chunked once, and fallback sends do not leave stale duplicate preview messages.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-final-delivery-fifo-retry",
+      "origin": "derived",
+      "label": "Retry finals until delivered",
+      "statement": "The system shall keep assistant final responses retryable in FIFO order until each final is successfully delivered to Telegram or reaches an explicit non-retryable terminal outcome.",
+      "traces_to": [
+        "StRS-delivery-continuity",
+        "StRS-activity-final-feedback"
+      ],
+      "rationale": "Final answers are the user's durable outcome; broker acceptance alone is not enough if the broker can crash, turn over, or hit Telegram retry_after before successful Telegram delivery.",
+      "acceptance_criteria": "Tests or inspection show pending finals remain queued across client-to-broker handoff, broker retry_after, and broker turnover until Telegram delivery succeeds or a clearly non-retryable terminal failure is recorded, and older queued finals are retried before newer finals.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-durable-update-consumption",
+      "origin": "derived",
+      "label": "Advance offsets after durable handling",
+      "statement": "The system shall advance Telegram update offsets only after each update is durably handled, rejected, or queued for retry-safe delivery.",
+      "traces_to": [
+        "StRS-delivery-continuity",
+        "StRS-api-constrained-maintenance"
+      ],
+      "rationale": "Telegram offset acknowledgement is the delivery safety boundary for long polling.",
+      "acceptance_criteria": "Tests or inspection show lastProcessedUpdateId is persisted after durable handling decisions, duplicate update IDs are ignored safely, and first-start negative-offset initialization is not repeated indefinitely.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-telegram-retry-after",
+      "origin": "derived",
+      "label": "Honor Telegram retry_after",
+      "statement": "The system shall honor Telegram retry_after signals for polling, JSON requests, uploads, downloads, preview updates, media preparation, and final delivery.",
+      "traces_to": [
+        "StRS-delivery-continuity",
+        "StRS-api-constrained-maintenance"
+      ],
+      "rationale": "Rate-limit handling is a cross-cutting Telegram API constraint; treating it as an ordinary failure can duplicate, drop, or reorder user-visible work.",
+      "acceptance_criteria": "Tests or inspection show TelegramApiError retry_after values are propagated and callers wait instead of falling back, reprocessing immediately, or bypassing older queued work.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-webhook-before-polling",
+      "origin": "derived",
+      "label": "Clear webhook before polling",
+      "statement": "The system shall remove any configured Telegram webhook before using getUpdates polling and shall retry webhook removal failures before entering the polling loop.",
+      "traces_to": [
+        "StRS-no-inbound-server-operation",
+        "StRS-delivery-continuity",
+        "StRS-api-constrained-maintenance"
+      ],
+      "rationale": "Telegram does not allow getUpdates while a webhook is active, and this project intentionally uses polling instead of an inbound webhook endpoint.",
+      "acceptance_criteria": "Tests or inspection show deleteWebhook is called with drop_pending_updates false before polling, transient deletion failures are retried, and getUpdates is not attempted while webhook removal is still failing.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-media-group-batching",
+      "origin": "derived",
+      "label": "Batch albums without loss",
+      "statement": "The system shall batch Telegram media-group updates into one prepared turn and preserve late or retryable album updates for later processing.",
+      "traces_to": [
+        "StRS-attachment-exchange",
+        "StRS-delivery-continuity"
+      ],
+      "rationale": "Telegram albums arrive as multiple updates; losing late updates or retryable failures would produce incomplete context for the remote session.",
+      "acceptance_criteria": "Tests cover album debounce, processing snapshots, late updates during flush, and retry_after during file preparation, confirming unprocessed album updates remain pending and are rescheduled.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-inbound-file-privacy-limits",
+      "origin": "derived",
+      "label": "Download files privately within limits",
+      "statement": "The system shall download Telegram files only within configured Bot API size limits and store downloaded files in private local directories and files.",
+      "traces_to": [
+        "StRS-attachment-exchange",
+        "StRS-paired-user-control",
+        "StRS-api-constrained-maintenance"
+      ],
+      "rationale": "Inbound Telegram files can be private or hostile; the bridge must respect hosted Bot API limits and local privacy expectations.",
+      "acceptance_criteria": "Tests or inspection show file_size, getFile metadata, Content-Length, and streaming byte counts enforce the download cap; missing file_path fails clearly; temp directories use private permissions; and downloaded files are not world-readable.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-outbound-attachment-safety",
+      "origin": "derived",
+      "label": "Restrict outbound attachments",
+      "statement": "The system shall send outbound attachments only from allowed local paths and shall block obvious secrets or unrelated local files from being uploaded to Telegram.",
+      "traces_to": [
+        "StRS-attachment-exchange",
+        "StRS-local-first-authority",
+        "StRS-paired-user-control"
+      ],
+      "rationale": "The telegram_attach path crosses from local workspace authority into Telegram and must not expose arbitrary local files.",
+      "acceptance_criteria": "Tests or inspection show relative paths resolve against the session workspace, allowed paths are bounded to the workspace or bridge temp area, and blocked names such as .env, SSH keys, and cloud credential directories are not uploaded.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-outbound-photo-document-rules",
+      "origin": "derived",
+      "label": "Respect photo document limits",
+      "statement": "The system shall choose Telegram sendPhoto only for likely photos within Telegram photo constraints and shall use sendDocument for non-photo files or photo-contract fallback cases.",
+      "traces_to": [
+        "StRS-attachment-exchange",
+        "StRS-api-constrained-maintenance"
+      ],
+      "rationale": "Telegram media methods have different constraints; wrong method selection causes avoidable delivery failures or rate-limit mishandling.",
+      "acceptance_criteria": "Tests or inspection show images over the photo size cap use sendDocument, photo-specific rejections can fall back to sendDocument, and retry_after from sendPhoto is preserved rather than treated as fallback eligibility.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-local-authority-boundary",
+      "origin": "imposed",
+      "label": "Keep execution authority local",
+      "statement": "The system shall keep tool execution, workspace mutation, shell access, credentials, model selection, and session state inside the local pi session rather than transferring those authorities to Telegram.",
+      "traces_to": [
+        "StRS-local-first-authority",
+        "StRS-remote-session-supervision",
+        "StRS-no-inbound-server-operation"
+      ],
+      "rationale": "The project owner explicitly wants everything to continue running on the laptop while Telegram acts as the control surface.",
+      "acceptance_criteria": "Inspection confirms Telegram handlers create pi inputs, commands, and attachment deliveries but do not provide independent shell execution, workspace mutation, credential access, or model execution outside the local pi runtime.",
+      "verification": {
+        "method": "inspection"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "references": [
+          "local-execution-boundary"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-api-guidance-maintained",
+      "origin": "derived",
+      "label": "Maintain Telegram API guidance",
+      "statement": "The repository shall maintain project-local Telegram Bot API guidance and agent instructions that identify the API constraints relevant to bridge changes.",
+      "traces_to": [
+        "StRS-api-constrained-maintenance"
+      ],
+      "rationale": "Future maintainers need durable source-backed guidance for Telegram limits, retry behavior, polling, drafts, topics, and file handling instead of relying on compacted chat history.",
+      "acceptance_criteria": "Inspection confirms docs.md links to official Telegram sources for relevant Bot API behavior and AGENTS.md directs coding agents to consult those notes before Telegram integration changes.",
+      "verification": {
+        "method": "inspection"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-runtime-validation-check",
+      "origin": "derived",
+      "label": "Provide local validation command",
+      "statement": "The repository shall provide a local validation command that type-checks the extension package before changes are reported complete.",
+      "traces_to": [
+        "StRS-api-constrained-maintenance"
+      ],
+      "rationale": "Maintainers and coding agents need a repeatable sanity check for a TypeScript extension that spans broker, pi, shared, and Telegram modules.",
+      "acceptance_criteria": "Inspection confirms package scripts expose npm run check, the command runs TypeScript typechecking for the package, and AGENTS.md names it as required validation.",
+      "verification": {
+        "method": "inspection"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-explicit-artifact-return",
+      "origin": "derived",
+      "label": "Return explicitly attached artifacts",
+      "statement": "The system shall send local artifacts back to Telegram only when pi explicitly queues them for Telegram attachment, and shall attempt those queued uploads with the associated assistant reply.",
+      "traces_to": [
+        "StRS-attachment-exchange",
+        "StRS-local-first-authority"
+      ],
+      "rationale": "Outbound artifact exchange is useful only when pi intentionally attaches generated files; Telegram should not be able to request arbitrary upload authority outside that explicit pi action.",
+      "acceptance_criteria": "Tests or inspection show telegram_attach or the equivalent pi attachment path creates the outbound attachment queue, Telegram-originated messages cannot directly trigger arbitrary local uploads, and queued attachments are sent or reported as failed with the assistant reply.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-telegram-text-method-contracts",
+      "origin": "derived",
+      "label": "Obey Telegram text contracts",
+      "statement": "The system shall obey Telegram text method contracts for message sends, edits, and drafts, including non-empty text, 4096-character chunking, and draft eligibility constraints.",
+      "traces_to": [
+        "StRS-activity-final-feedback",
+        "StRS-delivery-continuity",
+        "StRS-api-constrained-maintenance"
+      ],
+      "rationale": "Previews and finals depend on Telegram methods with strict text and draft constraints; violating those contracts breaks remote visibility even when the logical response exists.",
+      "acceptance_criteria": "Tests or inspection show sendMessage and editMessageText receive non-empty text below Telegram's limit, long finals are chunked below the limit, sendMessageDraft is used only for eligible integer private-chat targets with non-zero draft IDs, and rate limits are not treated as parse-mode or draft-contract failures.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-bridge-secret-privacy",
+      "origin": "derived",
+      "label": "Keep bridge secrets private",
+      "statement": "The system shall keep bot tokens, local credentials, bridge configuration, broker state, IPC sockets, and downloaded Telegram data private and out of routine Telegram replies or logs.",
+      "traces_to": [
+        "StRS-local-first-authority",
+        "StRS-paired-user-control",
+        "StRS-attachment-exchange"
+      ],
+      "rationale": "A paired Telegram bridge controls powerful local sessions; leaking tokens, socket paths, credentials, or broker state would weaken both authorization and local-first trust.",
+      "acceptance_criteria": "Inspection confirms persisted config/state and IPC surfaces use private local storage where applicable, bot tokens and credentials are not logged or echoed to Telegram in normal operation, and downloaded Telegram files are stored with private permissions.",
+      "verification": {
+        "method": "inspection"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-inbound-attachment-untrusted",
+      "origin": "derived",
+      "label": "Treat inbound attachments untrusted",
+      "statement": "The system shall treat Telegram attachment filenames, MIME types, metadata, paths, and contents as untrusted input when preparing local files for pi.",
+      "traces_to": [
+        "StRS-attachment-exchange",
+        "StRS-paired-user-control"
+      ],
+      "rationale": "Telegram attachments cross a trust boundary; private storage alone does not prevent hostile filenames, misleading MIME types, or metadata from influencing local behavior.",
+      "acceptance_criteria": "Tests or inspection show inbound filenames are sanitized or bounded before local use, metadata is preserved only as descriptive context, attachment contents are not executed by the bridge, and generated prompts treat attachment paths as user-provided files rather than trusted instructions.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-selector-selection-durability",
+      "origin": "derived",
+      "label": "Preserve selector session choice",
+      "statement": "The system shall preserve selector-mode session selection across broker turnover until the selection expires, is changed, or becomes invalid.",
+      "traces_to": [
+        "StRS-delivery-continuity",
+        "StRS-multi-session-supervision"
+      ],
+      "rationale": "Selector mode routes subsequent unrouted Telegram messages through the user's /use choice; losing that choice during broker takeover breaks routing continuity even though session routes still exist.",
+      "acceptance_criteria": "Tests or inspection show the selected session for a selector-mode chat is represented in durable broker-scoped state, survives broker takeover within its expiry window, is cleared or rejected when the selected session becomes invalid, and can be changed by a later /use command.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25"
+    }
+  ]
+}
