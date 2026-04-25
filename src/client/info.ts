@@ -9,15 +9,16 @@ export function clientStatusText(options: {
 	lease?: BrokerLease;
 	activeTelegramTurn?: ActiveTelegramTurn;
 	queuedTurnCount: number;
+	manualCompactionInProgress?: boolean;
 }): string {
-	const { ctx, connectedRoute, sessionName, lease, activeTelegramTurn, queuedTurnCount } = options;
+	const { ctx, connectedRoute, sessionName, lease, activeTelegramTurn, queuedTurnCount, manualCompactionInProgress } = options;
 	const lines: string[] = [];
 	if (connectedRoute) lines.push(`Project: ${connectedRoute.topicName}`);
 	if (ctx?.cwd) lines.push(`CWD: ${ctx.cwd}`);
 	if (sessionName) lines.push(`Session: ${sessionName}`);
 	if (lease) lines.push(`Broker: pid ${lease.pid} epoch ${lease.leaseEpoch}`);
 	if (ctx?.model) lines.push(`Model: ${ctx.model.provider}/${ctx.model.id}`);
-	const busy = Boolean(activeTelegramTurn) || (ctx ? !ctx.isIdle() : false);
+	const busy = Boolean(activeTelegramTurn) || Boolean(manualCompactionInProgress) || (ctx ? !ctx.isIdle() : false);
 	lines.push(`State: ${busy ? "busy" : "idle"}`);
 	lines.push(`Queued: ${queuedTurnCount}`);
 

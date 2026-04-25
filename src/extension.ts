@@ -14,6 +14,7 @@ import { createRuntimeUpdateHandlers } from "./broker/updates.js";
 import { clientQueryModels as buildClientQueryModels, clientSetModel as setClientModel, clientStatusText as buildClientStatusText } from "./client/info.js";
 import { clientCompactSession } from "./client/compact.js";
 import { AssistantFinalRetryQueue } from "./client/final-delivery.js";
+import { ManualCompactionTurnQueue } from "./client/manual-compaction.js";
 import { shutdownTelegramClientRoute } from "./client/route-shutdown.js";
 import { clientDeliverTelegramTurn } from "./client/turn-delivery.js";
 import { TelegramCommandRouter } from "./broker/commands.js";
@@ -64,6 +65,23 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	let queuedTelegramTurns: PendingTelegramTurn[] = [];
 	let activeTelegramTurn: ActiveTelegramTurn | undefined;
 	let currentAbort: (() => void) | undefined;
+	const manualCompactionQueue = new ManualCompactionTurnQueue({
+		getQueuedTelegramTurns: () => queuedTelegramTurns,
+		setQueuedTelegramTurns: (turns) => { queuedTelegramTurns = turns; },
+		getActiveTelegramTurn: () => activeTelegramTurn,
+		setActiveTelegramTurn: (turn) => { activeTelegramTurn = turn; },
+		prepareTurnAbort: () => {
+			const ctx = latestCtx;
+			if (ctx) currentAbort = () => ctx.abort();
+		},
+		postTurnStarted: (turnId) => {
+			void postIpc(connectedBrokerSocketPath, "turn_started", { turnId }, sessionId).catch(() => undefined);
+		},
+		sendUserMessage: (content, options) => { void pi.sendUserMessage(content, options); },
+		acknowledgeConsumedTurn: (turnId) => {
+			void acknowledgeConsumedTurn(turnId);
+		},
+	});
 	let setupInProgress = false;
 	let telegramStatusVisible = false;
 	const mediaGroups = new Map<string, TelegramMediaGroupState>();
@@ -269,7 +287,17 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	function targetChatIdForRoutes(): number | string | undefined { return routeTargetChatIdForRoutes(config); }
 	function selectedChatIdForSession(targetSessionId: string): number | string | undefined { return Object.values(brokerState?.selectorSelections ?? {}).find((selection) => selection.sessionId === targetSessionId && selection.expiresAtMs > now())?.chatId; }
 	async function collectSessionRegistration(ctx: ExtensionContext): Promise<SessionRegistration> {
-		return buildSessionRegistration({ ctx, sessionId, ownerId, startedAtMs, clientSocketPath, piSessionName: pi.getSessionName(), activeTelegramTurn, queuedTelegramTurns });
+		return buildSessionRegistration({
+			ctx,
+			sessionId,
+			ownerId,
+			startedAtMs,
+			clientSocketPath,
+			piSessionName: pi.getSessionName(),
+			activeTelegramTurn,
+			queuedTelegramTurns,
+			manualCompactionInProgress: manualCompactionQueue.isActive(),
+		});
 	}
 	async function readLease(): Promise<BrokerLease | undefined> { return await readJson<BrokerLease>(LOCK_PATH); }
 	async function isBrokerActive(): Promise<boolean> {
@@ -789,6 +817,8 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	function shutdownClientRoute(): void {
 		if (activeTelegramTurn) rememberDisconnectedTurn(activeTelegramTurn.turnId);
 		for (const turn of queuedTelegramTurns) rememberDisconnectedTurn(turn.turnId);
+		for (const turn of manualCompactionQueue.clearPendingRemainder()) rememberDisconnectedTurn(turn.turnId);
+		manualCompactionQueue.reset();
 		shutdownTelegramClientRoute({
 			setQueuedTelegramTurns: (turns) => { queuedTelegramTurns = turns; },
 			setActiveTelegramTurn: (turn) => { activeTelegramTurn = turn; },
@@ -832,6 +862,9 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			queuedTelegramTurns,
 			getActiveTelegramTurn: () => activeTelegramTurn,
 			getCtx: () => latestCtx,
+			isManualCompactionInProgress: () => manualCompactionQueue.isActive(),
+			hasDeferredCompactionTurn: (turnId) => manualCompactionQueue.hasDeferredTurn(turnId),
+			enqueueDeferredCompactionTurn: (deferredTurn) => manualCompactionQueue.enqueueDeferredTurn(deferredTurn),
 			findPendingFinal: (turnId) => assistantFinalQueue.find(turnId),
 			sendAssistantFinalToBroker,
 			acknowledgeConsumedTurn,
@@ -842,9 +875,13 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	}
 
 	async function clientAbortTurn(): Promise<{ text: string; clearedTurnIds: string[] }> {
-		const clearedTurnIds = queuedTelegramTurns.map((turn) => turn.turnId);
+		const clearedTurnIds = [
+			...queuedTelegramTurns.map((turn) => turn.turnId),
+			...manualCompactionQueue.clearPendingRemainder().map((turn) => turn.turnId),
+		];
 		const queuedCount = clearedTurnIds.length;
 		queuedTelegramTurns = [];
+		manualCompactionQueue.cancelDeferredStart();
 		for (const turnId of clearedTurnIds) rememberCompletedLocalTurn(turnId);
 		if (currentAbort) {
 			if (activeTelegramTurn) {
@@ -858,12 +895,14 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	}
 
 	function startNextTelegramTurn(): void {
-		if (activeTelegramTurn) return;
+		if (manualCompactionQueue.isActive() || activeTelegramTurn) return;
 		const turn = queuedTelegramTurns.shift();
 		if (!turn) return;
 		activeTelegramTurn = { ...turn, queuedAttachments: [] };
+		const ctx = latestCtx;
+		if (ctx) currentAbort = () => ctx.abort();
 		void postIpc(connectedBrokerSocketPath, "turn_started", { turnId: turn.turnId }, sessionId).catch(() => undefined);
-		pi.sendUserMessage(turn.content);
+		void pi.sendUserMessage(turn.content);
 	}
 
 	async function clientStatusText(): Promise<string> {
@@ -874,6 +913,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			lease: await readLease(),
 			activeTelegramTurn,
 			queuedTurnCount: queuedTelegramTurns.length,
+			manualCompactionInProgress: manualCompactionQueue.isActive(),
 		});
 	}
 
@@ -886,6 +926,14 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			sendAssistantFinalToBroker,
 			createTurnId: () => randomId("cmd"),
 			formatError: errorMessage,
+			onStart: () => {
+				manualCompactionQueue.start();
+				if (latestCtx) updateStatus(latestCtx);
+			},
+			onSettled: () => {
+				manualCompactionQueue.finish();
+				if (latestCtx) updateStatus(latestCtx);
+			},
 		});
 	}
 
@@ -984,6 +1032,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		sendAssistantFinalToBroker,
 		rememberCompletedLocalTurn,
 		startNextTelegramTurn,
+		drainDeferredCompactionTurns: () => manualCompactionQueue.drainDeferredIntoActiveTurn(),
 		onSessionStart: async (ctx) => {
 			setLatestContext(ctx);
 			config = await readConfig();

@@ -10,6 +10,8 @@ export interface ClientCompactOptions {
 	sendAssistantFinalToBroker: (payload: { turn: PendingTelegramTurn; text?: string; stopReason?: string; errorMessage?: string; attachments: QueuedAttachment[] }) => Promise<boolean>;
 	createTurnId: () => string;
 	formatError: (error: unknown) => string;
+	onStart?: () => void;
+	onSettled?: () => void;
 }
 
 function commandTurn(turnId: string, sessionId: string, route: TelegramRoute): PendingTelegramTurn {
@@ -39,9 +41,21 @@ export function clientCompactSession(options: ClientCompactOptions): { text: str
 		});
 	};
 
-	ctx.compact({
-		onComplete: () => sendResult("Compaction completed."),
-		onError: (error) => sendResult(`Compaction failed: ${options.formatError(error)}`),
-	});
-	return { text: "Compaction started." };
+	options.onStart?.();
+	try {
+		ctx.compact({
+			onComplete: () => {
+				sendResult("Compaction completed.");
+				options.onSettled?.();
+			},
+			onError: (error) => {
+				sendResult(`Compaction failed: ${options.formatError(error)}`);
+				options.onSettled?.();
+			},
+		});
+		return { text: "Compaction started." };
+	} catch (error) {
+		options.onSettled?.();
+		return { text: `Compaction failed: ${options.formatError(error)}` };
+	}
 }

@@ -804,6 +804,30 @@
           "telegram-views-are-connection-scoped"
         ]
       }
+    },
+    {
+      "id": "SyRS-defer-telegram-during-compaction",
+      "origin": "derived",
+      "label": "Defer Telegram during compaction",
+      "statement": "The system shall defer ordinary authorized Telegram messages and authorized /follow work received while the selected pi session is running manual compaction started by an authorized Telegram /compact command, shall not start a concurrent pi turn until that compaction ends, and shall resume that deferred input afterward with the first deferred input item starting the next turn, later deferred ordinary messages steering that turn, and later deferred /follow work remaining queued behind it.",
+      "traces_to": [
+        "StRS-mid-turn-control",
+        "StRS-busy-turn-intent",
+        "StRS-local-first-authority"
+      ],
+      "rationale": "Native pi queues user input while manual compaction is running and flushes it only after compaction ends. Telegram supervision must preserve that same local-session control model instead of starting a second turn while pi is still compacting.",
+      "acceptance_criteria": "A focused regression shows that while Telegram-started manual compaction is running, ordinary Telegram messages and explicit /follow work are held instead of starting a turn; once compaction finishes, the first deferred input item, including a lone deferred /follow, starts the next turn, later deferred ordinary messages steer that turn, later deferred /follow work stays queued behind it, and no concurrent turn starts before compaction ends.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "inbox": [
+          "telegram-starts-new-turn"
+        ]
+      }
     }
   ]
 }

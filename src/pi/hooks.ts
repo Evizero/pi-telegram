@@ -43,6 +43,7 @@ export interface RuntimePiHooksDeps {
 	sendAssistantFinalToBroker: (payload: { turn: PendingTelegramTurn; text?: string; stopReason?: string; errorMessage?: string; attachments: QueuedAttachment[] }) => Promise<boolean>;
 	rememberCompletedLocalTurn: (turnId: string) => void;
 	startNextTelegramTurn: () => void;
+	drainDeferredCompactionTurns: () => void;
 	onSessionStart: (ctx: ExtensionContext, reason: "startup" | "reload" | "new" | "resume" | "fork") => Promise<void>;
 	clearMediaGroups: () => void;
 }
@@ -187,6 +188,7 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 		deps.setLatestCtx(ctx);
 		deps.setCurrentAbort(() => ctx.abort());
 		deps.updateStatus(ctx);
+		deps.drainDeferredCompactionTurns();
 	});
 
 	pi.on("message_start", async (event) => {

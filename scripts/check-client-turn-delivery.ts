@@ -41,6 +41,9 @@ async function checkBusyOrdinaryTurnSteersAndIsConsumed(): Promise<void> {
 		queuedTelegramTurns: queued,
 		getActiveTelegramTurn: () => activeTurn(),
 		getCtx: busyCtx,
+		isManualCompactionInProgress: () => false,
+		hasDeferredCompactionTurn: () => false,
+		enqueueDeferredCompactionTurn: () => false,
 		findPendingFinal: () => undefined,
 		sendAssistantFinalToBroker: async () => true,
 		acknowledgeConsumedTurn: async (turnId) => { consumed.push(turnId); },
@@ -67,6 +70,9 @@ async function checkBusyFollowUpQueuesWithoutSteering(): Promise<void> {
 		queuedTelegramTurns: queued,
 		getActiveTelegramTurn: () => activeTurn(),
 		getCtx: busyCtx,
+		isManualCompactionInProgress: () => false,
+		hasDeferredCompactionTurn: () => false,
+		enqueueDeferredCompactionTurn: () => false,
 		findPendingFinal: () => undefined,
 		sendAssistantFinalToBroker: async () => true,
 		acknowledgeConsumedTurn: async (turnId) => { consumed.push(turnId); },
@@ -89,6 +95,9 @@ async function checkIdleTurnQueuesAndStartsNext(): Promise<void> {
 		queuedTelegramTurns: queued,
 		getActiveTelegramTurn: () => undefined,
 		getCtx: idleCtx,
+		isManualCompactionInProgress: () => false,
+		hasDeferredCompactionTurn: () => false,
+		enqueueDeferredCompactionTurn: () => false,
 		findPendingFinal: () => undefined,
 		sendAssistantFinalToBroker: async () => true,
 		acknowledgeConsumedTurn: async () => { throw new Error("idle turn should not be consumed immediately"); },
@@ -111,6 +120,9 @@ async function checkCompletedTurnResendsPendingFinal(): Promise<void> {
 		queuedTelegramTurns: [],
 		getActiveTelegramTurn: () => undefined,
 		getCtx: idleCtx,
+		isManualCompactionInProgress: () => false,
+		hasDeferredCompactionTurn: () => false,
+		enqueueDeferredCompactionTurn: () => false,
 		findPendingFinal: () => final,
 		sendAssistantFinalToBroker: async (payload) => { sentFinals.push(payload); return true; },
 		acknowledgeConsumedTurn: async (turnId) => { consumed.push(turnId); },
@@ -123,8 +135,144 @@ async function checkCompletedTurnResendsPendingFinal(): Promise<void> {
 	assert.deepEqual(consumed, []);
 }
 
+async function checkManualCompactionQueuesOrdinaryMessagesWithoutSteering(): Promise<void> {
+	const queued: PendingTelegramTurn[] = [];
+	const sent: Array<{ deliverAs?: string }> = [];
+	const consumed: string[] = [];
+	let starts = 0;
+	await clientDeliverTelegramTurn({
+		turn: turn("compact-plain"),
+		completedTurnIds: new Set(),
+		queuedTelegramTurns: queued,
+		getActiveTelegramTurn: () => undefined,
+		getCtx: idleCtx,
+		isManualCompactionInProgress: () => true,
+		hasDeferredCompactionTurn: () => false,
+		enqueueDeferredCompactionTurn: () => false,
+		findPendingFinal: () => undefined,
+		sendAssistantFinalToBroker: async () => true,
+		acknowledgeConsumedTurn: async (turnId) => { consumed.push(turnId); },
+		ensureCurrentTurnMirroredToTelegram: () => { throw new Error("manual compaction should defer instead of steering"); },
+		sendUserMessage: (_content, options) => { sent.push({ deliverAs: options?.deliverAs }); },
+		startNextTelegramTurn: () => { starts += 1; },
+	});
+
+	assert.deepEqual(queued.map((candidate) => candidate.turnId), ["compact-plain"]);
+	assert.deepEqual(sent, []);
+	assert.deepEqual(consumed, []);
+	assert.equal(starts, 0);
+}
+
+async function checkManualCompactionQueuesFollowUpWithoutStartingTurn(): Promise<void> {
+	const queued: PendingTelegramTurn[] = [];
+	const sent: Array<{ deliverAs?: string }> = [];
+	const consumed: string[] = [];
+	let starts = 0;
+	await clientDeliverTelegramTurn({
+		turn: turn("compact-follow", "followUp"),
+		completedTurnIds: new Set(),
+		queuedTelegramTurns: queued,
+		getActiveTelegramTurn: () => undefined,
+		getCtx: idleCtx,
+		isManualCompactionInProgress: () => true,
+		hasDeferredCompactionTurn: () => false,
+		enqueueDeferredCompactionTurn: () => false,
+		findPendingFinal: () => undefined,
+		sendAssistantFinalToBroker: async () => true,
+		acknowledgeConsumedTurn: async (turnId) => { consumed.push(turnId); },
+		ensureCurrentTurnMirroredToTelegram: () => { throw new Error("manual compaction follow-up should defer"); },
+		sendUserMessage: (_content, options) => { sent.push({ deliverAs: options?.deliverAs }); },
+		startNextTelegramTurn: () => { starts += 1; },
+	});
+
+	assert.deepEqual(queued.map((candidate) => candidate.turnId), ["compact-follow"]);
+	assert.deepEqual(sent, []);
+	assert.deepEqual(consumed, []);
+	assert.equal(starts, 0);
+}
+
+async function checkActiveTurnPreventsImmediateRestartWhileCtxStillIdle(): Promise<void> {
+	const queued: PendingTelegramTurn[] = [];
+	let starts = 0;
+	await clientDeliverTelegramTurn({
+		turn: turn("queued-behind-active"),
+		completedTurnIds: new Set(),
+		queuedTelegramTurns: queued,
+		getActiveTelegramTurn: () => activeTurn("already-starting"),
+		getCtx: idleCtx,
+		isManualCompactionInProgress: () => false,
+		hasDeferredCompactionTurn: () => false,
+		enqueueDeferredCompactionTurn: () => false,
+		findPendingFinal: () => undefined,
+		sendAssistantFinalToBroker: async () => true,
+		acknowledgeConsumedTurn: async () => { throw new Error("queued turn should not be consumed immediately"); },
+		ensureCurrentTurnMirroredToTelegram: () => { throw new Error("idle ctx window should not steer"); },
+		sendUserMessage: () => { throw new Error("idle ctx window should not send immediately"); },
+		startNextTelegramTurn: () => { starts += 1; },
+	});
+
+	assert.deepEqual(queued.map((candidate) => candidate.turnId), ["queued-behind-active"]);
+	assert.equal(starts, 0);
+}
+
+async function checkDeferredCompactionDuplicateIsIgnored(): Promise<void> {
+	const queued: PendingTelegramTurn[] = [];
+	let starts = 0;
+	await clientDeliverTelegramTurn({
+		turn: turn("duplicate-deferred"),
+		completedTurnIds: new Set(),
+		queuedTelegramTurns: queued,
+		getActiveTelegramTurn: () => undefined,
+		getCtx: idleCtx,
+		isManualCompactionInProgress: () => false,
+		hasDeferredCompactionTurn: (turnId) => turnId === "duplicate-deferred",
+		enqueueDeferredCompactionTurn: () => false,
+		findPendingFinal: () => undefined,
+		sendAssistantFinalToBroker: async () => true,
+		acknowledgeConsumedTurn: async () => { throw new Error("duplicate deferred turn should be ignored"); },
+		ensureCurrentTurnMirroredToTelegram: () => { throw new Error("duplicate deferred turn should be ignored"); },
+		sendUserMessage: () => { throw new Error("duplicate deferred turn should be ignored"); },
+		startNextTelegramTurn: () => { starts += 1; },
+	});
+
+	assert.deepEqual(queued, []);
+	assert.equal(starts, 0);
+}
+
+async function checkCompactionBoundaryMessagesJoinDeferredRemainder(): Promise<void> {
+	const queued: PendingTelegramTurn[] = [];
+	const appended: PendingTelegramTurn[] = [];
+	await clientDeliverTelegramTurn({
+		turn: turn("boundary-plain"),
+		completedTurnIds: new Set(),
+		queuedTelegramTurns: queued,
+		getActiveTelegramTurn: () => activeTurn("starting"),
+		getCtx: idleCtx,
+		isManualCompactionInProgress: () => false,
+		hasDeferredCompactionTurn: () => false,
+		enqueueDeferredCompactionTurn: (deferredTurn) => {
+			appended.push(deferredTurn);
+			return true;
+		},
+		findPendingFinal: () => undefined,
+		sendAssistantFinalToBroker: async () => true,
+		acknowledgeConsumedTurn: async () => { throw new Error("boundary message should wait for agent_start drain"); },
+		ensureCurrentTurnMirroredToTelegram: () => { throw new Error("boundary message should join deferred remainder"); },
+		sendUserMessage: () => { throw new Error("boundary message should not send immediately"); },
+		startNextTelegramTurn: () => { throw new Error("boundary message should not start next turn"); },
+	});
+
+	assert.deepEqual(queued, []);
+	assert.deepEqual(appended.map((candidate) => candidate.turnId), ["boundary-plain"]);
+}
+
 await checkBusyOrdinaryTurnSteersAndIsConsumed();
 await checkBusyFollowUpQueuesWithoutSteering();
 await checkIdleTurnQueuesAndStartsNext();
 await checkCompletedTurnResendsPendingFinal();
+await checkManualCompactionQueuesOrdinaryMessagesWithoutSteering();
+await checkManualCompactionQueuesFollowUpWithoutStartingTurn();
+await checkActiveTurnPreventsImmediateRestartWhileCtxStillIdle();
+await checkDeferredCompactionDuplicateIsIgnored();
+await checkCompactionBoundaryMessagesJoinDeferredRemainder();
 console.log("Client turn delivery checks passed");

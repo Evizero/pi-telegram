@@ -8,6 +8,9 @@ export interface ClientDeliverTurnOptions {
 	queuedTelegramTurns: PendingTelegramTurn[];
 	getActiveTelegramTurn: () => ActiveTelegramTurn | undefined;
 	getCtx: () => ExtensionContext | undefined;
+	isManualCompactionInProgress: () => boolean;
+	hasDeferredCompactionTurn: (turnId: string) => boolean;
+	enqueueDeferredCompactionTurn: (turn: PendingTelegramTurn) => boolean;
 	findPendingFinal: (turnId: string) => AssistantFinalPayload | undefined;
 	sendAssistantFinalToBroker: (payload: AssistantFinalPayload) => Promise<boolean>;
 	acknowledgeConsumedTurn: (turnId: string) => Promise<void>;
@@ -27,16 +30,22 @@ export async function clientDeliverTelegramTurn(options: ClientDeliverTurnOption
 		await options.acknowledgeConsumedTurn(turn.turnId);
 		return { accepted: true };
 	}
-	if (options.getActiveTelegramTurn()?.turnId === turn.turnId || options.queuedTelegramTurns.some((candidate) => candidate.turnId === turn.turnId)) return { accepted: true };
+	if (
+		options.getActiveTelegramTurn()?.turnId === turn.turnId ||
+		options.queuedTelegramTurns.some((candidate) => candidate.turnId === turn.turnId) ||
+		options.hasDeferredCompactionTurn(turn.turnId)
+	) return { accepted: true };
 	const ctx = options.getCtx();
-	const isBusy = ctx ? !ctx.isIdle() : Boolean(options.getActiveTelegramTurn());
-	if (isBusy && turn.deliveryMode !== "followUp") {
+	const manualCompactionInProgress = options.isManualCompactionInProgress();
+	const activePiTurnInProgress = ctx ? !ctx.isIdle() : false;
+	if (!manualCompactionInProgress && activePiTurnInProgress && turn.deliveryMode !== "followUp") {
 		options.ensureCurrentTurnMirroredToTelegram(ctx, "Telegram steering message received during an active pi turn; mirroring from this point on.");
 		options.sendUserMessage(turn.content, { deliverAs: "steer" });
 		await options.acknowledgeConsumedTurn(turn.turnId);
 		return { accepted: true };
 	}
+	if (options.enqueueDeferredCompactionTurn(turn)) return { accepted: true };
 	options.queuedTelegramTurns.push(turn);
-	if (ctx?.isIdle()) options.startNextTelegramTurn();
+	if (!manualCompactionInProgress && ctx?.isIdle() && !options.getActiveTelegramTurn()) options.startNextTelegramTurn();
 	return { accepted: true };
 }
