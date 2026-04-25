@@ -1,6 +1,7 @@
 import type { AssistantFinalPayload } from "../shared/types.js";
 import { now } from "../shared/utils.js";
-import { getTelegramRetryAfterMs, TelegramApiError } from "../telegram/api.js";
+import { getTelegramRetryAfterMs } from "../telegram/api.js";
+export { isTerminalTelegramFinalDeliveryError, terminalTelegramFinalDeliveryReason } from "../telegram/final-errors.js";
 
 export class AssistantFinalRetryQueue {
 	private readonly pending: AssistantFinalPayload[] = [];
@@ -39,20 +40,3 @@ export class AssistantFinalRetryQueue {
 	}
 }
 
-export function isTerminalTelegramFinalDeliveryError(error: unknown): boolean {
-	if (!(error instanceof TelegramApiError)) return false;
-	if (getTelegramRetryAfterMs(error) !== undefined) return false;
-	const description = (error.description ?? error.message).toLowerCase();
-	if (error.errorCode === 403) {
-		return /bot\s+was\s+blocked|bot\s+was\s+kicked|user\s+is\s+deactivated|forbidden|not\s+enough\s+rights|can't\s+send|cannot\s+send/.test(description);
-	}
-	if (error.errorCode === 400) {
-		return /chat\s+not\s+found|message\s+thread\s+not\s+found|thread\s+not\s+found|topic\s+not\s+found|topic\s+.*closed|message\s+thread\s+.*closed|bot\s+is\s+not\s+a\s+member|not\s+enough\s+rights|can't\s+send|cannot\s+send/.test(description);
-	}
-	return false;
-}
-
-export function terminalTelegramFinalDeliveryReason(error: unknown): string {
-	if (error instanceof TelegramApiError) return `${error.method}: ${error.description ?? error.message}`;
-	return error instanceof Error ? error.message : String(error);
-}

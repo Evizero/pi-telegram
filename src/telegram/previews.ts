@@ -12,6 +12,8 @@ export class PreviewManager {
 	constructor(
 		private readonly callTelegram: <TResponse>(method: string, body: Record<string, unknown>) => Promise<TResponse>,
 		private readonly sendTextReply: (chatId: number | string, messageThreadId: number | undefined, text: string) => Promise<number | undefined>,
+		private readonly onVisiblePreview?: (turnId: string, chatId: number | string, messageThreadId: number | undefined, messageId: number) => void,
+		private readonly onPreviewDetached?: (turnId: string) => void,
 	) {}
 
 	clearAllTimers(): void {
@@ -47,6 +49,18 @@ export class PreviewManager {
 		if (state.messageId !== undefined) {
 			await this.callTelegram("deleteMessage", { chat_id: chatId, message_id: state.messageId }).catch(() => undefined);
 		}
+		this.onPreviewDetached?.(turnId);
+	}
+
+	async detachForFinal(turnId: string): Promise<{ mode: "draft" | "message"; messageId?: number } | undefined> {
+		const state = this.previews.get(turnId);
+		if (!state) return undefined;
+		if (state.flushTimer) clearTimeout(state.flushTimer);
+		state.flushTimer = undefined;
+		await this.flushes.get(turnId)?.catch(() => undefined);
+		this.previews.delete(turnId);
+		this.onPreviewDetached?.(turnId);
+		return { mode: state.mode, messageId: state.messageId };
 	}
 
 	async finalize(turnId: string, chatId: number | string, messageThreadId: number | undefined, finalText?: string): Promise<boolean> {
@@ -200,6 +214,7 @@ export class PreviewManager {
 			state.messageId = sent.message_id;
 			state.mode = "message";
 			state.lastSentText = truncated;
+			this.onVisiblePreview?.(turnId, chatId, messageThreadId, sent.message_id);
 			return;
 		}
 		await this.callTelegram("editMessageText", { chat_id: chatId, message_id: state.messageId, text: truncated });

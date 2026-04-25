@@ -328,6 +328,7 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 		const brokerState = deps.getBrokerState();
 		if (!brokerState?.pendingTurns) return;
 		for (const pending of Object.values(brokerState.pendingTurns)) {
+			if (brokerState.pendingAssistantFinals?.[pending.turn.turnId]) continue;
 			const session = brokerState.sessions[pending.turn.sessionId];
 			if (!session || session.status === "offline") continue;
 			try {

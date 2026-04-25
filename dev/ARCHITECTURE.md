@@ -105,12 +105,12 @@ the operator.
 This goal drives durable pending turns, completed-turn dedupe, FIFO final retry,
 chunk-aware preview finalization, and serialized persistence/flush paths.
 
-Current-state clarification: pending turns and media groups are persisted in
-`BrokerState` today, but assistant-final payloads are still partly held in
-process memory while moving from the client to broker delivery path.
-The architectural contract is stronger than that current implementation: final
-responses need a durable broker-delivery ledger or equivalent persisted state
-until Telegram delivery succeeds or a terminal non-retryable outcome is recorded.
+Current-state clarification: pending turns, media groups, visible preview
+message references, and assistant-final payloads are persisted in `BrokerState`
+today. The broker-owned assistant-final ledger records delivery progress for
+final text chunks and queued attachments so retryable delivery resumes from
+recorded progress instead of restarting visible Telegram output from the
+beginning.
 
 ### Trust-boundary clarity
 
@@ -162,10 +162,10 @@ not resent in a way that duplicates the visible response.
 The important property is durable, ordered completion through Telegram delivery
 or explicit terminal failure, not mere client-to-broker acceptance.
 
-Current-state clarification: the implementation has retry-aware final queues, but
-assistant-final payloads are not yet represented as first-class persisted broker
-state.
-That is a known gap against the architecture contract and `SyRS-final-delivery-fifo-retry`.
+Current-state clarification: assistant-final payloads are represented as
+first-class persisted broker state. The client only needs to retry until the
+broker durably accepts the final; the broker delivery ledger then owns FIFO
+Telegram delivery, retry windows, terminal outcomes, and partial-progress resume.
 
 ### Broker turnover with pending work
 
@@ -177,10 +177,10 @@ work that is represented in durable broker state.
 The important property is that ordinary shutdown marks sessions offline and
 stops ephemeral typing loops without deleting durable routing or retryable work.
 
-Current-state clarification: pending turns and media groups have this durable
-handoff shape today.
-Assistant finals need the same persisted handoff shape before broker turnover can
-be said to fully preserve final delivery.
+Current-state clarification: pending turns, media groups, selector selections,
+and assistant finals have this durable handoff shape today. Assistant finals
+resume from their broker delivery ledger rather than from the client-side IPC
+request that originally handed off the final.
 
 ### Telegram album ingestion
 
@@ -368,8 +368,9 @@ implicit parallel polling.
 ### Broker state
 
 `BrokerState` stores recent Telegram update IDs, last processed update ID,
-session registrations, routes, pending media groups, pending turns, completed
-turn IDs, and timestamps.
+session registrations, routes, pending media groups, pending turns, visible
+assistant preview message references, pending assistant-final deliveries,
+completed turn IDs, and timestamps.
 It is the durable handoff record for polling safety, route continuity, broker
 turnover, pending work retry, and dedupe.
 
@@ -407,12 +408,13 @@ turn consumption have a durable handoff point.
 
 Assistant final payloads pair a pending turn with final text, stop/error state,
 and queued outbound attachments.
-The architecture contract requires these payloads, or an equivalent delivery
-ledger, to be persisted until Telegram delivery succeeds or a terminal
-non-retryable outcome is recorded.
-Current-state clarification: `pendingAssistantFinals` is an in-memory queue in
-`src/extension.ts`, so final delivery durability across broker process loss is a
-known migration gap.
+`BrokerState.pendingAssistantFinals` persists those payloads plus delivery
+progress until Telegram delivery succeeds or a terminal non-retryable outcome is
+recorded. `BrokerState.assistantPreviewMessages` records visible preview message
+IDs so broker takeover can finalize an existing preview instead of sending a new
+final beside a stale preview. The ledger tracks final text chunk progress and
+outbound attachment progress so retries and broker turnover can resume without
+intentionally resending already-recorded visible output.
 
 ## Architectural decomposition
 
@@ -479,7 +481,9 @@ download limits, and private local file writes.
 requests that can be safely retried.
 
 `telegram/previews.ts` owns streaming preview state, draft-vs-message preview
-selection, edit throttling, chunk-aware finalization, and stale preview cleanup.
+selection, edit throttling, and stale preview cleanup. Durable final delivery may
+detach preview message state so the broker final ledger can finalize it with
+retry-safe progress tracking.
 
 `telegram/attachments.ts` owns outbound attachment method selection and fallback
 between photo and document delivery.
@@ -596,9 +600,11 @@ The broker renders activity through debounced Telegram edits without erasing the
 ordered activity model.
 Assistant text streams through `PreviewManager`, which chooses draft or message
 preview mode according to Telegram constraints.
-On final response, preview state is finalized into one visible final sequence,
-long text is chunked, attachments are sent only from explicit pi queues, and
-retryable failures keep final delivery pending.
+On final response, the broker first persists an assistant-final ledger entry and
+then finalizes preview state into one visible final sequence. Long text is
+chunked, attachments are sent only from explicit pi queues, progress is persisted
+after visible delivery steps, and retryable failures keep final delivery pending
+without allowing newer finals to bypass the older one.
 
 This scenario protects `SyRS-activity-history-rendering`,
 `SyRS-final-preview-deduplication`, `SyRS-final-delivery-fifo-retry`,
@@ -779,12 +785,18 @@ client runtime, preview/final delivery, and pi-hook lifecycle.
 
 `SyRS-final-delivery-fifo-retry` requires final responses to remain retryable
 until Telegram delivery succeeds or a terminal non-retryable outcome is recorded.
-The current code keeps client-side pending assistant finals in memory and removes
-some client retry state once the broker accepts the final for delivery.
-That is not the final target architecture for broker turnover.
-Future work should persist final-delivery payloads or an equivalent delivery
-ledger in broker-scoped state, with enough chunk/attachment progress tracking to
-avoid duplicate visible Telegram output after retry.
+The broker now persists assistant-final payloads in
+`BrokerState.pendingAssistantFinals` before visible Telegram final delivery. The
+client-side retry queue only protects the handoff until durable broker
+acceptance; after that, the broker delivery ledger owns FIFO ordering,
+`retry_after` delay, terminal outcome classification, and resumable chunk and
+attachment progress.
+
+The ledger reduces duplicate visible output by skipping chunks and attachments
+already recorded as delivered. It cannot provide mathematical exactly-once
+semantics for the small crash window after Telegram accepts a send but before the
+broker persists that success; future work should preserve the current
+"persist-after-each-visible-step" discipline if it changes delivery mechanics.
 
 ### Selector-mode selection durability
 

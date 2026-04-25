@@ -1,0 +1,368 @@
+import { createHash } from "node:crypto";
+
+import { chunkParagraphs } from "../shared/format.js";
+import type { AssistantFinalPayload, BrokerState, PendingAssistantFinalDelivery, QueuedAttachment, TelegramSentMessage } from "../shared/types.js";
+import { errorMessage, now } from "../shared/utils.js";
+import { getTelegramRetryAfterMs, TelegramApiError } from "../telegram/api.js";
+import { isTerminalTelegramFinalDeliveryError, terminalTelegramFinalDeliveryReason } from "../telegram/final-errors.js";
+import { sendQueuedAttachment } from "../telegram/attachments.js";
+import type { PreviewManager } from "../telegram/previews.js";
+
+const DEFAULT_FINAL_RETRY_MS = 1_000;
+
+export interface AssistantFinalDeliveryDeps {
+	getBrokerState: () => BrokerState | undefined;
+	setBrokerState: (state: BrokerState) => void;
+	loadBrokerState: () => Promise<BrokerState>;
+	persistBrokerState: () => Promise<void>;
+	activityComplete: (turnId: string) => Promise<void>;
+	stopTypingLoop: (turnId: string) => void;
+	previewManager: PreviewManager;
+	callTelegram: <TResponse>(method: string, body: Record<string, unknown>, options?: { signal?: AbortSignal }) => Promise<TResponse>;
+	callTelegramMultipart: <TResponse>(method: string, fields: Record<string, string>, fileField: string, filePath: string, fileName: string, options?: { signal?: AbortSignal }) => Promise<TResponse>;
+	isBrokerActive: () => boolean | Promise<boolean>;
+	rememberCompletedBrokerTurn: (turnId: string) => Promise<void>;
+	logTerminalFailure: (turnId: string, reason: string) => void;
+}
+
+export class AssistantFinalDeliveryLedger {
+	private processing: Promise<void> | undefined;
+	private retryTimer: ReturnType<typeof setTimeout> | undefined;
+	private active = true;
+	private generation = 0;
+	private abortController = new AbortController();
+
+	constructor(private readonly deps: AssistantFinalDeliveryDeps) {}
+
+	start(): void {
+		this.active = true;
+		if (this.abortController.signal.aborted) this.abortController = new AbortController();
+	}
+
+	stop(): void {
+		this.active = false;
+		this.generation += 1;
+		this.abortController.abort();
+		this.clearTimer();
+	}
+
+	clearTimer(): void {
+		if (this.retryTimer) clearTimeout(this.retryTimer);
+		this.retryTimer = undefined;
+	}
+
+	async accept(payload: AssistantFinalPayload): Promise<{ ok: true }> {
+		const state = await this.state();
+		state.completedTurnIds ??= [];
+		if (state.completedTurnIds.includes(payload.turn.turnId)) return { ok: true };
+		state.pendingAssistantFinals ??= {};
+		const existing = state.pendingAssistantFinals[payload.turn.turnId];
+		if (existing) {
+			// A repeated handoff after an ambiguous IPC result must not create a second
+			// delivery job or restart visible Telegram output.
+			this.kick();
+			return { ok: true };
+		}
+		state.pendingAssistantFinals[payload.turn.turnId] = {
+			...payload,
+			attachments: payload.attachments ?? [],
+			status: "pending",
+			createdAtMs: now(),
+			updatedAtMs: now(),
+			progress: { sentChunkIndexes: [], sentChunkMessageIds: {}, sentAttachmentIndexes: [] },
+		};
+		if (state.pendingTurns?.[payload.turn.turnId]) delete state.pendingTurns[payload.turn.turnId];
+		await this.deps.persistBrokerState();
+		this.kick();
+		return { ok: true };
+	}
+
+	kick(): void {
+		if (!this.active || this.processing) return;
+		this.processing = this.process(this.generation).finally(() => {
+			this.processing = undefined;
+		});
+	}
+
+	async drainReady(): Promise<void> {
+		if (this.processing) await this.processing;
+		else await this.process(this.generation);
+	}
+
+	private async process(generation: number): Promise<void> {
+		if (!this.isActive(generation)) return;
+		this.clearTimer();
+		while (true) {
+			if (!this.isActive(generation)) return;
+			const entry = await this.nextEntry();
+			if (!entry) return;
+			const delay = (entry.retryAtMs ?? 0) - now();
+			if (delay > 0) {
+				this.retryTimer = setTimeout(() => this.kick(), delay);
+				return;
+			}
+			try {
+				await this.assertCanDeliver(generation);
+				entry.status = "delivering";
+				entry.updatedAtMs = now();
+				entry.retryAtMs = undefined;
+				await this.deps.persistBrokerState();
+				await this.deliver(entry);
+				await this.complete(entry);
+			} catch (error) {
+				if (!this.isActive(generation) || error instanceof FinalDeliveryStoppedError) return;
+				if (isTerminalTelegramFinalDeliveryError(error)) {
+					entry.status = "terminal";
+					entry.terminalReason = terminalTelegramFinalDeliveryReason(error);
+					entry.updatedAtMs = now();
+					this.deps.logTerminalFailure(entry.turn.turnId, entry.terminalReason);
+					await this.complete(entry);
+					continue;
+				}
+				entry.status = "pending";
+				entry.retryAtMs = now() + (getTelegramRetryAfterMs(error) ?? DEFAULT_FINAL_RETRY_MS) + 250;
+				entry.updatedAtMs = now();
+				await this.deps.persistBrokerState();
+				this.retryTimer = setTimeout(() => this.kick(), Math.max(0, entry.retryAtMs - now()));
+				return;
+			}
+		}
+	}
+
+	private isActive(generation = this.generation): boolean {
+		return this.active && generation === this.generation;
+	}
+
+	private assertActive(generation = this.generation): void {
+		if (!this.isActive(generation)) throw new FinalDeliveryStoppedError();
+	}
+
+	private async assertCanDeliver(generation = this.generation): Promise<void> {
+		this.assertActive(generation);
+		if (!(await this.deps.isBrokerActive())) {
+			this.stop();
+			throw new FinalDeliveryStoppedError();
+		}
+	}
+
+	private async nextEntry(): Promise<PendingAssistantFinalDelivery | undefined> {
+		const state = await this.state();
+		const entries = Object.values(state.pendingAssistantFinals ?? {}).sort((a, b) => a.createdAtMs - b.createdAtMs);
+		return entries[0];
+	}
+
+	private async state(): Promise<BrokerState> {
+		const existing = this.deps.getBrokerState();
+		if (existing) return existing;
+		const loaded = await this.deps.loadBrokerState();
+		this.deps.setBrokerState(loaded);
+		return loaded;
+	}
+
+	private async complete(entry: PendingAssistantFinalDelivery): Promise<void> {
+		const state = await this.state();
+		await this.deps.rememberCompletedBrokerTurn(entry.turn.turnId);
+		if (state.pendingTurns?.[entry.turn.turnId]) delete state.pendingTurns[entry.turn.turnId];
+		if (state.pendingAssistantFinals?.[entry.turn.turnId]) delete state.pendingAssistantFinals[entry.turn.turnId];
+		await this.deps.persistBrokerState();
+	}
+
+	private async deliver(entry: PendingAssistantFinalDelivery): Promise<void> {
+		const progress = entry.progress;
+		await this.assertCanDeliver();
+		if (!progress.activityCompleted) {
+			await this.deps.activityComplete(entry.turn.turnId);
+			progress.activityCompleted = true;
+			entry.updatedAtMs = now();
+			await this.deps.persistBrokerState();
+		}
+		await this.assertCanDeliver();
+		if (!progress.typingStopped) {
+			this.deps.stopTypingLoop(entry.turn.turnId);
+			progress.typingStopped = true;
+			entry.updatedAtMs = now();
+			await this.deps.persistBrokerState();
+		}
+		await this.assertCanDeliver();
+		if (entry.stopReason === "aborted") {
+			await this.clearPreview(entry);
+			return;
+		}
+		if (entry.stopReason === "error") {
+			await this.clearPreview(entry);
+			await this.deliverText(entry, entry.errorMessage || "Telegram bridge: pi failed while processing the request.");
+			return;
+		}
+		const finalText = entry.text;
+		if (finalText) {
+			await this.deliverText(entry, finalText);
+		} else {
+			await this.clearPreview(entry);
+			if (entry.attachments.length > 0) await this.deliverText(entry, "Attached requested file(s).");
+		}
+		await this.deliverAttachments(entry);
+	}
+
+	private async clearPreview(entry: PendingAssistantFinalDelivery): Promise<void> {
+		await this.assertCanDeliver();
+		if (entry.progress.previewCleared) return;
+		await this.detachPreview(entry);
+		if (entry.progress.previewMode === "message" && entry.progress.previewMessageId !== undefined) {
+			await this.deps.callTelegram("deleteMessage", { chat_id: entry.turn.chatId, message_id: entry.progress.previewMessageId }, { signal: this.abortController.signal }).catch((error) => {
+				if (getTelegramRetryAfterMs(error) !== undefined) throw error;
+			});
+		} else {
+			await this.deps.previewManager.clear(entry.turn.turnId, entry.turn.chatId, entry.turn.messageThreadId);
+		}
+		entry.progress.previewCleared = true;
+		entry.updatedAtMs = now();
+		await this.deps.persistBrokerState();
+	}
+
+	private async detachPreview(entry: PendingAssistantFinalDelivery): Promise<void> {
+		await this.assertCanDeliver();
+		if (entry.progress.previewDetached) return;
+		const detached = await this.deps.previewManager.detachForFinal(entry.turn.turnId);
+		entry.progress.previewDetached = true;
+		if (detached) {
+			entry.progress.previewMode = detached.mode;
+			entry.progress.previewMessageId = detached.messageId;
+		}
+		const state = await this.state();
+		const durablePreview = state.assistantPreviewMessages?.[entry.turn.turnId];
+		if (entry.progress.previewMessageId === undefined && durablePreview) {
+			entry.progress.previewMode = "message";
+			entry.progress.previewMessageId = durablePreview.messageId;
+		}
+		if (state.assistantPreviewMessages?.[entry.turn.turnId]) delete state.assistantPreviewMessages[entry.turn.turnId];
+		entry.updatedAtMs = now();
+		await this.deps.persistBrokerState();
+	}
+
+	private async deliverText(entry: PendingAssistantFinalDelivery, text: string): Promise<void> {
+		const progress = entry.progress;
+		const textHash = hashText(text);
+		if (progress.textHash !== textHash) {
+			progress.textHash = textHash;
+			progress.chunks = chunkParagraphs(text || " ");
+			progress.sentChunkIndexes ??= [];
+			progress.sentChunkMessageIds ??= {};
+			entry.updatedAtMs = now();
+			await this.deps.persistBrokerState();
+		}
+		const chunks = progress.chunks ?? [];
+		if (chunks.length === 0) return;
+		await this.detachPreview(entry);
+		for (let index = 0; index < chunks.length; index += 1) {
+			if (progress.sentChunkIndexes?.includes(index)) continue;
+			await this.assertCanDeliver();
+			const messageId = index === 0 ? await this.deliverFirstChunk(entry, chunks[index]!) : await this.sendMarkdownMessage(entry, chunks[index]!);
+			progress.sentChunkIndexes ??= [];
+			progress.sentChunkMessageIds ??= {};
+			progress.sentChunkIndexes.push(index);
+			if (messageId !== undefined) progress.sentChunkMessageIds[String(index)] = messageId;
+			entry.updatedAtMs = now();
+			await this.deps.persistBrokerState();
+		}
+	}
+
+	private async deliverFirstChunk(entry: PendingAssistantFinalDelivery, chunk: string): Promise<number | undefined> {
+		const previewMessageId = entry.progress.previewMessageId;
+		if (entry.progress.previewMode === "message" && previewMessageId !== undefined) {
+			const edited = await this.editMessageText(entry.turn.chatId, previewMessageId, chunk);
+			if (edited) return previewMessageId;
+			await this.assertCanDeliver();
+			await this.deps.callTelegram("deleteMessage", { chat_id: entry.turn.chatId, message_id: previewMessageId }, { signal: this.abortController.signal }).catch((error) => {
+				if (getTelegramRetryAfterMs(error) !== undefined) throw error;
+			});
+		}
+		return await this.sendMarkdownMessage(entry, chunk);
+	}
+
+	private async sendMarkdownMessage(entry: PendingAssistantFinalDelivery, text: string): Promise<number | undefined> {
+		await this.assertCanDeliver();
+		const body: Record<string, unknown> = { chat_id: entry.turn.chatId, text, parse_mode: "Markdown" };
+		if (entry.turn.messageThreadId !== undefined) body.message_thread_id = entry.turn.messageThreadId;
+		try {
+			const sent = await this.deps.callTelegram<TelegramSentMessage>("sendMessage", body, { signal: this.abortController.signal });
+			return sent.message_id;
+		} catch (error) {
+			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
+			await this.assertCanDeliver();
+			const fallbackBody = { ...body };
+			delete fallbackBody.parse_mode;
+			const sent = await this.deps.callTelegram<TelegramSentMessage>("sendMessage", fallbackBody, { signal: this.abortController.signal });
+			return sent.message_id;
+		}
+	}
+
+	private async editMessageText(chatId: number | string, messageId: number, text: string): Promise<boolean> {
+		try {
+			await this.deps.callTelegram("editMessageText", { chat_id: chatId, message_id: messageId, text, parse_mode: "Markdown" }, { signal: this.abortController.signal });
+			return true;
+		} catch (error) {
+			if (isMessageNotModified(error)) return true;
+			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
+			await this.assertCanDeliver();
+			try {
+				await this.deps.callTelegram("editMessageText", { chat_id: chatId, message_id: messageId, text }, { signal: this.abortController.signal });
+				return true;
+			} catch (fallbackError) {
+				if (getTelegramRetryAfterMs(fallbackError) !== undefined) throw fallbackError;
+				return isMessageNotModified(fallbackError);
+			}
+		}
+	}
+
+	private async deliverAttachments(entry: PendingAssistantFinalDelivery): Promise<void> {
+		entry.progress.sentAttachmentIndexes ??= [];
+		for (let index = 0; index < entry.attachments.length; index += 1) {
+			if (entry.progress.sentAttachmentIndexes.includes(index)) continue;
+			await this.assertCanDeliver();
+			const attachment = entry.attachments[index] as QueuedAttachment;
+			await sendQueuedAttachment({
+				turn: entry.turn,
+				attachment,
+				callTelegramMultipart: async (method, fields, fileField, filePath, fileName) => {
+					await this.assertCanDeliver();
+					return await this.deps.callTelegramMultipart(method, fields, fileField, filePath, fileName, { signal: this.abortController.signal });
+				},
+				sendTextReply: (chatId, messageThreadId, text) => this.sendPlainTextReply(chatId, messageThreadId, text),
+			});
+			entry.progress.sentAttachmentIndexes.push(index);
+			entry.updatedAtMs = now();
+			await this.deps.persistBrokerState();
+		}
+	}
+
+	private async sendPlainTextReply(chatId: number | string, messageThreadId: number | undefined, text: string): Promise<number | undefined> {
+		let lastMessageId: number | undefined;
+		for (const chunk of chunkParagraphs(text || " ")) {
+			await this.assertCanDeliver();
+			const body: Record<string, unknown> = { chat_id: chatId, text: chunk };
+			if (messageThreadId !== undefined) body.message_thread_id = messageThreadId;
+			const sent = await this.deps.callTelegram<TelegramSentMessage>("sendMessage", body, { signal: this.abortController.signal });
+			lastMessageId = sent.message_id;
+		}
+		return lastMessageId;
+	}
+}
+
+function hashText(text: string): string {
+	return createHash("sha256").update(text).digest("hex");
+}
+
+function isMessageNotModified(error: unknown): boolean {
+	return error instanceof TelegramApiError && /message is not modified/i.test(error.description ?? error.message);
+}
+
+class FinalDeliveryStoppedError extends Error {
+	constructor() {
+		super("Final delivery stopped");
+		this.name = "FinalDeliveryStoppedError";
+	}
+}
+
+export function finalDeliveryErrorMessage(error: unknown): string {
+	return isTerminalTelegramFinalDeliveryError(error) ? terminalTelegramFinalDeliveryReason(error) : errorMessage(error);
+}

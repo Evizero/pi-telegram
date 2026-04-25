@@ -170,6 +170,36 @@ export interface AssistantFinalPayload {
 	attachments: QueuedAttachment[];
 }
 
+export interface AssistantFinalDeliveryProgress {
+	activityCompleted?: boolean;
+	typingStopped?: boolean;
+	previewDetached?: boolean;
+	previewCleared?: boolean;
+	previewMode?: "draft" | "message";
+	previewMessageId?: number;
+	textHash?: string;
+	chunks?: string[];
+	sentChunkIndexes?: number[];
+	sentChunkMessageIds?: Record<string, number>;
+	sentAttachmentIndexes?: number[];
+}
+
+export interface AssistantPreviewMessageRef {
+	chatId: number | string;
+	messageThreadId?: number;
+	messageId: number;
+	updatedAtMs: number;
+}
+
+export interface PendingAssistantFinalDelivery extends AssistantFinalPayload {
+	status: "pending" | "delivering" | "terminal";
+	createdAtMs: number;
+	updatedAtMs: number;
+	retryAtMs?: number;
+	terminalReason?: string;
+	progress: AssistantFinalDeliveryProgress;
+}
+
 export interface TelegramPreviewState {
 	mode: "draft" | "message";
 	draftId?: number;
@@ -230,6 +260,8 @@ export interface BrokerState {
 	routes: Record<string, TelegramRoute>;
 	pendingMediaGroups?: Record<string, { updates: TelegramUpdate[]; updatedAtMs: number }>;
 	pendingTurns?: Record<string, { turn: PendingTelegramTurn; updatedAtMs: number }>;
+	pendingAssistantFinals?: Record<string, PendingAssistantFinalDelivery>;
+	assistantPreviewMessages?: Record<string, AssistantPreviewMessageRef>;
 	selectorSelections?: Record<string, TelegramSelectorSelection>;
 	completedTurnIds?: string[];
 	createdAtMs: number;
