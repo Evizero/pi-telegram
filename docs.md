@@ -369,12 +369,16 @@ Important constraints:
 
 Bridge policy:
 
-- Only delete topics on explicit disconnect/unregister, not on temporary session
-  shutdown/offline transitions.
+- Delete topics/routes when a connected pi session explicitly disconnects,
+  emits normal session shutdown, or remains unreachable after the bounded
+  automatic reconnect grace period.
+- Do not delete a route during a still-retryable reconnect window for transient
+  network, IPC, or broker-turnover failures.
 - Delete private-chat bot topics as well as supergroup topics when removing a
   route.
-- Treat delete failures as non-fatal during cleanup, but keep them visible in
-  logs if needed for debugging.
+- Treat retryable delete failures, including `retry_after`, as pending cleanup
+  work rather than dropping local route state immediately; terminal not-found or
+  already-deleted outcomes may complete cleanup idempotently.
 
 ## Pairing and authorization
 
@@ -426,5 +430,6 @@ When touching Telegram integration code, verify:
 - [ ] `message_thread_id` is preserved for topic routes.
 - [ ] Forum topic setup validates `supergroup` + `is_forum` before switching
       routing mode.
-- [ ] Cleanup distinguishes temporary offline sessions from explicit route
-      deletion.
+- [ ] Cleanup deletes topics for explicit disconnect, normal session shutdown,
+      and expired reconnect grace, while preserving routes during retryable
+      reconnect windows.

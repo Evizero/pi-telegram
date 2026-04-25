@@ -127,20 +127,25 @@
     {
       "id": "SyRS-offline-without-deleting-state",
       "origin": "derived",
-      "label": "Keep retryable offline state",
+      "label": "Deprecated offline route preservation",
       "statement": "The system shall mark a shutting-down session offline without deleting durable routes, pending turns, or retryable final responses that may still be recovered.",
       "traces_to": [
         "StRS-delivery-continuity",
         "StRS-session-lifecycle-control"
       ],
-      "rationale": "Ordinary session shutdown is not the same as explicit disconnect; deleting state on shutdown would lose remote continuity.",
-      "acceptance_criteria": "Tests or inspection show session shutdown clears active liveness and typing state but preserves durable route and pending work state until explicit unregister or successful delivery cleanup.",
+      "rationale": "Deprecated 2026-04-25: this requirement preserved Telegram routes for ordinary shutdown, but the project owner clarified that Telegram topics/routes are connection-scoped temporary views and should be cleaned up after disconnect, process close, crash/death, or expired automatic reconnect grace.",
+      "acceptance_criteria": "Inspection confirms current planning no longer treats session shutdown/death as a reason to preserve Telegram routes indefinitely; replacement lifecycle requirements define cleanup plus a bounded automatic reconnect exception.",
       "verification": {
         "method": "test"
       },
-      "status": "draft",
+      "status": "deprecated",
       "created": "2026-04-25",
-      "updated": "2026-04-25"
+      "updated": "2026-04-25",
+      "sources": {
+        "references": [
+          "telegram-views-are-connection-scoped"
+        ]
+      }
     },
     {
       "id": "SyRS-list-and-select-sessions",
@@ -716,6 +721,87 @@
       "sources": {
         "inbox": [
           "telegram-compact-should-match"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-cleanup-route-on-close",
+      "origin": "derived",
+      "label": "Clean route on close",
+      "statement": "The system shall unregister a connected pi session and remove its Telegram route and topic when the session explicitly disconnects or emits a normal session shutdown.",
+      "traces_to": [
+        "StRS-connection-scoped-telegram-view",
+        "StRS-session-lifecycle-control",
+        "StRS-multi-session-supervision"
+      ],
+      "rationale": "A deliberate disconnect or process close ends the Telegram view; unrelated sessions must remain connected and local pi history remains resumable outside Telegram.",
+      "acceptance_criteria": "Tests show /telegram-disconnect, Telegram /disconnect, and a normal pi session_shutdown remove only the target session route, request deleteForumTopic for topic routes, stop target typing/turn state, and leave unrelated sessions/routes reachable.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "inbox": [
+          "telegram-topics-not-cleaned"
+        ],
+        "references": [
+          "telegram-views-are-connection-scoped"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-cleanup-route-after-reconnect-grace",
+      "origin": "derived",
+      "label": "Clean after reconnect grace",
+      "statement": "The system shall preserve a connected session's Telegram route only during a bounded automatic reconnect grace period after heartbeat or IPC loss, and shall unregister the session and remove its Telegram route and topic when that grace expires without successful reconnect.",
+      "traces_to": [
+        "StRS-connection-scoped-telegram-view",
+        "StRS-delivery-continuity",
+        "StRS-session-lifecycle-control"
+      ],
+      "rationale": "Slow network, broker turnover, or brief local IPC gaps may be recoverable, but a crashed or dead session must not leave a permanent Telegram topic behind.",
+      "acceptance_criteria": "Tests simulate missed heartbeats or IPC failure: reconnect before the grace expires reuses the existing route without deleting its topic, while no reconnect by expiry removes the route/topic and later /resume plus /telegram-connect creates a fresh route/topic.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "inbox": [
+          "telegram-topics-not-cleaned"
+        ],
+        "references": [
+          "telegram-views-are-connection-scoped"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-retry-topic-cleanup",
+      "origin": "derived",
+      "label": "Retry topic cleanup",
+      "statement": "The system shall keep Telegram topic cleanup retryable until topic deletion succeeds or reaches an explicit non-retryable terminal outcome.",
+      "traces_to": [
+        "StRS-connection-scoped-telegram-view",
+        "StRS-delivery-continuity",
+        "StRS-api-constrained-maintenance"
+      ],
+      "rationale": "Removing local route state while deleteForumTopic is rate-limited or transiently failing can orphan the temporary Telegram view the user expects to disappear.",
+      "acceptance_criteria": "Tests or inspection show deleteForumTopic retry_after and transient failures leave cleanup pending for retry, terminal not-found/already-deleted outcomes complete cleanup idempotently, and permission/auth terminal failures are surfaced without blocking unrelated session cleanup.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "inbox": [
+          "telegram-topics-not-cleaned"
+        ],
+        "references": [
+          "telegram-views-are-connection-scoped"
         ]
       }
     }

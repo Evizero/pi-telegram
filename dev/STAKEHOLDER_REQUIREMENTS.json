@@ -159,16 +159,16 @@
     {
       "id": "StRS-delivery-continuity",
       "origin": "derived",
-      "label": "Preserve delivery continuity",
-      "statement": "Remote pi operators shall not lose queued work, final responses, or session routing continuity because of ordinary Telegram retry windows, update redelivery, session shutdown, or broker turnover.",
-      "rationale": "The bridge exists for remote continuity; predictable transient failures must not silently erase work or make the operator guess which session is still reachable.",
+      "label": "Preserve recoverable delivery",
+      "statement": "Remote pi operators shall not lose queued work, final responses, or session routing continuity because of ordinary Telegram retry windows, update redelivery, transient automatic reconnect windows, or broker turnover.",
+      "rationale": "The bridge exists for remote continuity during recoverable transport and broker failures, but the project owner clarified that closed or dead pi sessions should clean up their temporary Telegram views because durable session history lives locally.",
       "stakeholders": [
         "remote-pi-operator"
       ],
       "priority": 1,
       "validation": {
         "method": "review",
-        "criteria": "Review failure-mode evidence for Telegram rate limiting, duplicate updates, client shutdown, and broker takeover to confirm pending turns, final responses, and routes remain intelligible and recoverable."
+        "criteria": "Review failure-mode evidence for Telegram rate limiting, duplicate updates, broker takeover, and bounded automatic reconnect to confirm pending turns, final responses, and still-live session routes remain intelligible and recoverable without preserving Telegram topics for closed or dead sessions beyond the reconnect grace window."
       },
       "status": "draft",
       "created": "2026-04-25",
@@ -177,6 +177,9 @@
         "refs": [
           "dev/INTENDED_PURPOSE.md#operating-model",
           "docs.md#flood-control-and-retry-behavior"
+        ],
+        "references": [
+          "telegram-views-are-connection-scoped"
         ]
       }
     },
@@ -257,16 +260,16 @@
     {
       "id": "StRS-session-lifecycle-control",
       "origin": "derived",
-      "label": "Connect sessions without restart",
-      "statement": "Remote pi operators shall be able to connect and disconnect pi sessions from Telegram reachability without restarting the project, the bot, or other connected sessions.",
-      "rationale": "Remote babysitting must fit sessions that start, stop, and reconnect across projects; requiring a bot or project restart would break continuity and make multi-session supervision brittle.",
+      "label": "Connect and clean sessions",
+      "statement": "Remote pi operators shall be able to connect and disconnect pi sessions from Telegram reachability without restarting the project, the bot, or unrelated connected sessions, and disconnected or dead sessions shall stop presenting a Telegram view after any automatic reconnect grace expires.",
+      "rationale": "Remote babysitting must fit sessions that start, stop, reconnect, and resume across projects; Telegram reachability is connection-scoped while local pi session history remains on the machine.",
       "stakeholders": [
         "remote-pi-operator"
       ],
       "priority": 1,
       "validation": {
         "method": "review",
-        "criteria": "Review the documented connection lifecycle to confirm a session can become reachable from Telegram and can be disconnected without restarting the pi project, recreating the Telegram bot, or disrupting unrelated connected sessions."
+        "criteria": "Review the documented connection lifecycle to confirm a session can become reachable from Telegram, can be disconnected or cleaned up after death without restarting the pi project or bot, and does not disrupt unrelated connected sessions or bounded automatic reconnect recovery."
       },
       "status": "draft",
       "created": "2026-04-25",
@@ -275,6 +278,9 @@
         "refs": [
           "dev/INTENDED_PURPOSE.md#essential-capabilities",
           "dev/INTENDED_PURPOSE.md#use-environment"
+        ],
+        "references": [
+          "telegram-views-are-connection-scoped"
         ]
       }
     },
@@ -330,6 +336,32 @@
         "refs": [
           "pi docs: /opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/docs/extensions.md#ctxreload",
           "Telegram Bot API command messages and sendMessage route/thread behavior"
+        ]
+      }
+    },
+    {
+      "id": "StRS-connection-scoped-telegram-view",
+      "origin": "imposed",
+      "label": "Clean connection-scoped views",
+      "statement": "Remote pi operators shall be able to treat Telegram topics and routes as temporary connection-scoped views that are cleaned up when a pi session disconnects, closes, dies, or fails to reconnect automatically.",
+      "rationale": "The project owner clarified that Telegram is a temporary interface into a local pi session, not the durable session history store; native pi history remains on the machine and can be resumed locally before creating a new Telegram view.",
+      "stakeholders": [
+        "remote-pi-operator"
+      ],
+      "priority": 1,
+      "validation": {
+        "method": "review",
+        "criteria": "Review the session lifecycle design and behavior to confirm Telegram topics/routes disappear after explicit disconnect, process close, crash/death, or expired automatic reconnect grace, while native pi /resume can continue local work and create a new Telegram topic later."
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "inbox": [
+          "telegram-topics-not-cleaned"
+        ],
+        "references": [
+          "telegram-views-are-connection-scoped"
         ]
       }
     }

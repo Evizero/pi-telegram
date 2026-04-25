@@ -58,8 +58,10 @@ Consult `docs.md` before changing Bot API integration. In particular:
 - Assistant finals must remain FIFO and retry-safe across broker failover,
   `retry_after`, and duplicate/redelivered turns.
 - Media groups must not drop late updates or retryable failures.
-- Session shutdown should mark a session offline without deleting durable routes
-  or pending turns; explicit disconnect/unregister may remove routes/topics.
+- Session shutdown and explicit disconnect should unregister the session and
+  clean up its temporary Telegram route/topic; crash/death should clean up after
+  the bounded automatic reconnect grace expires, while still preserving
+  retryable pending work/finals where they are not Telegram-view state.
 
 ## Security and privacy
 

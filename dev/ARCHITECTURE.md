@@ -77,8 +77,9 @@ The strongest drivers come directly from the intended purpose and requirements:
 The operator should be able to connect, observe, steer, follow up, stop, and
 receive final results without caring which local session currently owns the
 broker role.
-This goal drives durable broker state, route reuse, pending-turn retry, final
-retry, and explicit session lifecycle handling.
+This goal drives durable broker state, route reuse during live connections and
+bounded reconnect windows, pending-turn retry, final retry, and explicit session
+lifecycle handling.
 
 ### Local-first authority
 
@@ -104,6 +105,15 @@ must not be silently lost; it also must not be repeated in a way that confuses
 the operator.
 This goal drives durable pending turns, completed-turn dedupe, FIFO final retry,
 chunk-aware preview finalization, and serialized persistence/flush paths.
+
+### Connection-scoped Telegram views
+
+Telegram topics and routes are temporary views into connected local pi sessions,
+not the durable session history.
+The architecture should preserve routes only while the session remains connected
+or plausibly recoverable through a bounded automatic reconnect path; explicit
+disconnect, normal process close, crash/death after reconnect grace, and
+successful cleanup should end the Telegram view without deleting local pi history.
 
 Current-state clarification: pending turns, media groups, visible preview
 message references, and assistant-final payloads are persisted in `BrokerState`
@@ -174,13 +184,29 @@ retryable delivery work exists.
 Another connected extension process may acquire the lease, load broker state,
 resume polling, retry pending turns for online clients, and continue any delivery
 work that is represented in durable broker state.
-The important property is that ordinary shutdown marks sessions offline and
-stops ephemeral typing loops without deleting durable routing or retryable work.
+The important property is that broker turnover preserves work for still-live or
+reconnecting sessions without turning a closed or dead session's Telegram topic
+into permanent history.
 
 Current-state clarification: pending turns, media groups, selector selections,
 and assistant finals have this durable handoff shape today. Assistant finals
 resume from their broker delivery ledger rather than from the client-side IPC
-request that originally handed off the final.
+request that originally handed off the final. Route cleanup on session close or
+expired reconnect grace is a planned correction to the current offline-preserve
+behavior.
+
+### Session close or crash cleanup
+
+A connected pi session explicitly disconnects, closes normally, or stops
+heartbeating because the process died.
+Normal shutdown should unregister the session and request Telegram topic/route
+cleanup immediately. Heartbeat or IPC loss should enter only a bounded automatic
+reconnect grace period; if the session reconnects in time, the existing route can
+continue, and if it does not, the broker should unregister the session and delete
+its Telegram topic or selector route.
+The important property is that Telegram shows a temporary view for the current
+connection, while native pi history remains on the local machine for `/resume`
+and later reconnection in a new Telegram view.
 
 ### Telegram album ingestion
 
@@ -278,10 +304,12 @@ with related code when they explain the same behavior.
   public webhook endpoint.
 - The broker role is elected among extension processes and is not an external
   service.
-- Session routes are explicit and must be reused or removed deliberately; route
-  creation must not race into duplicate topics.
-- Ordinary shutdown marks sessions offline; explicit disconnect unregisters and
-  may remove routes/topics.
+- Session routes are explicit temporary views and must be reused during live
+  connection/reconnect grace or removed deliberately; route creation must not
+  race into duplicate topics.
+- Explicit disconnect and normal shutdown unregister the session and clean up its
+  route/topic; heartbeat or IPC loss preserves the route only until bounded
+  reconnect grace expires.
 - Pending turns and media groups are retryable durable broker state until
   consumed, processed, or terminally failed.
 - Assistant final delivery must become retryable durable broker state until the
@@ -371,8 +399,8 @@ implicit parallel polling.
 session registrations, routes, pending media groups, pending turns, visible
 assistant preview message references, pending assistant-final deliveries,
 completed turn IDs, and timestamps.
-It is the durable handoff record for polling safety, route continuity, broker
-turnover, pending work retry, and dedupe.
+It is the durable handoff record for polling safety, bounded route continuity,
+broker turnover, pending work retry, cleanup retry, and dedupe.
 
 Architecture contract and current implementation: selector-mode session
 selections created by `/use` are route-continuity state persisted in
@@ -636,25 +664,34 @@ Losing route identity is equivalent to losing session control.
 
 ### Logical session identity versus runtime instance identity
 
-A pi session's Telegram route identity must be tied to the logical pi session,
-not merely to the current extension runtime instance.
+A pi session's Telegram route identity must be tied to the logical pi session
+for the duration of a connection and its bounded automatic reconnect grace, not
+merely to the current extension runtime instance.
 Ordinary extension/runtime churn tears down in-memory closures, IPC sockets, and
-broker/client process state, but it should not by itself create a new Telegram
-session route for the same pi session when the bridge reconnects.
+broker/client process state, but it should not by itself create a duplicate
+Telegram route while the reconnect window is still active.
+After explicit disconnect, normal shutdown, or reconnect-grace expiry, the old
+Telegram route is no longer the session's identity; a later native `/resume` plus
+Telegram connect may create a new route/topic over the resumed local history.
 
 Runtime instance identifiers are appropriate for ephemeral concerns such as IPC
 socket filenames, owner IDs, leases, and heartbeat liveness.
-Logical session identifiers are appropriate for broker registration, route reuse,
-and selector choices.
+Logical session identifiers are appropriate for broker registration, bounded
+route reuse, and selector choices.
 Current implementation keeps those identities separate so offline-and-reconnect
-can reuse route state; Telegram-triggered runtime reload and reload reattachment
-are intentionally unsupported until pi exposes a safe direct reload API for
-extension contexts.
+can reuse route state, but it currently preserves routes too long after session
+close/death; cleanup after the reconnect grace is the target lifecycle.
+Telegram-triggered runtime reload and reload reattachment are intentionally
+unsupported until pi exposes a safe direct reload API for extension contexts.
 
 ### Durable versus ephemeral state
 
-Lease files, broker state, routes, pending turns, and pending media groups are
-current durable state that survives ordinary runtime churn.
+Lease files, broker state, pending turns, pending media groups, cleanup intents,
+and reconnect-grace metadata are durable coordination state that survives
+ordinary runtime churn.
+Routes are durable only as active or reconnectable Telegram views; they should be
+removed when the connection lifecycle ends and any required topic cleanup has
+reached a retry-safe outcome.
 Selector-mode session choices are persisted in broker state. Queued assistant
 finals are target durable state under the architecture contract, but the current
 implementation still keeps some final-delivery lifecycle details in memory; that
@@ -662,7 +699,8 @@ gap is called out in the migration notes.
 Typing loops, in-flight preview timers, current socket attempts, and local
 activity flushes are ephemeral.
 Future code must not delete durable or target-durable delivery state merely to
-clean up ephemeral work.
+clean up ephemeral work, but route cleanup is allowed to end the Telegram view
+because native session history is local rather than stored in Telegram.
 
 ### Retry-aware failure
 

@@ -51,13 +51,15 @@ Mobile commands may arrive while pi is generating, while tools are running, whil
 
 ## Operating model
 
-The bridge treats Telegram as a durable remote control channel and pi as the authority for execution.
-A paired Telegram user can select or address sessions, send text and files into pi, receive activity previews and final answers, stop active work, steer an in-flight turn, or queue follow-up work for later.
+The bridge treats Telegram as a connection-scoped remote control view and pi as the authority for execution.
+A paired Telegram user can select or address currently connected sessions, send text and files into pi, receive activity previews and final answers, stop active work, steer an in-flight turn, or queue follow-up work for later.
+Telegram topics and routes are not the durable session history; that history remains on the local machine and can be continued with native pi resume flows before Telegram is connected again.
 
 Multi-session support is part of the product identity, not an optional convenience.
 One connected session acts as the broker that polls Telegram and owns shared routing state.
 Other sessions register with it and receive turns through local IPC.
-If the broker goes away, the system should preserve enough state for connected sessions, pending turns, and final responses to recover rather than silently losing work.
+If the broker goes away, the system should preserve enough state for still-connected sessions, pending turns, and final responses to recover rather than silently losing work.
+If a pi session explicitly disconnects, closes, dies, or fails to reconnect after the built-in automatic reconnect window, its temporary Telegram topic or route should be cleaned up; reconnecting later may create a new Telegram view over the resumed local session.
 
 Activity streaming is advisory but important.
 The remote user needs enough live feedback to know whether a session is thinking, using tools, waiting, stopped, or finished.
@@ -78,7 +80,8 @@ The product needs to support these capabilities because they serve remote sessio
 - stream useful previews and deliver final assistant responses without duplicates;
 - move inbound Telegram files into private local storage and expose them to pi as attachments;
 - send requested local artifacts back to Telegram when pi explicitly attaches them;
-- survive Telegram retry windows, update redelivery, session shutdown, and broker turnover without corrupting routing or losing queued work.
+- survive Telegram retry windows, update redelivery, bounded automatic reconnect windows, and broker turnover without corrupting routing or losing queued work;
+- clean up temporary Telegram topics and routes when a connected pi session disconnects, closes, dies, or fails to reconnect automatically.
 
 These are purpose-level capabilities, not a complete requirements list.
 A feature belongs when it strengthens continuity of control over local pi sessions.
@@ -93,6 +96,7 @@ The phone is the control surface; the computer remains the place where work happ
 It is not a general-purpose Telegram bot framework.
 The bridge should implement the Telegram behavior needed for pi supervision, not expose a broad plugin platform for arbitrary bot products.
 Forum topics, drafts, albums, file handling, and commands belong only insofar as they improve session routing, visibility, and control.
+Telegram topics are temporary views into connected pi sessions, not archival records or the source of session continuity.
 
 It is not a multi-user collaboration product.
 The current identity is a paired-user bridge for one operator supervising their own sessions.
