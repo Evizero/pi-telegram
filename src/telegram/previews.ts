@@ -179,6 +179,12 @@ export class PreviewManager {
 			this.setFlushTimer(turnId, chatId, messageThreadId, Math.max(retryAfterMs + 250, PREVIEW_THROTTLE_MS));
 			return;
 		}
+		if (this.isMessageNotModified(error)) {
+			const text = state.pendingText.trim();
+			state.lastSentText = text.length > MAX_MESSAGE_LENGTH ? text.slice(0, MAX_MESSAGE_LENGTH) : text;
+			state.mode = "message";
+			return;
+		}
 		console.warn("[pi-telegram] Telegram preview update failed:", error instanceof Error ? error.message : error);
 	}
 
@@ -217,7 +223,11 @@ export class PreviewManager {
 			this.onVisiblePreview?.(turnId, chatId, messageThreadId, sent.message_id);
 			return;
 		}
-		await this.callTelegram("editMessageText", { chat_id: chatId, message_id: state.messageId, text: truncated });
+		try {
+			await this.callTelegram("editMessageText", { chat_id: chatId, message_id: state.messageId, text: truncated });
+		} catch (error) {
+			if (!this.isMessageNotModified(error)) throw error;
+		}
 		state.mode = "message";
 		state.lastSentText = truncated;
 	}

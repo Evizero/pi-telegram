@@ -1,4 +1,4 @@
-import { MODEL_LIST_TTL_MS } from "../shared/config.js";
+import { MODEL_LIST_TTL_MS, SESSION_LIST_OFFLINE_GRACE_MS } from "../shared/config.js";
 import { routeId } from "../shared/format.js";
 import type { BrokerState, ModelSummary, PendingTelegramTurn, SessionRegistration, TelegramMessage, TelegramRoute } from "../shared/types.js";
 import { errorMessage, now } from "../shared/utils.js";
@@ -184,19 +184,33 @@ export class TelegramCommandRouter {
 		return changed;
 	}
 
+	private listableSessions(brokerState: BrokerState): SessionRegistration[] {
+		const visibleSinceMs = now() - SESSION_LIST_OFFLINE_GRACE_MS;
+		return Object.values(brokerState.sessions)
+			.filter((session) => session.status !== "offline" || session.lastHeartbeatMs >= visibleSinceMs)
+			.sort((left, right) => {
+				if (left.status === "offline" && right.status !== "offline") return 1;
+				if (left.status !== "offline" && right.status === "offline") return -1;
+				return left.topicName.localeCompare(right.topicName) || left.sessionId.localeCompare(right.sessionId);
+			});
+	}
+
 	private async sendSessions(chatId: number, threadId?: number): Promise<void> {
 		const brokerState = this.deps.getBrokerState();
 		if (!brokerState) return;
 		await this.deps.markOfflineSessions();
-		const sessions = Object.values(brokerState.sessions);
+		const sessions = this.listableSessions(brokerState);
 		if (sessions.length === 0) {
 			await this.deps.sendTextReply(chatId, threadId, "No connected pi sessions.");
 			return;
 		}
+		const topicCounts = new Map<string, number>();
+		for (const session of sessions) topicCounts.set(session.topicName, (topicCounts.get(session.topicName) ?? 0) + 1);
 		const lines = ["Active pi sessions", ""];
 		sessions.forEach((session, index) => {
 			const queued = session.queuedTurnCount ? ` +${session.queuedTurnCount} queued` : "";
-			lines.push(`${index + 1}. ${session.topicName} — ${session.status}${queued}`);
+			const suffix = (topicCounts.get(session.topicName) ?? 0) > 1 ? ` (${session.sessionId.slice(-6)})` : "";
+			lines.push(`${index + 1}. ${session.topicName}${suffix} — ${session.status}${queued}`);
 		});
 		lines.push("", "Use /use <number> in selector mode, or open the session topic.");
 		await this.deps.sendTextReply(chatId, threadId, lines.join("\n"));
@@ -205,8 +219,9 @@ export class TelegramCommandRouter {
 	private async handleUseCommand(message: TelegramMessage, text: string): Promise<void> {
 		const brokerState = this.deps.getBrokerState();
 		if (!brokerState) return;
+		await this.deps.markOfflineSessions();
 		const arg = text.trim().split(/\s+/)[1];
-		const sessions = Object.values(brokerState.sessions);
+		const sessions = this.listableSessions(brokerState);
 		const index = arg ? Number(arg) - 1 : Number.NaN;
 		const session = Number.isInteger(index) ? sessions[index] : sessions.find((candidate) => candidate.sessionId === arg);
 		if (!session) {

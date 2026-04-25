@@ -12,3 +12,4 @@ writeFileSync(join(outDir, "package.json"), '{"type":"module"}\n');
 execFileSync(process.execPath, [join(outDir, "scripts", "check-activity-rendering.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-pairing-and-format.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-final-delivery.js")], { stdio: "inherit" });
+execFileSync(process.execPath, [join(outDir, "scripts", "check-preview-manager.js")], { stdio: "inherit" });

@@ -4,5 +4,5 @@
     "rootDir": ".",
     "noEmit": false
   },
-  "include": ["index.ts", "src/**/*.ts", "scripts/check-activity-rendering.ts", "scripts/check-pairing-and-format.ts", "scripts/check-final-delivery.ts"]
+  "include": ["index.ts", "src/**/*.ts", "scripts/check-activity-rendering.ts", "scripts/check-pairing-and-format.ts", "scripts/check-final-delivery.ts", "scripts/check-preview-manager.ts"]
 }
