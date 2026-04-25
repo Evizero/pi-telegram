@@ -243,6 +243,18 @@ The broker must authenticate the paired user before dispatch, preserve structure
 API error data, treat attachments as user-provided files, and keep downloaded
 files private.
 
+### Local broker IPC trusts the same OS user
+
+The broker IPC surface is a local same-user coordination boundary, not a
+hardened multi-tenant security boundary. Broker sockets, tokens, config, and
+state are kept private from remote callers and other OS users through local
+filesystem permissions, but processes running as the same local user are trusted.
+
+Low-friction session attachment is intentional. A same-user process that can
+access broker artifacts may attach or impersonate a pi session, and that risk is
+accepted within the product threat model rather than mitigated through approval
+prompts, per-session pairing, or additional user-visible authorization steps.
+
 ### Durable state is owned by the broker scope
 
 Broker state and lease files live under the configured bot-scoped broker
@@ -360,12 +372,11 @@ turn IDs, and timestamps.
 It is the durable handoff record for polling safety, route continuity, broker
 turnover, pending work retry, and dedupe.
 
-Architecture contract: selector-mode session selections created by `/use` are
-also route-continuity state and should be persisted in broker-scoped state until
-they expire, are changed, or become invalid.
-Current-state clarification: selector choices are currently held in the in-memory
-`selectedSessionByChat` map in `src/broker/commands.ts`, so selector continuity
-across broker turnover is a migration gap.
+Architecture contract and current implementation: selector-mode session
+selections created by `/use` are route-continuity state persisted in
+broker-scoped state until they expire, are changed, or become invalid.
+Selector selections also ensure a selector route exists for the selected
+chat/session so later commands can resolve the selected session.
 
 Writes must be serialized so an older persistence operation cannot resurrect
 completed turns or discard newer routes or selections.
@@ -560,6 +571,28 @@ This scenario protects `SyRS-deliver-telegram-turn`,
 `SyRS-durable-update-consumption`, `SyRS-media-group-batching`,
 `SyRS-busy-message-steers`, and `SyRS-follow-queues-next-turn`.
 
+### Telegram-triggered reload and reattachment
+
+A Telegram `/reload` command is a control command for the addressed pi session,
+not user content for the agent.
+The broker should authorize and resolve it through the same route-selection
+model as other Telegram commands, then ask the target client to invoke pi's
+reload flow through a command-context path.
+Because pi invalidates extension contexts during reload, the old runtime should
+record a one-shot reload intent before invoking reload and then treat reload as
+terminal for that handler.
+
+After `session_start` with reload reason, the new runtime should consume that
+intent, reconnect through the existing broker/client registration path, and
+report the outcome to the original Telegram chat/thread when possible.
+The route should be reused through logical session identity; reload must not be
+modeled as explicit disconnect/unregister.
+
+This scenario protects `SyRS-telegram-reload-command`,
+`SyRS-reload-reattach-route`, `SyRS-reload-intent-recovery`,
+`SyRS-register-session-route`, `SyRS-topic-routes-per-session`, and
+`SyRS-offline-without-deleting-state`.
+
 ### Activity, preview, and final response
 
 Pi event hooks collect thinking and tool activity and report it to the broker.
@@ -599,14 +632,29 @@ Every activity update, preview, final, upload, typing action, and command reply
 must preserve the intended route context.
 Losing route identity is equivalent to losing session control.
 
+### Logical session identity versus runtime instance identity
+
+A pi session's Telegram route identity must be tied to the logical pi session,
+not merely to the current extension runtime instance.
+Extension reload tears down in-memory closures, IPC sockets, and broker/client
+process state, but it should not by itself create a new Telegram session route
+for the same pi session.
+
+Runtime instance identifiers are appropriate for ephemeral concerns such as IPC
+socket filenames, owner IDs, leases, and heartbeat liveness.
+Logical session identifiers are appropriate for broker registration, route reuse,
+selector choices, and reload reattachment.
+Current implementation keeps those identities separate so reload behaves like
+offline-and-reconnect rather than disconnect-and-new-route.
+
 ### Durable versus ephemeral state
 
 Lease files, broker state, routes, pending turns, and pending media groups are
 current durable state that survives ordinary runtime churn.
-Selector-mode session choices and queued assistant finals are target durable
-state under the architecture contract, but the current implementation still keeps
-those lifecycle details in memory; those gaps are called out in the migration
-notes.
+Selector-mode session choices are persisted in broker state. Queued assistant
+finals are target durable state under the architecture contract, but the current
+implementation still keeps some final-delivery lifecycle details in memory; that
+gap is called out in the migration notes.
 Typing loops, in-flight preview timers, current socket attempts, and local
 activity flushes are ephemeral.
 Future code must not delete durable or target-durable delivery state merely to
@@ -744,11 +792,10 @@ avoid duplicate visible Telegram output after retry.
 
 `SyRS-selector-selection-durability` requires `/use` selections in selector mode
 to survive broker turnover until they expire, change, or become invalid.
-The current code stores those choices in `selectedSessionByChat` inside
-`src/broker/commands.ts`, which is process memory only.
-Future work should persist selector choices in broker-scoped state or derive them
-from another durable route-selection record so unrouted Telegram messages keep
-their intended session after broker takeover.
+The current code stores those choices in `BrokerState.selectorSelections` and
+refreshes the selected chat/session's selector route, so unrouted Telegram
+messages and control commands keep their intended session after broker takeover
+within the selection window.
 
 ### Pi-to-broker activity dependency
 

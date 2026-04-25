@@ -3,56 +3,17 @@ import { randomBytes } from "node:crypto";
 import { mkdir, realpath, rm, stat, writeFile, chmod } from "node:fs/promises";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import {
-	BROKER_DIR,
-	BROKER_HEARTBEAT_MS,
-	BROKER_LEASE_MS,
-	CLIENT_HEARTBEAT_MS,
-	LOCK_DIR,
-	LOCK_PATH,
-	MAX_ATTACHMENTS_PER_TURN,
-	MAX_FILE_BYTES,
-	STATE_PATH,
-	SYSTEM_PROMPT_SUFFIX,
-	TAKEOVER_LOCK_DIR,
-	TEMP_DIR,
-	TOKEN_PATH,
-} from "./shared/config.js";
-import { Type } from "@sinclair/typebox";
-import type {
-	ActiveTelegramTurn,
-	BrokerLease,
-	BrokerState,
-	IpcEnvelope,
-	ModelSummary,
-	PendingTelegramTurn,
-	QueuedAttachment,
-	AssistantFinalPayload,
-	SessionRegistration,
-	TelegramApiResponse,
-	TelegramConfig,
-	TelegramForumTopic,
-	TelegramMediaGroupState,
-	TelegramMessage,
-	TelegramRoute,
-	TelegramSentMessage,
-	TelegramUpdate,
-	TelegramUser,
-} from "./shared/types.js";
+import { BROKER_DIR, BROKER_HEARTBEAT_MS, BROKER_LEASE_MS, CLIENT_HEARTBEAT_MS, LOCK_DIR, LOCK_PATH, STATE_PATH, TAKEOVER_LOCK_DIR, TEMP_DIR, TOKEN_PATH } from "./shared/config.js";
+import type { ActiveTelegramTurn, BrokerLease, BrokerState, IpcEnvelope, ModelSummary, PendingTelegramTurn, QueuedAttachment, AssistantFinalPayload, SessionRegistration, TelegramApiResponse, TelegramConfig, TelegramForumTopic, TelegramMediaGroupState, TelegramMessage, TelegramRoute, TelegramSentMessage, TelegramUpdate, TelegramUser } from "./shared/types.js";
 import { configureBrokerScope, readConfig, writeConfig } from "./shared/config.js";
-import { ActivityRenderer, ActivityReporter, thinkingActivityLine, toolActivityLine, type ActivityUpdatePayload } from "./broker/activity.js";
+import { ActivityRenderer, ActivityReporter, type ActivityUpdatePayload } from "./broker/activity.js";
+import { markReloadStartedInState, reloadIntentForReattachedRuntime } from "./broker/reload.js";
 import { unregisterSessionFromBroker, markSessionOfflineInBroker } from "./broker/sessions.js";
 import { createRuntimeUpdateHandlers } from "./broker/updates.js";
 import { clientQueryModels as buildClientQueryModels, clientSetModel as setClientModel, clientStatusText as buildClientStatusText } from "./client/info.js";
 import { AssistantFinalRetryQueue, isTerminalTelegramFinalDeliveryError, terminalTelegramFinalDeliveryReason } from "./client/final-delivery.js";
-import { TelegramCommandRouter, telegramCommandName } from "./broker/commands.js";
-import { extractAssistantText, getMessageText, getThinkingTitleFromEvent, isAssistantMessage } from "./shared/messages.js";
-import {
-	chunkParagraphs,
-	isTelegramPrompt,
-	routeId,
-	topicNameFor,
-} from "./shared/format.js";
+import { TelegramCommandRouter } from "./broker/commands.js";
+import { chunkParagraphs, routeId, topicNameFor } from "./shared/format.js";
 import { ensurePrivateDir, errorMessage, hashSecret, now, processExists, randomId, readJson, writeJson } from "./shared/utils.js";
 import { createIpcServer as createIpcServerBase, postIpc as postIpcBase } from "./shared/ipc.js";
 import { callTelegram as callTelegramBase, callTelegramMultipart as callTelegramMultipartBase, downloadTelegramFile as downloadTelegramFileBase, getTelegramRetryAfterMs } from "./telegram/api.js";
@@ -80,18 +41,25 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	let brokerHeartbeatTimer: ReturnType<typeof setInterval> | undefined;
 	let brokerHeartbeatFailures = 0;
 	let clientHeartbeatTimer: ReturnType<typeof setInterval> | undefined;
-	let clientSocketPath = join(BROKER_DIR, `client-${sessionId.slice(-8)}.sock`);
+	let clientReconnectInFlight = false;
+	let clientSocketPath = join(BROKER_DIR, `client-${ownerId}.sock`);
 	let activeClientSocketPath: string | undefined;
 	let localBrokerSocketPath = join(BROKER_DIR, `broker-${ownerId}.sock`);
 	let connectedBrokerSocketPath = localBrokerSocketPath;
 	function applyBrokerScope(): void {
 		configureBrokerScope(config.botId);
-		clientSocketPath = join(BROKER_DIR, `client-${sessionId.slice(-8)}.sock`);
+		clientSocketPath = join(BROKER_DIR, `client-${ownerId}.sock`);
 		localBrokerSocketPath = join(BROKER_DIR, `broker-${ownerId}.sock`);
 		if (!connectedRoute) connectedBrokerSocketPath = localBrokerSocketPath;
 	}
+	function setLatestContext(ctx: ExtensionContext): string {
+		latestCtx = ctx;
+		return (sessionId = ctx.sessionManager.getSessionId());
+	}
 	let connectedRoute: TelegramRoute | undefined;
 	let queuedTelegramTurns: PendingTelegramTurn[] = [];
+	let queuedTelegramReloads: Array<{ intentId: string; afterTurnCount: number }> = [];
+	const dispatchedTelegramReloadIntents = new Set<string>();
 	let activeTelegramTurn: ActiveTelegramTurn | undefined;
 	let currentAbort: (() => void) | undefined;
 	let setupInProgress = false;
@@ -156,9 +124,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		telegramStatusVisible = false;
 		ctx.ui.setStatus("telegram", "");
 	}
-	function refreshTelegramStatus(): void {
-		if (latestCtx) updateStatus(latestCtx);
-	}
+	function refreshTelegramStatus(): void { if (latestCtx) updateStatus(latestCtx); }
 	function showPairingInstructions(ctx: ExtensionContext, code: string): void {
 		const text = pairingInstructions(config.botUsername, code);
 		ctx.ui.notify(text, "info");
@@ -180,33 +146,20 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	function downloadTelegramFile(fileId: string, suggestedName: string, fileSize?: number): Promise<string> {
 		return withTelegramRetry(() => downloadTelegramFileBase(config.botToken, sessionId, fileId, suggestedName, fileSize));
 	}
-	function postIpc<TResponse>(socketPath: string, type: string, payload: unknown, targetSessionId?: string): Promise<TResponse> {
-		return postIpcBase<TResponse>(socketPath, type, payload, targetSessionId, brokerToken);
+	function postIpc<TResponse>(socketPath: string, type: string, payload: unknown, targetSessionId?: string): Promise<TResponse> { return postIpcBase<TResponse>(socketPath, type, payload, targetSessionId, brokerToken); }
+	async function postBrokerControl(type: string, payload: unknown): Promise<unknown> {
+		try { return await postIpc(connectedBrokerSocketPath, type, payload, sessionId); } catch (error) { const lease = await readLease(); if (await isLeaseLive(lease)) { connectedBrokerSocketPath = lease!.socketPath; return await postIpc(connectedBrokerSocketPath, type, payload, sessionId); } throw error; }
 	}
 	function createIpcServer(socketPath: string, handler: (envelope: IpcEnvelope) => Promise<unknown>): Promise<Server> {
 		return createIpcServerBase(socketPath, () => brokerToken, handler);
 	}
-	function usesForumSupergroupRouting(): boolean {
-		return config.topicMode === "forum_supergroup" || ((config.topicMode ?? "auto") === "auto" && config.fallbackMode === "forum_supergroup");
-	}
-	function targetChatIdForRoutes(): number | string | undefined {
-		return usesForumSupergroupRouting() ? config.fallbackSupergroupChatId : config.allowedChatId;
-	}
+	function usesForumSupergroupRouting(): boolean { return config.topicMode === "forum_supergroup" || ((config.topicMode ?? "auto") === "auto" && config.fallbackMode === "forum_supergroup"); }
+	function targetChatIdForRoutes(): number | string | undefined { return usesForumSupergroupRouting() ? config.fallbackSupergroupChatId : config.allowedChatId; }
+	function selectedChatIdForSession(targetSessionId: string): number | string | undefined { return Object.values(brokerState?.selectorSelections ?? {}).find((selection) => selection.sessionId === targetSessionId && selection.expiresAtMs > now())?.chatId; }
 	async function collectSessionRegistration(ctx: ExtensionContext): Promise<SessionRegistration> {
-		return buildSessionRegistration({
-			ctx,
-			sessionId,
-			ownerId,
-			startedAtMs,
-			clientSocketPath,
-			piSessionName: pi.getSessionName(),
-			activeTelegramTurn,
-			queuedTelegramTurns,
-		});
+		return buildSessionRegistration({ ctx, sessionId, ownerId, startedAtMs, clientSocketPath, piSessionName: pi.getSessionName(), activeTelegramTurn, queuedTelegramTurns });
 	}
-	async function readLease(): Promise<BrokerLease | undefined> {
-		return await readJson<BrokerLease>(LOCK_PATH);
-	}
+	async function readLease(): Promise<BrokerLease | undefined> { return await readJson<BrokerLease>(LOCK_PATH); }
 	async function isLeaseLive(lease: BrokerLease | undefined): Promise<boolean> {
 		if (!lease) return false;
 		if (config.botId !== undefined && lease.botId !== undefined && lease.botId !== config.botId) return false;
@@ -343,7 +296,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		if (clientServer && activeClientSocketPath === clientSocketPath) return;
 		if (clientServer) await stopClientServer();
 		await ensurePrivateDir(BROKER_DIR);
-		clientSocketPath = join(BROKER_DIR, `client-${sessionId.slice(-8)}.sock`);
+		clientSocketPath = join(BROKER_DIR, `client-${ownerId}.sock`);
 		clientServer = await createIpcServer(clientSocketPath, handleClientIpc);
 		activeClientSocketPath = clientSocketPath;
 	}
@@ -355,6 +308,22 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		await rm(activeClientSocketPath ?? clientSocketPath, { force: true }).catch(() => undefined);
 		activeClientSocketPath = undefined;
 		connectedRoute = undefined;
+	}
+	function scheduleClientReconnect(ctx: ExtensionContext): void {
+		if (clientReconnectInFlight) return;
+		clientReconnectInFlight = true;
+		void (async () => {
+			if (!clientServer) return;
+			const lease = await readLease();
+			const leaseLive = await isLeaseLive(lease);
+			if (!clientServer) return;
+			if (leaseLive) await registerWithBroker(ctx, lease!.socketPath);
+			else await connectTelegram(ctx, false);
+		})().catch((error) => {
+			if (clientServer) updateStatus(ctx, errorMessage(error));
+		}).finally(() => {
+			clientReconnectInFlight = false;
+		});
 	}
 	async function registerWithBroker(ctx: ExtensionContext, socketPath: string): Promise<TelegramRoute> {
 		connectedBrokerSocketPath = socketPath;
@@ -379,14 +348,9 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 					const heartbeat = await collectSessionRegistration(ctx);
 					const result = await postIpc<{ route?: TelegramRoute }>(connectedBrokerSocketPath, "heartbeat_session", heartbeat, sessionId);
 					if (result.route) connectedRoute = result.route;
-					await retryPendingAssistantFinals();
+					await retryPendingAssistantFinals(); if (!assistantFinalQueue.deferNewFinals()) startNextTelegramTurn();
 				} catch {
-					const lease = await readLease();
-					if (await isLeaseLive(lease)) {
-						void registerWithBroker(ctx, lease!.socketPath).catch(() => undefined);
-					} else {
-						void connectTelegram(ctx, false);
-					}
+					scheduleClientReconnect(ctx);
 				}
 			})();
 		}, CLIENT_HEARTBEAT_MS);
@@ -408,7 +372,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		};
 	}
 	async function connectTelegram(ctx: ExtensionContext, notify = true): Promise<void> {
-		latestCtx = ctx;
+		setLatestContext(ctx);
 		showTelegramStatus(ctx);
 		config = await readConfig();
 		applyBrokerScope();
@@ -500,6 +464,8 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		if (envelope.type === "heartbeat_session") return await heartbeatSession(envelope.payload as SessionRegistration);
 		if (envelope.type === "unregister_session") return await unregisterSession(envelope.session_id ?? (envelope.payload as { sessionId?: string }).sessionId ?? "");
 		if (envelope.type === "mark_session_offline") return await markSessionOffline(envelope.session_id ?? (envelope.payload as { sessionId?: string }).sessionId ?? "");
+		if (envelope.type === "reload_started") return await markReloadStarted(envelope.session_id ?? "", envelope.payload as { intentId?: string; ownerId?: string });
+		if (envelope.type === "reload_failed") return await markReloadFailed(envelope.session_id ?? "", envelope.payload as { intentId?: string; message?: string });
 		if (envelope.type === "turn_started") return await handleTurnStarted(envelope.payload as { turnId: string });
 		if (envelope.type === "assistant_message_start") return await handleAssistantMessageStart(envelope.payload as { turnId: string; chatId: number; messageThreadId?: number });
 		if (envelope.type === "assistant_preview") return await handleAssistantPreview(envelope.payload as { turnId: string; chatId: number; messageThreadId?: number; text: string });
@@ -525,6 +491,8 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		brokerState.sessions[registration.sessionId] = registration;
 		const route = await ensureRouteForSessionLocked(registration);
 		await persistBrokerState();
+		await consumeReloadIntentForSession(registration, route); await reportFailedReloadIntent(registration);
+		await retryQueuedReloadIntent(registration);
 		refreshTelegramStatus();
 		return route;
 	}
@@ -540,16 +508,26 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		};
 		const route = await ensureRouteForSessionLocked(brokerState.sessions[registration.sessionId]);
 		await persistBrokerState();
+		await consumeReloadIntentForSession(brokerState.sessions[registration.sessionId], route); await reportFailedReloadIntent(brokerState.sessions[registration.sessionId]);
+		await retryQueuedReloadIntent(brokerState.sessions[registration.sessionId]);
 		refreshTelegramStatus();
 		void retryPendingTurns();
 		return { ok: true, route };
 	}
-	function markSessionOffline(targetSessionId: string): Promise<{ ok: true }> {
-		return markSessionOfflineInBroker({ targetSessionId, getBrokerState: () => brokerState, loadBrokerState, setBrokerState: (state) => { brokerState = state; }, persistBrokerState, refreshTelegramStatus, stopTypingLoop });
+	async function markReloadStarted(targetSessionId: string, payload: { intentId?: string; ownerId?: string }): Promise<{ ok: true }> {
+		if (!brokerState) brokerState = await loadBrokerState();
+		markReloadStartedInState(brokerState, targetSessionId, payload);
+		await persistBrokerState(); return { ok: true };
 	}
-	function unregisterSession(targetSessionId: string): Promise<{ ok: true }> {
-		return unregisterSessionFromBroker({ targetSessionId, getBrokerState: () => brokerState, loadBrokerState, setBrokerState: (state) => { brokerState = state; }, persistBrokerState, refreshTelegramStatus, stopTypingLoop, callTelegram });
+	async function markReloadFailed(targetSessionId: string, payload: { intentId?: string; message?: string }): Promise<{ ok: true }> {
+		if (!brokerState) brokerState = await loadBrokerState();
+		const intent = brokerState.reloadIntents?.[targetSessionId]; if (!intent || intent.intentId !== payload.intentId) return { ok: true };
+		intent.state = "failed"; intent.failureMessage = payload.message ?? "pi runtime reload did not complete."; intent.failedAtMs = now(); intent.updatedAtMs = now(); await persistBrokerState();
+		try { await sendTextReply(intent.chatId, intent.messageThreadId, `Reload failed: ${intent.failureMessage}`); } catch { return { ok: true }; }
+		delete brokerState.reloadIntents![targetSessionId]; await persistBrokerState(); return { ok: true };
 	}
+	function markSessionOffline(targetSessionId: string): Promise<{ ok: true }> { return markSessionOfflineInBroker({ targetSessionId, getBrokerState: () => brokerState, loadBrokerState, setBrokerState: (state) => { brokerState = state; }, persistBrokerState, refreshTelegramStatus, stopTypingLoop }); }
+	function unregisterSession(targetSessionId: string): Promise<{ ok: true }> { return unregisterSessionFromBroker({ targetSessionId, getBrokerState: () => brokerState, loadBrokerState, setBrokerState: (state) => { brokerState = state; }, persistBrokerState, refreshTelegramStatus, stopTypingLoop, callTelegram }); }
 	function ensureRouteForSessionLocked(registration: SessionRegistration): Promise<TelegramRoute> {
 		const existing = routeEnsures.get(registration.sessionId);
 		if (existing) return existing;
@@ -557,12 +535,21 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		routeEnsures.set(registration.sessionId, ensure);
 		return ensure;
 	}
+	async function consumeReloadIntentForSession(registration: SessionRegistration, route: TelegramRoute): Promise<void> {
+		const intent = reloadIntentForReattachedRuntime(brokerState, registration); if (!intent) return;
+		try { await sendTextReply(intent.chatId, intent.messageThreadId, `Reload complete: ${route.topicName} is connected again.`); } catch (error) { console.warn(`[pi-telegram] Could not report reload completion for ${registration.sessionId}: ${errorMessage(error)}`); return; }
+		delete brokerState!.reloadIntents![registration.sessionId]; await persistBrokerState();
+	}
+	async function reportFailedReloadIntent(registration: SessionRegistration): Promise<void> { const intent = brokerState?.reloadIntents?.[registration.sessionId]; if (intent?.state !== "failed") return; try { await sendTextReply(intent.chatId, intent.messageThreadId, `Reload failed: ${intent.failureMessage ?? "pi runtime reload did not complete."}`); } catch { return; } delete brokerState!.reloadIntents![registration.sessionId]; await persistBrokerState(); }
+	async function retryQueuedReloadIntent(registration: SessionRegistration): Promise<void> { const intent = brokerState?.reloadIntents?.[registration.sessionId]; if (intent?.state === "queued" || (intent?.state === "accepted" && intent.acceptedOwnerId !== registration.ownerId)) try { await postIpc(registration.clientSocketPath, "reload_runtime", { intentId: intent.intentId }, registration.sessionId); intent.state = "accepted"; intent.acceptedAtMs = now(); intent.acceptedOwnerId = registration.ownerId; intent.updatedAtMs = now(); await persistBrokerState(); } catch { /* retry on next heartbeat */ } }
 	async function ensureRouteForSession(registration: SessionRegistration): Promise<TelegramRoute> {
 		if (!brokerState) throw new Error("Broker state is not loaded");
 		const existing = Object.values(brokerState.routes).find((route) => route.sessionId === registration.sessionId);
 		const expectedChatId = targetChatIdForRoutes();
+		const selectedChatId = selectedChatIdForSession(registration.sessionId);
 		if (existing && existing.chatId !== 0) {
 			if (expectedChatId !== undefined && String(existing.chatId) === String(expectedChatId)) return existing;
+			if (existing.routeMode === "single_chat_selector" && selectedChatId !== undefined && String(existing.chatId) === String(selectedChatId)) return existing;
 			for (const [id, route] of Object.entries(brokerState.routes)) if (route.sessionId === registration.sessionId) delete brokerState.routes[id];
 		}
 		if (existing && existing.chatId === 0) {
@@ -571,7 +558,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		if (usesForumSupergroupRouting() && config.fallbackSupergroupChatId === undefined) {
 			throw new Error("telegram.fallback_supergroup_chat_id is required for forum_supergroup fallback mode");
 		}
-		const targetChatId = targetChatIdForRoutes();
+		const targetChatId = targetChatIdForRoutes() ?? selectedChatId;
 		if (!targetChatId) {
 			return {
 				routeId: `pending:${registration.sessionId}`,
@@ -693,7 +680,6 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		if (!brokerState.completedTurnIds.includes(turnId)) brokerState.completedTurnIds.push(turnId);
 		if (brokerState.completedTurnIds.length > 1000) brokerState.completedTurnIds.splice(0, brokerState.completedTurnIds.length - 1000);
 	}
-
 	async function handleAssistantFinal(payload: { turn: PendingTelegramTurn; text?: string; stopReason?: string; errorMessage?: string; attachments: QueuedAttachment[] }): Promise<{ ok: true }> {
 		const turn = payload.turn;
 		brokerState ??= await loadBrokerState();
@@ -767,15 +753,14 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		return false;
 	}
 
-	function isRoutableRoute(route: TelegramRoute | undefined): route is TelegramRoute {
-		return route !== undefined && route.chatId !== 0 && String(route.chatId) !== "0";
-	}
+	function isRoutableRoute(route: TelegramRoute | undefined): route is TelegramRoute { return route !== undefined && route.chatId !== 0 && String(route.chatId) !== "0"; }
 
 	async function handleClientIpc(envelope: IpcEnvelope): Promise<unknown> {
 		if (envelope.type === "deliver_turn") return await clientDeliverTurn(envelope.payload as PendingTelegramTurn);
 		if (envelope.type === "abort_turn") return await clientAbortTurn();
 		if (envelope.type === "query_status") return { text: await clientStatusText() };
 		if (envelope.type === "compact_session") return clientCompact();
+		if (envelope.type === "reload_runtime") return clientReloadRuntime(envelope.payload as { intentId?: string });
 		if (envelope.type === "query_models") return clientQueryModels((envelope.payload as { filter?: string }).filter);
 		if (envelope.type === "set_model") return await clientSetModel((envelope.payload as { selector: string }).selector);
 		if (envelope.type === "shutdown_client_route") {
@@ -821,7 +806,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			await acknowledgeConsumedTurn(turn.turnId);
 			return { accepted: true };
 		}
-		queuedTelegramTurns.push(turn);
+		queuedTelegramTurns.push(turn); for (const reload of queuedTelegramReloads) reload.afterTurnCount += 1;
 		if (ctx?.isIdle()) startNextTelegramTurn();
 		return { accepted: true };
 	}
@@ -843,9 +828,20 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	}
 
 	function startNextTelegramTurn(): void {
-		if (activeTelegramTurn || queuedTelegramTurns.length === 0) return;
+		if (activeTelegramTurn) return;
+		const reload = queuedTelegramReloads[0];
+		if (reload && reload.afterTurnCount <= 0) {
+			if (assistantFinalQueue.deferNewFinals()) return;
+			queuedTelegramReloads.shift();
+			dispatchTelegramReloadCommand(reload.intentId);
+			return;
+		}
 		const turn = queuedTelegramTurns.shift();
-		if (!turn) return;
+		if (!turn) {
+			if (reload && !assistantFinalQueue.deferNewFinals()) dispatchTelegramReloadCommand(queuedTelegramReloads.shift()!.intentId);
+			return;
+		}
+		for (const queuedReload of queuedTelegramReloads) queuedReload.afterTurnCount -= 1;
 		activeTelegramTurn = { ...turn, queuedAttachments: [] };
 		void postIpc(connectedBrokerSocketPath, "turn_started", { turnId: turn.turnId }, sessionId).catch(() => undefined);
 		pi.sendUserMessage(turn.content);
@@ -877,6 +873,21 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		return { text: "Compaction started." };
 	}
 
+	function dispatchTelegramReloadCommand(intentId: string): void {
+		if (dispatchedTelegramReloadIntents.has(intentId)) return;
+		dispatchedTelegramReloadIntents.add(intentId); pi.sendUserMessage(`/telegram-reload-runtime ${intentId}`, { deliverAs: "followUp" });
+	}
+
+	function clientReloadRuntime(payload: { intentId?: string }): { text: string } {
+		if (!payload.intentId) throw new Error("Missing reload intent id");
+		if (activeTelegramTurn || queuedTelegramTurns.length > 0 || latestCtx?.isIdle() === false) {
+			if (!queuedTelegramReloads.some((reload) => reload.intentId === payload.intentId)) queuedTelegramReloads.push({ intentId: payload.intentId, afterTurnCount: queuedTelegramTurns.length });
+		} else {
+			dispatchTelegramReloadCommand(payload.intentId);
+		}
+		return { text: "Reload queued. I’ll reconnect this Telegram route when pi finishes reloading." };
+	}
+
 	function clientQueryModels(filter?: string): { current?: string; models: ModelSummary[] } {
 		return buildClientQueryModels(latestCtx, filter);
 	}
@@ -895,8 +906,6 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		const allowed = (cwd !== undefined && (abs === cwd || abs.startsWith(`${cwd}/`))) || abs.startsWith(`${tmp}/`);
 		return allowed ? abs : undefined;
 	}
-
-
 	async function sendAssistantFinalToBroker(payload: AssistantFinalPayload, fromRetryQueue = false): Promise<boolean> {
 		if (!fromRetryQueue && assistantFinalQueue.deferNewFinals()) {
 			assistantFinalQueue.enqueue(payload);
@@ -939,7 +948,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 
 	registerRuntimePiHooks(pi, {
 		getConfig: () => config,
-		setLatestCtx: (ctx) => { latestCtx = ctx; },
+		setLatestCtx: setLatestContext,
 		getConnectedRoute: () => connectedRoute,
 		setConnectedRoute: (route) => { connectedRoute = route; },
 		getActiveTelegramTurn: () => activeTelegramTurn,
@@ -955,6 +964,8 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		isRoutableRoute,
 		resolveAllowedAttachmentPath,
 		postIpc,
+		markTelegramReloadStarted: async (intentId) => { try { return await postBrokerControl("reload_started", { intentId, ownerId }); } catch (error) { dispatchedTelegramReloadIntents.delete(intentId); throw error; } },
+		markTelegramReloadFailed: async (intentId, message) => { try { return await postBrokerControl("reload_failed", { intentId, message }); } finally { dispatchedTelegramReloadIntents.delete(intentId); } },
 		promptForConfig,
 		connectTelegram,
 		unregisterSession,
@@ -967,11 +978,18 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		sendAssistantFinalToBroker,
 		rememberCompletedLocalTurn,
 		startNextTelegramTurn,
-		onSessionStart: async (ctx) => {
+		onSessionStart: async (ctx, reason) => {
+			const logicalSessionId = setLatestContext(ctx);
 			config = await readConfig();
 			applyBrokerScope();
 			await ensurePrivateDir(BROKER_DIR);
 			await mkdir(TEMP_DIR, { recursive: true });
+			if (reason === "reload") {
+				const state = await readJson<BrokerState>(STATE_PATH);
+				if (state?.reloadIntents?.[logicalSessionId]?.state === "reloading") {
+					setTimeout(() => void connectTelegram(ctx, false).catch((error) => ctx.ui.notify(`Telegram reload reconnect failed: ${errorMessage(error)}`, "error")), 0);
+				}
+			}
 		},
 		clearMediaGroups: () => {
 			for (const state of mediaGroups.values()) if (state.flushTimer) clearTimeout(state.flushTimer);

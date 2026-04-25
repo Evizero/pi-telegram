@@ -595,6 +595,77 @@
       "status": "draft",
       "created": "2026-04-25",
       "updated": "2026-04-25"
+    },
+    {
+      "id": "SyRS-reload-intent-recovery",
+      "origin": "derived",
+      "label": "Preserve reload intent",
+      "statement": "The system shall preserve a Telegram reload intent across the reload boundary until the reloaded session either reports reattachment status to Telegram or records that reporting is no longer possible.",
+      "traces_to": [
+        "StRS-telegram-reload-continuity",
+        "StRS-delivery-continuity"
+      ],
+      "rationale": "The old extension context becomes stale after ctx.reload(), so the bridge needs durable handoff state to complete or fail the remote workflow from the new runtime.",
+      "acceptance_criteria": "Tests or inspection show that the broker persists a reload intent keyed by logical session id before invoking pi reload, includes source chat/thread/session context, consumes the intent at most once after successful re-registration or explicit terminal failure/expiry, reports success or failure to the original route when usable, and avoids stale old ctx/pi usage after ctx.reload().",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "inbox": [
+          "telegram-reload-should-reload"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-telegram-reload-command",
+      "origin": "derived",
+      "label": "Route Telegram reload command",
+      "statement": "The system shall treat an authorized Telegram /reload command for a routed or selected session as a pi runtime reload request for that session rather than as an agent turn.",
+      "traces_to": [
+        "StRS-telegram-reload-continuity",
+        "StRS-paired-user-control",
+        "StRS-session-lifecycle-control"
+      ],
+      "rationale": "The Telegram command is the remote operator interface for pi's reload capability, but it must stay inside the paired-user routing model and avoid accidentally sending /reload to the LLM as ordinary work.",
+      "acceptance_criteria": "Tests or inspection show that /reload from the paired user in a valid session route persists a reload request for that target session, queues the reload to run after any active Telegram/pi turn reaches a safe follow-up boundary, rejects unauthorized/unrouted/offline requests with clear text, and never converts the command into a normal PendingTelegramTurn for the agent.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "inbox": [
+          "telegram-reload-should-reload"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-reload-reattach-route",
+      "origin": "derived",
+      "label": "Reattach route after reload",
+      "statement": "After a Telegram-triggered reload, the system shall reconnect the reloaded pi session to the same valid Telegram route that initiated the reload.",
+      "traces_to": [
+        "StRS-telegram-reload-continuity",
+        "StRS-delivery-continuity",
+        "StRS-session-lifecycle-control"
+      ],
+      "rationale": "Reload tears down and recreates the extension runtime; route continuity requires treating reload as offline-and-reconnect, not explicit disconnect or a new Telegram session.",
+      "acceptance_criteria": "Tests or inspection show that a reloaded logical pi session re-registers using stable session identity, reuses its existing topic route or selector-mode selection without creating duplicate routes/topics, preserves durable pending route state, and sends reload completion status to the initiating route when possible.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "inbox": [
+          "telegram-reload-should-reload"
+        ]
+      }
     }
   ]
 }

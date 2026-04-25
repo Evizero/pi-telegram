@@ -39,6 +39,7 @@ use - Select a pi session in selector mode
 status - Show selected session status
 model - Show or change the selected session model
 compact - Compact the selected session context
+reload - Reload the selected pi runtime and reconnect this route
 follow - Queue a follow-up for after the active run
 stop - Stop the active run
 disconnect - Disconnect the selected pi session
@@ -135,6 +136,16 @@ or:
 ```
 
 That aborts the active pi turn.
+
+### Reload a session
+
+To reload the selected pi runtime from Telegram and keep using the same Telegram route, send:
+
+```text
+/reload
+```
+
+If the session is busy, the reload is queued as follow-up work and runs after the active turn reaches a safe boundary.
 
 ### Steer and queue follow-ups
 

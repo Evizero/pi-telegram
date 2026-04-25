@@ -1,7 +1,7 @@
 import { MODEL_LIST_TTL_MS } from "../shared/config.js";
 import { routeId } from "../shared/format.js";
 import type { BrokerState, ModelSummary, PendingTelegramTurn, SessionRegistration, TelegramMessage, TelegramRoute } from "../shared/types.js";
-import { errorMessage, now } from "../shared/utils.js";
+import { errorMessage, now, randomId } from "../shared/utils.js";
 
 export function telegramCommandName(text: string): string {
 	const command = text.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
@@ -37,7 +37,6 @@ export interface TelegramCommandRouterDeps {
 
 export class TelegramCommandRouter {
 	private readonly modelListCache = new Map<string, { expiresAt: number; models: ModelSummary[] }>();
-	private readonly selectedSessionByChat = new Map<number, { sessionId: string; expiresAt: number }>();
 
 	constructor(private readonly deps: TelegramCommandRouterDeps) {}
 
@@ -45,10 +44,12 @@ export class TelegramCommandRouter {
 		const brokerState = this.deps.getBrokerState();
 		if (!brokerState) return undefined;
 		if (message.message_thread_id !== undefined) {
-			return brokerState.routes[routeId(message.chat.id, message.message_thread_id)] ?? Object.values(brokerState.routes).find((route) => route.messageThreadId === message.message_thread_id && route.routeMode === "forum_supergroup_topic");
+			return brokerState.routes[routeId(message.chat.id, message.message_thread_id)] ?? Object.values(brokerState.routes).find((route) => String(route.chatId) === String(message.chat.id) && route.messageThreadId === message.message_thread_id && route.routeMode === "forum_supergroup_topic");
 		}
-		const selected = this.selectedSessionByChat.get(message.chat.id);
-		if (selected && selected.expiresAt > now()) return Object.values(brokerState.routes).find((route) => route.sessionId === selected.sessionId);
+		const selected = brokerState.selectorSelections?.[String(message.chat.id)];
+		if (selected && selected.expiresAtMs > now()) {
+			return Object.values(brokerState.routes).find((route) => route.sessionId === selected.sessionId && route.routeMode === "single_chat_selector" && String(route.chatId) === String(message.chat.id));
+		}
 		return undefined;
 	}
 
@@ -59,6 +60,7 @@ export class TelegramCommandRouter {
 		const rawText = messages.map((message) => (message.text || message.caption || "").trim()).find((text) => text.length > 0) || "";
 		const lower = rawText.toLowerCase();
 		const command = telegramCommandName(rawText);
+		if (this.pruneSelectorSelections(brokerState)) await this.deps.persistBrokerState();
 		const route = this.routeForMessage(firstMessage);
 		if (command === "/sessions") {
 			await this.sendSessions(firstMessage.chat.id, firstMessage.message_thread_id);
@@ -73,7 +75,7 @@ export class TelegramCommandRouter {
 			return;
 		}
 		if ((command === "/help" || command === "/start") && !route) {
-			await this.deps.sendTextReply(firstMessage.chat.id, firstMessage.message_thread_id, "Commands: /sessions, /use <number>, /status, /model, /compact, /follow, /stop, /disconnect, /broker.");
+			await this.deps.sendTextReply(firstMessage.chat.id, firstMessage.message_thread_id, "Commands: /sessions, /use <number>, /status, /model, /compact, /reload, /follow, /stop, /disconnect, /broker.");
 			return;
 		}
 		if (!route) {
@@ -120,6 +122,64 @@ export class TelegramCommandRouter {
 			}
 			return;
 		}
+		if (command === "/reload") {
+			brokerState.reloadIntents ??= {};
+			const existingIntent = brokerState.reloadIntents[session.sessionId];
+			if (existingIntent?.state === "reloading") {
+				await this.deps.sendTextReply(route.chatId, route.messageThreadId, "This pi session is already reloading.").catch(() => undefined);
+				return;
+			}
+			if (existingIntent?.state === "accepted" && existingIntent.acceptedOwnerId === session.ownerId) {
+				await this.deps.sendTextReply(route.chatId, route.messageThreadId, "This pi session is already queued to reload.").catch(() => undefined);
+				return;
+			}
+			if (existingIntent?.state === "queued" || existingIntent?.state === "accepted") {
+				try {
+					const result = await this.deps.postIpc<{ text: string }>(session.clientSocketPath, "reload_runtime", { intentId: existingIntent.intentId }, session.sessionId);
+					existingIntent.state = "accepted";
+					existingIntent.acceptedAtMs = now();
+					existingIntent.acceptedOwnerId = session.ownerId;
+					existingIntent.updatedAtMs = now();
+					await this.deps.persistBrokerState();
+					await this.deps.sendTextReply(route.chatId, route.messageThreadId, result.text).catch(() => undefined);
+				} catch (error) {
+					session.status = "offline";
+					existingIntent.state = "queued";
+					existingIntent.updatedAtMs = now();
+					await this.deps.persistBrokerState();
+					await this.deps.sendTextReply(route.chatId, route.messageThreadId, `Reload remains queued; retry failed because the pi runtime is unavailable: ${errorMessage(error)}`).catch(() => undefined);
+				}
+				return;
+			}
+			const intentId = randomId("rel");
+			brokerState.reloadIntents[session.sessionId] = {
+				intentId,
+				sessionId: session.sessionId,
+				routeId: route.routeId,
+				chatId: route.chatId,
+				messageThreadId: route.messageThreadId,
+				state: "queued",
+				requestedAtMs: now(),
+				updatedAtMs: now(),
+			};
+			await this.deps.persistBrokerState();
+			try {
+				const result = await this.deps.postIpc<{ text: string }>(session.clientSocketPath, "reload_runtime", { intentId }, session.sessionId);
+				const intent = brokerState.reloadIntents[session.sessionId];
+				intent.state = "accepted";
+				intent.acceptedAtMs = now();
+				intent.acceptedOwnerId = session.ownerId;
+				intent.updatedAtMs = now();
+				await this.deps.persistBrokerState();
+				await this.deps.sendTextReply(route.chatId, route.messageThreadId, result.text).catch(() => undefined);
+			} catch (error) {
+				if (brokerState.reloadIntents?.[session.sessionId]?.intentId === intentId) delete brokerState.reloadIntents[session.sessionId];
+				session.status = "offline";
+				await this.deps.persistBrokerState();
+				await this.deps.sendTextReply(route.chatId, route.messageThreadId, `Failed to queue reload: ${errorMessage(error)}`).catch(() => undefined);
+			}
+			return;
+		}
 		if (command === "/model") {
 			try {
 				await this.handleModelCommand(route, session, rawText);
@@ -137,7 +197,7 @@ export class TelegramCommandRouter {
 			return;
 		}
 		if (command === "/help" || command === "/start") {
-			await this.deps.sendTextReply(route.chatId, route.messageThreadId, "Send a message to steer this pi session. Use /follow <message> to queue a follow-up. Commands: /status, /model, /compact, /follow, /stop, /disconnect, /sessions.");
+			await this.deps.sendTextReply(route.chatId, route.messageThreadId, "Send a message to steer this pi session. Use /follow <message> to queue a follow-up. Commands: /status, /model, /compact, /reload, /follow, /stop, /disconnect, /sessions.");
 			return;
 		}
 		let turnMessages = messages;
@@ -172,6 +232,16 @@ export class TelegramCommandRouter {
 		}
 	}
 
+	private pruneSelectorSelections(brokerState: BrokerState): boolean {
+		let changed = false;
+		for (const [chatId, selection] of Object.entries(brokerState.selectorSelections ?? {})) {
+			if (selection.expiresAtMs > now() && brokerState.sessions[selection.sessionId]) continue;
+			delete brokerState.selectorSelections![chatId];
+			changed = true;
+		}
+		return changed;
+	}
+
 	private async sendSessions(chatId: number, threadId?: number): Promise<void> {
 		const brokerState = this.deps.getBrokerState();
 		if (!brokerState) return;
@@ -201,7 +271,17 @@ export class TelegramCommandRouter {
 			await this.deps.sendTextReply(message.chat.id, message.message_thread_id, "Unknown session. Send /sessions.");
 			return;
 		}
-		this.selectedSessionByChat.set(message.chat.id, { sessionId: session.sessionId, expiresAt: now() + MODEL_LIST_TTL_MS });
+		brokerState.selectorSelections ??= {};
+		brokerState.selectorSelections[String(message.chat.id)] = {
+			chatId: message.chat.id,
+			sessionId: session.sessionId,
+			expiresAtMs: now() + MODEL_LIST_TTL_MS,
+			updatedAtMs: now(),
+		};
+		const id = routeId(message.chat.id);
+		brokerState.routes[`${id}:${session.sessionId}`] = brokerState.routes[`${id}:${session.sessionId}`] ?? { routeId: id, sessionId: session.sessionId, chatId: message.chat.id, routeMode: "single_chat_selector", topicName: session.topicName, createdAtMs: now(), updatedAtMs: now() };
+		brokerState.routes[`${id}:${session.sessionId}`].updatedAtMs = now();
+		await this.deps.persistBrokerState();
 		await this.deps.sendTextReply(message.chat.id, message.message_thread_id, `Selected ${session.topicName} for 30 minutes.`);
 	}
 

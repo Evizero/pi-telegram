@@ -212,6 +212,30 @@ export interface TelegramRoute {
 	updatedAtMs: number;
 }
 
+export interface TelegramReloadIntent {
+	intentId: string;
+	sessionId: string;
+	routeId: string;
+	chatId: number | string;
+	messageThreadId?: number;
+	state: "queued" | "accepted" | "reloading" | "failed";
+	requestedAtMs: number;
+	acceptedAtMs?: number;
+	acceptedOwnerId?: string;
+	startedAtMs?: number;
+	startedOwnerId?: string;
+	failedAtMs?: number;
+	failureMessage?: string;
+	updatedAtMs: number;
+}
+
+export interface TelegramSelectorSelection {
+	chatId: number | string;
+	sessionId: string;
+	expiresAtMs: number;
+	updatedAtMs: number;
+}
+
 export interface BrokerState {
 	schemaVersion: number;
 	lastProcessedUpdateId?: number;
@@ -220,6 +244,8 @@ export interface BrokerState {
 	routes: Record<string, TelegramRoute>;
 	pendingMediaGroups?: Record<string, { updates: TelegramUpdate[]; updatedAtMs: number }>;
 	pendingTurns?: Record<string, { turn: PendingTelegramTurn; updatedAtMs: number }>;
+	reloadIntents?: Record<string, TelegramReloadIntent>;
+	selectorSelections?: Record<string, TelegramSelectorSelection>;
 	completedTurnIds?: string[];
 	createdAtMs: number;
 	updatedAtMs: number;

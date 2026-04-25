@@ -305,6 +305,33 @@
           "no-external-broker-daemon"
         ]
       }
+    },
+    {
+      "id": "StRS-telegram-reload-continuity",
+      "origin": "derived",
+      "label": "Reload from Telegram in place",
+      "statement": "Remote pi operators shall be able to reload a supervised pi session from Telegram without losing the Telegram conversation route used to control that session.",
+      "rationale": "Remote babysitting includes recovering from extension/resource changes while away from the computer; requiring a local reload plus manual Telegram reconnect would break continuity of control.",
+      "stakeholders": [
+        "remote-pi-operator"
+      ],
+      "priority": 2,
+      "validation": {
+        "method": "review",
+        "criteria": "Review the Telegram-facing reload workflow to confirm an operator can request reload from the current routed chat or topic and continue supervising the same pi session in that Telegram route without manual reconnect, duplicate session topics, or ambiguous session selection."
+      },
+      "status": "draft",
+      "created": "2026-04-25",
+      "updated": "2026-04-25",
+      "sources": {
+        "inbox": [
+          "telegram-reload-should-reload"
+        ],
+        "refs": [
+          "pi docs: /opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/docs/extensions.md#ctxreload",
+          "Telegram Bot API command messages and sendMessage route/thread behavior"
+        ]
+      }
     }
   ]
 }

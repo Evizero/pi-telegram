@@ -29,6 +29,8 @@ export interface RuntimePiHooksDeps {
 	isRoutableRoute: (route: TelegramRoute | undefined) => route is TelegramRoute;
 	resolveAllowedAttachmentPath: (inputPath: string) => Promise<string | undefined>;
 	postIpc: <TResponse>(socketPath: string, type: string, payload: unknown, targetSessionId?: string) => Promise<TResponse>;
+	markTelegramReloadStarted: (intentId: string) => Promise<unknown>;
+	markTelegramReloadFailed: (intentId: string, message: string) => Promise<unknown>;
 	promptForConfig: (ctx: ExtensionContext) => Promise<boolean>;
 	connectTelegram: (ctx: ExtensionContext, notify?: boolean) => Promise<void>;
 	unregisterSession: (sessionId: string) => Promise<unknown>;
@@ -41,7 +43,7 @@ export interface RuntimePiHooksDeps {
 	sendAssistantFinalToBroker: (payload: { turn: PendingTelegramTurn; text?: string; stopReason?: string; errorMessage?: string; attachments: QueuedAttachment[] }) => Promise<boolean>;
 	rememberCompletedLocalTurn: (turnId: string) => void;
 	startNextTelegramTurn: () => void;
-	onSessionStart: (ctx: ExtensionContext) => Promise<void>;
+	onSessionStart: (ctx: ExtensionContext, reason: "startup" | "reload" | "new" | "resume" | "fork") => Promise<void>;
 	clearMediaGroups: () => void;
 }
 
@@ -139,9 +141,27 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 		},
 	});
 
-	pi.on("session_start", async (_event, ctx) => {
+	pi.registerCommand("telegram-reload-runtime", {
+		description: "Internal Telegram bridge command that reloads the pi runtime",
+		handler: async (args, ctx) => {
+			deps.setLatestCtx(ctx);
+			const intentId = args.trim();
+			let reloadStarted = false;
+			try {
+				if (intentId) await deps.markTelegramReloadStarted(intentId);
+				reloadStarted = true;
+				await ctx.reload();
+				return;
+			} catch (error) {
+				if (intentId && reloadStarted) await deps.markTelegramReloadFailed(intentId, errorMessage(error)).catch(() => undefined);
+				throw error;
+			}
+		},
+	});
+
+	pi.on("session_start", async (event, ctx) => {
 		deps.setLatestCtx(ctx);
-		await deps.onSessionStart(ctx);
+		await deps.onSessionStart(ctx, event.reason);
 	});
 
 	pi.on("input", async (event) => {

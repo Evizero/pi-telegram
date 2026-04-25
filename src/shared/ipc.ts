@@ -111,6 +111,9 @@ export async function createIpcServer(
 		server.once("error", reject);
 		server.listen(socketPath, () => {
 			server.off("error", reject);
+			server.on("error", (error) => {
+				console.warn("[pi-telegram] IPC server error:", errorMessage(error));
+			});
 			resolveValue();
 		});
 	});
