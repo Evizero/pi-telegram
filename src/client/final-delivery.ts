@@ -38,5 +38,11 @@ export class AssistantFinalRetryQueue {
 		this.enqueue(payload, error === undefined ? undefined : getTelegramRetryAfterMs(error));
 		if (this.attemptingTurnId === payload.turn.turnId) this.attemptingTurnId = undefined;
 	}
+
+	clear(): void {
+		this.pending.splice(0, this.pending.length);
+		this.retryAtMs = 0;
+		this.attemptingTurnId = undefined;
+	}
 }
 

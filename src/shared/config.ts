@@ -13,6 +13,7 @@ export let TAKEOVER_LOCK_DIR = join(BROKER_DIR, "takeover.lock");
 export let LOCK_PATH = join(LOCK_DIR, "lock.json");
 export let STATE_PATH = join(BROKER_DIR, "state.json");
 export let TOKEN_PATH = join(BROKER_DIR, "broker-token");
+export let DISCONNECT_REQUESTS_DIR = join(BROKER_DIR, "disconnect-requests");
 
 export function configureBrokerScope(botId?: number): void {
 	BROKER_DIR = botId === undefined ? BASE_BROKER_DIR : join(BASE_BROKER_DIR, `bot-${botId}`);
@@ -21,6 +22,7 @@ export function configureBrokerScope(botId?: number): void {
 	LOCK_PATH = join(LOCK_DIR, "lock.json");
 	STATE_PATH = join(BROKER_DIR, "state.json");
 	TOKEN_PATH = join(BROKER_DIR, "broker-token");
+	DISCONNECT_REQUESTS_DIR = join(BROKER_DIR, "disconnect-requests");
 }
 export const TEMP_DIR = join(homedir(), ".pi", "agent", "tmp", "telegram");
 export const TELEGRAM_PREFIX = "[telegram]";

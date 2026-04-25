@@ -200,6 +200,13 @@ export interface PendingAssistantFinalDelivery extends AssistantFinalPayload {
 	progress: AssistantFinalDeliveryProgress;
 }
 
+export interface PendingRouteCleanup {
+	route: TelegramRoute;
+	createdAtMs: number;
+	updatedAtMs: number;
+	retryAtMs?: number;
+}
+
 export interface TelegramPreviewState {
 	mode: "draft" | "message";
 	draftId?: number;
@@ -261,6 +268,7 @@ export interface BrokerState {
 	pendingMediaGroups?: Record<string, { updates: TelegramUpdate[]; updatedAtMs: number }>;
 	pendingTurns?: Record<string, { turn: PendingTelegramTurn; updatedAtMs: number }>;
 	pendingAssistantFinals?: Record<string, PendingAssistantFinalDelivery>;
+	pendingRouteCleanups?: Record<string, PendingRouteCleanup>;
 	assistantPreviewMessages?: Record<string, AssistantPreviewMessageRef>;
 	selectorSelections?: Record<string, TelegramSelectorSelection>;
 	completedTurnIds?: string[];

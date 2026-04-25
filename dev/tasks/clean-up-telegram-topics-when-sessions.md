@@ -1,15 +1,15 @@
 ---
 title: "Clean up Telegram topics when sessions close or die"
-status: "ready"
+status: "done"
 priority: 1
 created: "2026-04-25"
 updated: "2026-04-25"
 author: "Christof Salis"
-assignee: ""
+assignee: "pi-agent"
 labels: ["telegram", "lifecycle", "topics"]
 traces_to: ["SyRS-cleanup-route-on-close", "SyRS-cleanup-route-after-reconnect-grace", "SyRS-retry-topic-cleanup", "SyRS-unregister-session-route"]
 source_inbox: "telegram-topics-not-cleaned"
-branch: ""
+branch: "task/clean-up-telegram-topics-when-sessions"
 ---
 ## Objective
 
@@ -56,3 +56,6 @@ Add focused regression coverage or executable checks for close cleanup, reconnec
 ## Decisions
 
 - 2026-04-25: Planning review on 2026-04-25 reported no findings: requirements, architecture/docs guidance, and ready task align with the project-owner directive for connection-scoped Telegram views and bounded reconnect grace.
+- 2026-04-25: Implementation uses durable pendingRouteCleanups in broker state so active routes disappear immediately on disconnect/death, retryable deleteForumTopic failures remain queued for broker-heartbeat retry, and the reconnect grace window remains the existing heartbeat timeout boundary before stale sessions are unregistered.
+- 2026-04-25: Disconnecting Telegram now detaches only the Telegram view state: queued Telegram turns and pending Telegram-only final retries are cleared, but the underlying local pi run is not aborted solely because the Telegram route is being cleaned up.
+- 2026-04-25: 2026-04-25 close-out: npm run check passed and the latest focused review reported no findings for the implemented topic-cleanup behavior; remaining dirty compaction planning files are unrelated and excluded from this close-out.

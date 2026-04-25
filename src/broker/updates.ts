@@ -30,6 +30,7 @@ export interface RuntimeUpdateDeps {
 	isAllowedTelegramChat: (message: TelegramMessage) => boolean;
 	stopTypingLoop: (turnId: string) => void;
 	postIpc: <TResponse>(socketPath: string, type: string, payload: unknown, targetSessionId?: string) => Promise<TResponse>;
+	unregisterSession: (targetSessionId: string) => Promise<unknown>;
 }
 
 export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
@@ -307,21 +308,10 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 	async function markOfflineSessions(): Promise<void> {
 		const brokerState = deps.getBrokerState();
 		if (!brokerState) return;
-		let changed = false;
-		for (const session of Object.values(brokerState.sessions)) {
-			if (session.status === "offline" || now() - session.lastHeartbeatMs <= SESSION_OFFLINE_MS) continue;
-			session.status = "offline";
-			changed = true;
-			if (!brokerState.pendingTurns) continue;
-			for (const [turnId, pending] of Object.entries(brokerState.pendingTurns)) {
-				if (pending.turn.sessionId !== session.sessionId) continue;
-				deps.stopTypingLoop(turnId);
-			}
-		}
-		if (changed) {
-			await deps.persistBrokerState();
-			deps.refreshTelegramStatus();
-		}
+		const expiredSessionIds = Object.values(brokerState.sessions)
+			.filter((session) => now() - session.lastHeartbeatMs > SESSION_OFFLINE_MS)
+			.map((session) => session.sessionId);
+		for (const sessionId of expiredSessionIds) await deps.unregisterSession(sessionId);
 	}
 
 	async function retryPendingTurns(): Promise<void> {

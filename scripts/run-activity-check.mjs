@@ -16,3 +16,4 @@ execFileSync(process.execPath, [join(outDir, "scripts", "check-preview-manager.j
 execFileSync(process.execPath, [join(outDir, "scripts", "check-client-compact.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-client-turn-delivery.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-telegram-command-routing.js")], { stdio: "inherit" });
+execFileSync(process.execPath, [join(outDir, "scripts", "check-session-route-cleanup.js")], { stdio: "inherit" });

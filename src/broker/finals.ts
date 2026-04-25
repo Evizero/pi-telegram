@@ -31,6 +31,8 @@ export class AssistantFinalDeliveryLedger {
 	private active = true;
 	private generation = 0;
 	private abortController = new AbortController();
+	private currentTurnId: string | undefined;
+	private readonly cancelledTurnIds = new Set<string>();
 
 	constructor(private readonly deps: AssistantFinalDeliveryDeps) {}
 
@@ -51,10 +53,23 @@ export class AssistantFinalDeliveryLedger {
 		this.retryTimer = undefined;
 	}
 
+	async cancelSession(sessionId: string): Promise<void> {
+		const state = await this.state();
+		for (const entry of Object.values(state.pendingAssistantFinals ?? {})) {
+			if (entry.turn.sessionId !== sessionId) continue;
+			this.cancelledTurnIds.add(entry.turn.turnId);
+			if (this.currentTurnId === entry.turn.turnId) {
+				this.abortController.abort();
+				this.abortController = new AbortController();
+			}
+		}
+	}
+
 	async accept(payload: AssistantFinalPayload): Promise<{ ok: true }> {
 		const state = await this.state();
 		state.completedTurnIds ??= [];
 		if (state.completedTurnIds.includes(payload.turn.turnId)) return { ok: true };
+		if (!state.sessions[payload.turn.sessionId] || !Object.values(state.routes).some((route) => route.sessionId === payload.turn.sessionId)) return { ok: true };
 		state.pendingAssistantFinals ??= {};
 		const existing = state.pendingAssistantFinals[payload.turn.turnId];
 		if (existing) {
@@ -102,6 +117,7 @@ export class AssistantFinalDeliveryLedger {
 				return;
 			}
 			try {
+				this.currentTurnId = entry.turn.turnId;
 				await this.assertCanDeliver(generation);
 				entry.status = "delivering";
 				entry.updatedAtMs = now();
@@ -110,6 +126,10 @@ export class AssistantFinalDeliveryLedger {
 				await this.deliver(entry);
 				await this.complete(entry);
 			} catch (error) {
+				if (this.currentTurnId && this.cancelledTurnIds.has(this.currentTurnId)) {
+					this.cancelledTurnIds.delete(this.currentTurnId);
+					continue;
+				}
 				if (!this.isActive(generation) || error instanceof FinalDeliveryStoppedError) return;
 				if (isTerminalTelegramFinalDeliveryError(error)) {
 					entry.status = "terminal";
@@ -125,6 +145,8 @@ export class AssistantFinalDeliveryLedger {
 				await this.deps.persistBrokerState();
 				this.retryTimer = setTimeout(() => this.kick(), Math.max(0, entry.retryAtMs - now()));
 				return;
+			} finally {
+				if (this.currentTurnId === entry.turn.turnId) this.currentTurnId = undefined;
 			}
 		}
 	}
@@ -139,6 +161,7 @@ export class AssistantFinalDeliveryLedger {
 
 	private async assertCanDeliver(generation = this.generation): Promise<void> {
 		this.assertActive(generation);
+		if (this.currentTurnId && this.cancelledTurnIds.has(this.currentTurnId)) throw new FinalDeliveryCancelledError();
 		if (!(await this.deps.isBrokerActive())) {
 			this.stop();
 			throw new FinalDeliveryStoppedError();
@@ -360,6 +383,13 @@ class FinalDeliveryStoppedError extends Error {
 	constructor() {
 		super("Final delivery stopped");
 		this.name = "FinalDeliveryStoppedError";
+	}
+}
+
+class FinalDeliveryCancelledError extends Error {
+	constructor() {
+		super("Final delivery cancelled");
+		this.name = "FinalDeliveryCancelledError";
 	}
 }
 

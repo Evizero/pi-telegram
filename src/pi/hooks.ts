@@ -33,7 +33,9 @@ export interface RuntimePiHooksDeps {
 	connectTelegram: (ctx: ExtensionContext, notify?: boolean) => Promise<void>;
 	unregisterSession: (sessionId: string) => Promise<unknown>;
 	markSessionOffline: (sessionId: string) => Promise<unknown>;
+	disconnectSessionRoute: () => Promise<void>;
 	stopClientServer: () => Promise<void>;
+	shutdownClientRoute: () => void;
 	stopBroker: () => Promise<void>;
 	hideTelegramStatus: (ctx: ExtensionContext) => void;
 	updateStatus: (ctx: ExtensionContext, error?: string) => void;
@@ -112,10 +114,11 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 		description: "Disconnect this pi session from Telegram",
 		handler: async (_args, ctx) => {
 			deps.setLatestCtx(ctx);
-			if (deps.getIsBroker()) await deps.unregisterSession(deps.getSessionId());
-			else if (deps.getConnectedRoute()) await deps.postIpc(deps.getConnectedBrokerSocketPath(), "unregister_session", { sessionId: deps.getSessionId() }, deps.getSessionId()).catch(() => undefined);
-			await deps.stopClientServer();
-			deps.hideTelegramStatus(ctx);
+			try {
+				await deps.disconnectSessionRoute();
+			} finally {
+				deps.hideTelegramStatus(ctx);
+			}
 		},
 	});
 
@@ -169,11 +172,7 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 	pi.on("session_shutdown", async () => {
 		deps.setQueuedTelegramTurns([]);
 		deps.clearMediaGroups();
-		deps.setActiveTelegramTurn(undefined);
-		deps.setCurrentAbort(undefined);
-		if (deps.getIsBroker()) await deps.markSessionOffline(deps.getSessionId()).catch(() => undefined);
-		else if (deps.getConnectedRoute()) await deps.postIpc(deps.getConnectedBrokerSocketPath(), "mark_session_offline", { sessionId: deps.getSessionId() }, deps.getSessionId()).catch(() => undefined);
-		await deps.stopClientServer();
+		await deps.disconnectSessionRoute().catch(() => undefined);
 		await deps.stopBroker();
 	});
 

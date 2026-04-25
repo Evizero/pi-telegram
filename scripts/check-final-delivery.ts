@@ -15,7 +15,31 @@ function turn(id: string): PendingTelegramTurn {
 }
 
 function emptyState(): BrokerState {
-	return { schemaVersion: 1, recentUpdateIds: [], sessions: {}, routes: {}, pendingTurns: {}, pendingAssistantFinals: {}, completedTurnIds: [], createdAtMs: now(), updatedAtMs: now() };
+	return {
+		schemaVersion: 1,
+		recentUpdateIds: [],
+		sessions: {
+			s1: {
+				sessionId: "s1",
+				ownerId: "owner-1",
+				pid: 123,
+				cwd: "/tmp/project",
+				projectName: "project",
+				status: "busy",
+				queuedTurnCount: 0,
+				lastHeartbeatMs: now(),
+				connectedAtMs: now(),
+				clientSocketPath: "/tmp/client.sock",
+				topicName: "project · main",
+			},
+		},
+		routes: { "123:9": { routeId: "123:9", sessionId: "s1", chatId: 123, messageThreadId: 9, routeMode: "forum_supergroup_topic", topicName: "project · main", createdAtMs: now(), updatedAtMs: now() } },
+		pendingTurns: {},
+		pendingAssistantFinals: {},
+		completedTurnIds: [],
+		createdAtMs: now(),
+		updatedAtMs: now(),
+	};
 }
 
 function hash(text: string): string {
@@ -44,7 +68,7 @@ function fakePreview(): PreviewManager {
 
 function makeLedger(options?: {
 	state?: BrokerState;
-	callTelegram?: (method: string, body: Record<string, unknown>) => Promise<unknown>;
+	callTelegram?: (method: string, body: Record<string, unknown>, options?: { signal?: AbortSignal }) => Promise<unknown>;
 	callTelegramMultipart?: (method: string, fields: Record<string, string>, fileField: string, filePath: string, fileName: string) => Promise<unknown>;
 }) {
 	let state = options?.state ?? emptyState();
@@ -58,7 +82,7 @@ function makeLedger(options?: {
 		activityComplete: async () => undefined,
 		stopTypingLoop: () => undefined,
 		previewManager: fakePreview(),
-		callTelegram: async <TResponse>(method: string, body: Record<string, unknown>) => (options?.callTelegram ? await options.callTelegram(method, body) : { message_id: 1 }) as TResponse,
+		callTelegram: async <TResponse>(method: string, body: Record<string, unknown>, requestOptions?: { signal?: AbortSignal }) => (options?.callTelegram ? await options.callTelegram(method, body, requestOptions) : { message_id: 1 }) as TResponse,
 		callTelegramMultipart: async <TResponse>(method: string, fields: Record<string, string>, fileField: string, filePath: string, fileName: string) => (options?.callTelegramMultipart ? await options.callTelegramMultipart(method, fields, fileField, filePath, fileName) : { message_id: 1 }) as TResponse,
 		isBrokerActive: () => true,
 		rememberCompletedBrokerTurn: async (turnId) => { if (!state.completedTurnIds?.includes(turnId)) state.completedTurnIds?.push(turnId); completed.push(turnId); },
@@ -227,6 +251,43 @@ async function checkDeletePreviewRetryAfterStopsReplacementSend(): Promise<void>
 	env.ledger.clearTimer();
 }
 
+async function checkDetachedSessionFinalIsIgnored(): Promise<void> {
+	const state = { ...emptyState(), sessions: {}, routes: {} };
+	const env = makeLedger({ state });
+	await env.ledger.accept({ turn: turn("ignored"), text: "ignored", attachments: [] });
+	assert.equal(env.state.pendingAssistantFinals?.ignored, undefined);
+	assert.deepEqual(env.state.completedTurnIds, []);
+}
+
+async function checkDisconnectCancelsInFlightFinalDelivery(): Promise<void> {
+	const state = emptyState();
+	state.pendingAssistantFinals = {
+		cancel: entry("cancel", { text: "final" }),
+	};
+	let started = false;
+	let aborted = false;
+	const env = makeLedger({
+		state,
+		callTelegram: async (_method, _body, options) => {
+			started = true;
+			await new Promise<never>((_resolve, reject) => {
+				options?.signal?.addEventListener("abort", () => {
+					aborted = true;
+					reject(new DOMException("Aborted", "AbortError"));
+				});
+			});
+		},
+	});
+	const draining = env.ledger.drainReady();
+	while (!started) await new Promise((resolveValue) => setTimeout(resolveValue, 0));
+	await env.ledger.cancelSession("s1");
+	delete env.state.pendingAssistantFinals?.cancel;
+	await draining;
+	assert.equal(aborted, true);
+	assert.equal(env.completed.includes("cancel"), false);
+	assert.equal(env.state.pendingAssistantFinals?.cancel, undefined);
+}
+
 async function checkRetryAfterBlocksNewerFinals(): Promise<void> {
 	const textCalls: string[] = [];
 	const state = emptyState();
@@ -256,5 +317,7 @@ await checkDurablePreviewMessageIsFinalizedAfterRestart();
 await checkBrokerStopPreventsFurtherDelivery();
 await checkClearPreviewRetryAfterStaysPending();
 await checkDeletePreviewRetryAfterStopsReplacementSend();
+await checkDetachedSessionFinalIsIgnored();
+await checkDisconnectCancelsInFlightFinalDelivery();
 await checkRetryAfterBlocksNewerFinals();
 console.log("Final delivery ledger checks passed");
