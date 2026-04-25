@@ -29,6 +29,23 @@ pi -e git:github.com/badlogic/pi-telegram
 3. Pick a name and username
 4. Copy the bot token
 
+Optional: run `/setcommands` in BotFather and paste this block so Telegram autocompletes bridge commands:
+
+```text
+start - Show help and pairing instructions
+help - Show available commands
+sessions - List active pi sessions
+use - Select a pi session in selector mode
+status - Show selected session status
+model - Show or change the selected session model
+compact - Compact the selected session context
+follow - Queue a follow-up for after the active run
+stop - Stop the active run
+disconnect - Disconnect the selected pi session
+broker - Show Telegram broker status
+topicsetup - Use this group for per-session topics
+```
+
 ### pi
 
 Start pi, then run:
@@ -45,15 +62,17 @@ The extension stores config in:
 ~/.pi/agent/telegram.json
 ```
 
-## Connect a pi session
+## Connect pi sessions
 
-The Telegram bridge is session-local. Connect it only in the pi session that should own the bot:
+Run this in each pi session you want reachable from Telegram:
 
 ```bash
 /telegram-connect
 ```
 
-To stop polling in the current session:
+One connected session becomes the broker that polls Telegram; other sessions register with it and get their own route/topic. Use `/sessions` and `/use` from Telegram to inspect and select sessions when selector routing is active.
+
+To disconnect the current session and remove its route/topic:
 
 ```bash
 /telegram-disconnect
@@ -70,9 +89,9 @@ Check status:
 After token setup and `/telegram-connect`:
 
 1. Open the DM with your bot in Telegram
-2. Send `/start`
+2. Send the exact `/start <code>` shown by pi during setup
 
-The first DM user becomes the allowed Telegram user for the bridge. The extension only accepts messages from that user.
+The user who sends the valid pairing code becomes the allowed Telegram user for the bridge. Plain `/start` is not enough once pairing-code setup is active.
 
 ## Usage
 
@@ -117,9 +136,15 @@ or:
 
 That aborts the active pi turn.
 
-### Queue follow-ups
+### Steer and queue follow-ups
 
-If you send more Telegram messages while pi is busy, they are queued and processed in order.
+If you send a normal Telegram message while pi is busy, it is delivered as steering for the active run.
+
+To queue work for after the active run finishes, send:
+
+```text
+/follow run all tests
+```
 
 ## Streaming
 
@@ -129,7 +154,7 @@ It tries Telegram draft streaming first with `sendMessageDraft`. If that is not 
 
 ## Notes
 
-- Only one pi session should be connected to the bot at a time
+- Multiple pi sessions can connect to the same bot; one acts as broker while the others register as clients
 - Replies are sent as normal Telegram messages, not quote-replies
 - Long replies are split below Telegram's 4096 character limit
 - Outbound files are sent via `telegram_attach`
