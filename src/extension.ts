@@ -27,6 +27,7 @@ import type {
 	ModelSummary,
 	PendingTelegramTurn,
 	QueuedAttachment,
+	AssistantFinalPayload,
 	SessionRegistration,
 	TelegramApiResponse,
 	TelegramConfig,
@@ -43,6 +44,7 @@ import { ActivityRenderer, ActivityReporter, thinkingActivityLine, toolActivityL
 import { unregisterSessionFromBroker, markSessionOfflineInBroker } from "./broker/sessions.js";
 import { createRuntimeUpdateHandlers } from "./broker/updates.js";
 import { clientQueryModels as buildClientQueryModels, clientSetModel as setClientModel, clientStatusText as buildClientStatusText } from "./client/info.js";
+import { AssistantFinalRetryQueue, isTerminalTelegramFinalDeliveryError, terminalTelegramFinalDeliveryReason } from "./client/final-delivery.js";
 import { TelegramCommandRouter, telegramCommandName } from "./broker/commands.js";
 import { extractAssistantText, getMessageText, getThinkingTitleFromEvent, isAssistantMessage } from "./shared/messages.js";
 import {
@@ -96,9 +98,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	let telegramStatusVisible = false;
 	const mediaGroups = new Map<string, TelegramMediaGroupState>();
 	const typingLoops = new Map<string, ReturnType<typeof setInterval>>();
-	type AssistantFinalPayload = { turn: PendingTelegramTurn; text?: string; stopReason?: string; errorMessage?: string; attachments: QueuedAttachment[] };
-	const pendingAssistantFinals: AssistantFinalPayload[] = [];
-	let pendingAssistantFinalRetryAtMs = 0;
+	const assistantFinalQueue = new AssistantFinalRetryQueue();
 	const completedTurnIds = new Set<string>();
 	const routeEnsures = new Map<string, Promise<TelegramRoute>>();
 	let brokerStatePersistQueue = Promise.resolve();
@@ -701,7 +701,11 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		if (brokerState.completedTurnIds.includes(turn.turnId)) return { ok: true };
 		const existing = brokerFinalizingTurns.get(turn.turnId);
 		if (existing) {
-			await existing;
+			try {
+				await existing;
+			} catch (error) {
+				if (!isTerminalTelegramFinalDeliveryError(error)) throw error;
+			}
 			return { ok: true };
 		}
 		const completion = (async () => {
@@ -732,6 +736,13 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		brokerFinalizingTurns.set(turn.turnId, completion);
 		try {
 			await completion;
+		} catch (error) {
+			if (!isTerminalTelegramFinalDeliveryError(error)) throw error;
+			console.warn(`[pi-telegram] Terminal Telegram final delivery failure for ${turn.turnId}: ${terminalTelegramFinalDeliveryReason(error)}`);
+			await previewManager.clear(turn.turnId, turn.chatId, turn.messageThreadId).catch(() => undefined);
+			await rememberCompletedBrokerTurn(turn.turnId);
+			if (brokerState?.pendingTurns?.[turn.turnId]) delete brokerState.pendingTurns[turn.turnId];
+			await persistBrokerState();
 		} finally {
 			brokerFinalizingTurns.delete(turn.turnId);
 		}
@@ -786,15 +797,6 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		}
 	}
 
-	function pendingAssistantFinalFor(turnId: string): AssistantFinalPayload | undefined {
-		return pendingAssistantFinals.find((pending) => pending.turn.turnId === turnId);
-	}
-
-	function removePendingAssistantFinal(turnId: string): void {
-		const index = pendingAssistantFinals.findIndex((pending) => pending.turn.turnId === turnId);
-		if (index >= 0) pendingAssistantFinals.splice(index, 1);
-	}
-
 	async function acknowledgeConsumedTurn(turnId: string): Promise<void> {
 		rememberCompletedLocalTurn(turnId);
 		await postIpc(connectedBrokerSocketPath, "turn_consumed", { turnId }, sessionId).catch(() => undefined);
@@ -802,7 +804,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 
 	async function clientDeliverTurn(turn: PendingTelegramTurn): Promise<{ accepted: true }> {
 		if (completedTurnIds.has(turn.turnId)) {
-			const pendingFinal = pendingAssistantFinalFor(turn.turnId);
+			const pendingFinal = assistantFinalQueue.find(turn.turnId);
 			if (pendingFinal) {
 				await sendAssistantFinalToBroker(pendingFinal);
 				return { accepted: true };
@@ -895,24 +897,18 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	}
 
 
-	function queuePendingAssistantFinal(payload: AssistantFinalPayload, retryAfterMs?: number): void {
-		if (!pendingAssistantFinalFor(payload.turn.turnId)) pendingAssistantFinals.push(payload);
-		if (retryAfterMs !== undefined) pendingAssistantFinalRetryAtMs = Math.max(pendingAssistantFinalRetryAtMs, now() + retryAfterMs + 250);
-	}
-
-	async function sendAssistantFinalToBroker(payload: AssistantFinalPayload): Promise<boolean> {
-		if (pendingAssistantFinals.length > 0 || now() < pendingAssistantFinalRetryAtMs) {
-			queuePendingAssistantFinal(payload);
+	async function sendAssistantFinalToBroker(payload: AssistantFinalPayload, fromRetryQueue = false): Promise<boolean> {
+		if (!fromRetryQueue && assistantFinalQueue.deferNewFinals()) {
+			assistantFinalQueue.enqueue(payload);
 			return false;
 		}
 		try {
 			await postIpc(connectedBrokerSocketPath, "assistant_final", payload, sessionId);
-			removePendingAssistantFinal(payload.turn.turnId);
+			assistantFinalQueue.markDelivered(payload.turn.turnId);
 			return true;
 		} catch (error) {
-			const retryAfterMs = getTelegramRetryAfterMs(error);
-			if (retryAfterMs !== undefined) {
-				queuePendingAssistantFinal(payload, retryAfterMs);
+			if (getTelegramRetryAfterMs(error) !== undefined) {
+				assistantFinalQueue.markRetryable(payload, error);
 				return false;
 			}
 			const lease = await readLease();
@@ -920,29 +916,24 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 				connectedBrokerSocketPath = lease!.socketPath;
 				try {
 					await postIpc(connectedBrokerSocketPath, "assistant_final", payload, sessionId);
-					removePendingAssistantFinal(payload.turn.turnId);
+					assistantFinalQueue.markDelivered(payload.turn.turnId);
 					return true;
 				} catch (retryError) {
-					const retryAfter = getTelegramRetryAfterMs(retryError);
-					queuePendingAssistantFinal(payload, retryAfter);
+					assistantFinalQueue.markRetryable(payload, retryError);
 					return false;
 				}
 			}
 		}
-		queuePendingAssistantFinal(payload);
+		assistantFinalQueue.markRetryable(payload);
 		return false;
 	}
 
 	async function retryPendingAssistantFinals(): Promise<void> {
-		if (pendingAssistantFinals.length === 0 || now() < pendingAssistantFinalRetryAtMs) return;
-		pendingAssistantFinalRetryAtMs = 0;
-		const pending = pendingAssistantFinals.splice(0);
-		for (let index = 0; index < pending.length; index += 1) {
-			await sendAssistantFinalToBroker(pending[index]);
-			if (now() < pendingAssistantFinalRetryAtMs) {
-				for (let restIndex = index + 1; restIndex < pending.length; restIndex += 1) queuePendingAssistantFinal(pending[restIndex]);
-				break;
-			}
+		while (true) {
+			const pending = assistantFinalQueue.beginReadyAttempt();
+			if (!pending) return;
+			const delivered = await sendAssistantFinalToBroker(pending, true);
+			if (!delivered) return;
 		}
 	}
 

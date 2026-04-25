@@ -776,6 +776,8 @@ execution records.
 - `src/broker/sessions.ts` — broker-side offline/unregister cleanup.
 - `src/broker/updates.ts` — Telegram polling, authorization gate, update offset,
   media groups, offline marking, and pending-turn retry.
+- `src/client/final-delivery.ts` — client-side assistant-final retry queue
+  state and terminal Telegram delivery classification.
 - `src/client/info.ts` — session/model status text and model command helpers.
 - `src/client/session-registration.ts` — collection of local session metadata.
 - `src/pi/hooks.ts` — pi commands, pi events, prompt suffix, and

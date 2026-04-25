@@ -159,6 +159,14 @@ export interface PendingTelegramTurn {
 
 export type ActiveTelegramTurn = PendingTelegramTurn;
 
+export interface AssistantFinalPayload {
+	turn: PendingTelegramTurn;
+	text?: string;
+	stopReason?: string;
+	errorMessage?: string;
+	attachments: QueuedAttachment[];
+}
+
 export interface TelegramPreviewState {
 	mode: "draft" | "message";
 	draftId?: number;
