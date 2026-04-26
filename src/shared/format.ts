@@ -115,8 +115,9 @@ export function formatLocalUserMirrorMessage(text: string, imagesCount?: number)
 }
 
 export function topicNameFor(reg: Pick<SessionRegistration, "projectName" | "gitBranch" | "piSessionName" | "sessionId">): string {
+	const normalizedBranch = reg.gitBranch?.trim();
 	const pieces = [reg.projectName];
-	if (reg.gitBranch) pieces.push(reg.gitBranch);
+	if (normalizedBranch && normalizedBranch.toLowerCase() !== "main") pieces.push(normalizedBranch);
 	if (reg.piSessionName && !pieces.some((piece) => piece.toLowerCase() === reg.piSessionName?.toLowerCase())) pieces.push(reg.piSessionName);
 	let name = pieces.join(" · ").replace(/[\t\n\r]+/g, " ").replace(/\s+/g, " ").trim() || "pi-session";
 	if (name.length > 128) name = `${name.slice(0, 119)}… ${hashSecret(reg.sessionId).slice(0, 6)}`;

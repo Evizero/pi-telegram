@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { formatLocalUserMirrorMessage } from "../src/shared/format.js";
+import { formatLocalUserMirrorMessage, topicNameFor } from "../src/shared/format.js";
 import { clearPairingState, isMessageBeforePairingWindow, isPairingPending, PAIRING_MAX_FAILED_ATTEMPTS, PAIRING_PIN_TTL_MS, pairingCandidateFromText } from "../src/shared/pairing.js";
 import type { TelegramConfig, TelegramMessage } from "../src/shared/types.js";
 
@@ -53,8 +53,24 @@ function assertLocalUserMirrorFormatting(): void {
 	assert.equal(formatLocalUserMirrorMessage("<b>literal</b>", 2), "PI User Message\n\n<b>literal</b>\n\n[2 image(s) attached in pi]");
 }
 
+function assertTopicNameFormatting(): void {
+	assert.equal(topicNameFor({ projectName: "pi-telegram", gitBranch: "main", sessionId: "session-1" }), "pi-telegram");
+	assert.equal(topicNameFor({ projectName: "pi-telegram", gitBranch: " feature/test ", sessionId: "session-1" }), "pi-telegram · feature/test");
+	assert.equal(topicNameFor({ projectName: "pi-telegram", gitBranch: "MAIN", piSessionName: "Review", sessionId: "session-1" }), "pi-telegram · Review");
+	assert.equal(topicNameFor({ projectName: "pi-telegram", gitBranch: "dev", piSessionName: "DEV", sessionId: "session-1" }), "pi-telegram · dev");
+	const truncated = topicNameFor({
+		projectName: "p".repeat(70),
+		gitBranch: "feature/".concat("x".repeat(70)),
+		piSessionName: "session-name",
+		sessionId: "session-1",
+	});
+	assert.equal(truncated.length <= 128, true);
+	assert.match(truncated, /… [0-9a-f]{6}$/);
+}
+
 assertPairingParsing();
 assertPairingWindow();
 assertPairingClear();
 assertLocalUserMirrorFormatting();
+assertTopicNameFormatting();
 console.log("Pairing and local-user mirror checks passed");
