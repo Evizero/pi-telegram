@@ -220,7 +220,7 @@ async function checkShutdownRouteClearsPendingFinalRetryQueue(): Promise<void> {
 		setQueuedTelegramTurns: (turns) => { queuedTurns = turns; },
 		setActiveTelegramTurn: (turn) => { activeTurn = turn; },
 		setConnectedRoute: (route) => { connectedRoute = route; },
-		assistantFinalQueue: queue,
+		clearAssistantFinalHandoff: () => queue.clear(),
 	});
 
 	assert.deepEqual(queuedTurns, []);
@@ -249,7 +249,7 @@ async function checkShutdownRouteCanPreservePendingFinalRetryQueue(): Promise<vo
 		setQueuedTelegramTurns: () => undefined,
 		setActiveTelegramTurn: () => undefined,
 		setConnectedRoute: () => undefined,
-		assistantFinalQueue: queue,
+		clearAssistantFinalHandoff: () => queue.clear(),
 		clearAssistantFinalQueue: false,
 	});
 	assert.ok(queue.find("turn-final"));

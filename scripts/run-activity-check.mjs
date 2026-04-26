@@ -17,6 +17,7 @@ execFileSync(process.execPath, [join(outDir, "scripts", "check-preview-manager.j
 execFileSync(process.execPath, [join(outDir, "scripts", "check-client-compact.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-client-turn-delivery.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-client-abort-turn.js")], { stdio: "inherit" });
+execFileSync(process.execPath, [join(outDir, "scripts", "check-client-final-handoff.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-retry-aware-finalization.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-runtime-pi-hooks.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-manual-compaction.js")], { stdio: "inherit" });

@@ -7,6 +7,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { MAX_ATTACHMENTS_PER_TURN, MAX_FILE_BYTES, STATE_PATH, SYSTEM_PROMPT_SUFFIX } from "../shared/config.js";
 import { thinkingActivityLine, toolActivityLine, type ActivityReporter } from "../broker/activity.js";
 import { isTelegramPrompt } from "../shared/format.js";
+import { isRetryableAssistantError } from "../shared/assistant-errors.js";
 import { extractAssistantText, getMessageText, getThinkingTitleFromEvent, isAssistantMessage } from "../shared/messages.js";
 import type { ActiveTelegramTurn, BrokerState, PendingTelegramTurn, QueuedAttachment, TelegramRoute } from "../shared/types.js";
 import { errorMessage, randomId, readJson } from "../shared/utils.js";
@@ -45,6 +46,7 @@ export interface RuntimePiHooksDeps {
 	updateStatus: (ctx: ExtensionContext, error?: string) => void;
 	readLease: () => Promise<{ ownerId?: string; leaseEpoch?: number; leaseUntilMs?: number } | undefined>;
 	sendAssistantFinalToBroker: (payload: { turn: PendingTelegramTurn; text?: string; stopReason?: string; errorMessage?: string; attachments: QueuedAttachment[] }) => Promise<boolean>;
+	prepareAssistantFinalForHandoff?: (payload: { turn: PendingTelegramTurn; text?: string; stopReason?: string; errorMessage?: string; attachments: QueuedAttachment[] }) => Promise<void>;
 	finalizeActiveTelegramTurn: (payload: { turn: PendingTelegramTurn; text?: string; stopReason?: string; errorMessage?: string; attachments: QueuedAttachment[] }) => Promise<"completed" | "deferred">;
 	onAgentRetryStart: () => void;
 	onRetryMessageStart: () => void;
@@ -249,8 +251,16 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 		try {
 			if (turn) {
 				const assistant = extractAssistantText(event.messages);
-				await deps.activityReporter.flush();
-				await deps.finalizeActiveTelegramTurn({ turn, text: assistant.text, stopReason: assistant.stopReason, errorMessage: assistant.errorMessage, attachments: turn.queuedAttachments });
+				const finalPayload = { turn, text: assistant.text, stopReason: assistant.stopReason, errorMessage: assistant.errorMessage, attachments: turn.queuedAttachments };
+				const retryDeferred = !assistant.text?.trim() && isRetryableAssistantError(assistant.stopReason, assistant.errorMessage);
+				if (retryDeferred) {
+					await deps.finalizeActiveTelegramTurn(finalPayload);
+					await deps.activityReporter.flush();
+				} else {
+					await deps.prepareAssistantFinalForHandoff?.(finalPayload);
+					await deps.activityReporter.flush();
+					await deps.finalizeActiveTelegramTurn(finalPayload);
+				}
 			} else {
 				deps.startNextTelegramTurn();
 			}

@@ -138,6 +138,9 @@ The repository must remain understandable to future human and agent maintainers.
 Responsibility folders, `docs.md`, `AGENTS.md`, local TypeScript validation, and
 PLN requirements all exist so future changes can be checked against purpose,
 requirements, Telegram API constraints, and architecture instead of chat memory.
+Reliability code should prefer one explicit owner per lifecycle concern over
+parallel retry, replay, cleanup, or preview mechanisms that are almost but not
+quite the same feature.
 
 ## Quality scenarios
 
@@ -478,10 +481,10 @@ state together.
 It may own cross-cutting orchestration that genuinely spans those boundaries,
 but it should not become the permanent home for every concern.
 
-Current-state note: this file is still large and close to the 1,000-line guard
-rail.
-Future work should extract cohesive broker lease/state/session lifecycle and
-client turn lifecycle modules without changing the product boundaries.
+Current-state note: this file is above the 1,000-line guard rail.
+Future work should extract cohesive broker lease/state/session lifecycle, client
+turn lifecycle, and client final-handoff modules without changing the product
+boundaries.
 
 ### Broker modules: `src/broker/`
 
@@ -509,6 +512,14 @@ routing and session lists.
 `client/info.ts` formats client-visible status and model information.
 These modules keep session identity and model metadata separate from Telegram
 command parsing.
+
+Client turn and finalization modules own execution-side lifecycle decisions:
+turn delivery, abort handling, manual-compaction gating, route shutdown, and
+retry-aware active-turn finalization belong under `src/client/` rather than in
+broker modules or Telegram API modules. The client may protect assistant-final
+handoff until the broker durably accepts the payload, but after acceptance the
+broker final ledger owns delivery, retry ordering, terminal outcomes, and visible
+progress.
 
 ### pi integration: `src/pi/hooks.ts`
 
@@ -716,10 +727,11 @@ ordinary runtime churn.
 Routes are durable only as active or reconnectable Telegram views; they should be
 removed when the connection lifecycle ends and any required topic cleanup has
 reached a retry-safe outcome.
-Selector-mode session choices are persisted in broker state. Queued assistant
-finals are target durable state under the architecture contract, but the current
-implementation still keeps some final-delivery lifecycle details in memory; that
-gap is called out in the migration notes.
+Selector-mode session choices are persisted in broker state. Assistant finals
+become broker-owned durable delivery state when the broker accepts them into the
+assistant-final ledger. Client-side final persistence, where it exists, should be
+limited to the pre-acceptance handoff ambiguity window and must not become a
+parallel durable delivery system.
 Typing loops, in-flight preview timers, current socket attempts, and local
 activity flushes are ephemeral.
 Future code must not delete durable or target-durable delivery state merely to
@@ -816,13 +828,15 @@ requirements, and guidance together when the API contract changes.
 
 ### Composition root size
 
-`src/extension.ts` remains the largest file and is close to the 1,000-line
-limit.
-It is acceptable as the current composition root, but it should shrink as future
-work extracts cohesive broker lease/state/session lifecycle and client turn
-lifecycle modules.
+`src/extension.ts` remains the largest file and is above the 1,000-line guard
+rail.
+It is acceptable only as a transitional composition root; it should shrink as
+future work extracts cohesive broker lease/state/session lifecycle, client turn
+lifecycle, and client final-handoff modules.
 Extraction should preserve dependency injection and ownership boundaries rather
-than merely moving a god file to another name.
+than merely moving a god file to another name. The first planned maintainability
+slice is to remove duplicated assistant-final handoff policy from
+`src/extension.ts` while keeping broker final delivery in `src/broker/finals.ts`.
 
 ### Limited automated test surface
 
@@ -849,18 +863,25 @@ client runtime, preview/final delivery, and pi-hook lifecycle.
 until Telegram delivery succeeds or a terminal non-retryable outcome is recorded.
 The broker now persists assistant-final payloads in
 `BrokerState.pendingAssistantFinals` before visible Telegram final delivery. The
-client-side retry queue only protects the handoff until durable broker
-acceptance; after that, the broker delivery ledger owns FIFO ordering,
-`retry_after` delay, terminal outcome classification, and resumable chunk and
-attachment progress.
+client-side retry queue and any client-side pending-final files should protect
+only the handoff until durable broker acceptance; after that, the broker delivery
+ledger owns FIFO ordering, `retry_after` delay, terminal outcome classification,
+and resumable chunk and attachment progress.
 
 `SyRS-retry-aware-agent-finals` adds a client-side pressure point before broker
 acceptance: pi can emit an `agent_end` for a retryable transient provider error
 before the session auto-retry layer produces the final answer the local user
 sees. Finalization logic must not convert that intermediate event into a
-completed Telegram final. Future extraction should give this concern a cohesive
-client finalization home rather than scattering deferred retry state across
-unrelated callbacks.
+completed Telegram final. This concern belongs in cohesive client finalization
+and final-handoff modules rather than in scattered composition-root callbacks.
+
+The intended final-handoff boundary is narrow: client code may retry or persist a
+final only while broker acceptance is ambiguous. Duplicate or redelivered handoff
+attempts for the same turn must converge on one broker ledger entry. Stale-client
+stand-down must either prevent broker-visible final mutation or use one explicit,
+tested pre-acceptance handoff exception. Client code must not reimplement broker
+chunk progress, attachment progress, terminal Telegram failure classification, or
+FIFO delivery ordering.
 
 The ledger reduces duplicate visible output by skipping chunks and attachments
 already recorded as delivered. It cannot provide mathematical exactly-once
@@ -888,10 +909,13 @@ leaving Telegram rendering in `src/broker/activity.ts`.
 
 ### Planning maturity
 
-Purpose, StRS, SyRS, and architecture now exist, but no implementation tasks or
-verification cases have been derived from them yet.
-Until that happens, requirements are planning baseline rather than task-level
-execution records.
+Purpose, StRS, SyRS, architecture, and traced implementation tasks now exist for
+major bridge behavior and for the first Telegram reliability maintainability
+slice. Verification cases remain mostly planned through task validation and local
+check scripts rather than through a complete formal verification registry.
+Requirements remain the behavior baseline; tasks are execution records for
+specific implementation slices, not replacements for requirement or architecture
+ownership.
 
 ## Repository mapping
 
@@ -903,8 +927,12 @@ execution records.
 - `src/broker/sessions.ts` — broker-side offline/unregister cleanup.
 - `src/broker/updates.ts` — Telegram polling, authorization gate, update offset,
   media groups, offline marking, and pending-turn retry.
-- `src/client/final-delivery.ts` — client-side assistant-final retry queue
-  state and terminal Telegram delivery classification.
+- `src/client/final-delivery.ts` — current client-side assistant-final handoff
+  retry queue; target ownership is pre-broker-acceptance handoff only, not
+  durable Telegram final delivery.
+- `src/client/retry-aware-finalization.ts` — client-side deferral of transient
+  retryable assistant/provider final errors until a stable final or terminal
+  outcome is known.
 - `src/client/info.ts` — session/model status text and model command helpers.
 - `src/client/session-registration.ts` — collection of local session metadata.
 - `src/pi/hooks.ts` — pi commands, pi events, prompt suffix, and

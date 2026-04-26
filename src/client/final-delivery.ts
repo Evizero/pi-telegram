@@ -21,8 +21,19 @@ export class AssistantFinalRetryQueue {
 		if (retryAfterMs !== undefined) this.retryAtMs = Math.max(this.retryAtMs, now() + retryAfterMs + 250);
 	}
 
+	replacePending(payload: AssistantFinalPayload, retryAfterMs?: number): void {
+		const index = this.pending.findIndex((candidate) => candidate.turn.turnId === payload.turn.turnId);
+		if (index >= 0) this.pending[index] = payload;
+		else this.pending.push(payload);
+		if (retryAfterMs !== undefined) this.retryAtMs = Math.max(this.retryAtMs, now() + retryAfterMs + 250);
+	}
+
 	deferNewFinals(): boolean {
 		return this.pending.length > 0 || this.attemptingTurnId !== undefined || now() < this.retryAtMs;
+	}
+
+	canAttemptOnlyPendingTurn(turnId: string): boolean {
+		return this.pending.length === 1 && this.pending[0]?.turn.turnId === turnId && this.attemptingTurnId === undefined && now() >= this.retryAtMs;
 	}
 
 	beginReadyAttempt(): AssistantFinalPayload | undefined {
