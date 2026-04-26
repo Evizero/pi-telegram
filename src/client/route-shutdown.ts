@@ -6,11 +6,12 @@ export interface TelegramClientRouteShutdownDeps {
 	setActiveTelegramTurn: (turn: ActiveTelegramTurn | undefined) => void;
 	setConnectedRoute: (route: TelegramRoute | undefined) => void;
 	assistantFinalQueue: AssistantFinalRetryQueue;
+	clearAssistantFinalQueue?: boolean;
 }
 
 export function shutdownTelegramClientRoute(deps: TelegramClientRouteShutdownDeps): void {
 	deps.setQueuedTelegramTurns([]);
 	deps.setActiveTelegramTurn(undefined);
-	deps.assistantFinalQueue.clear();
+	if (deps.clearAssistantFinalQueue ?? true) deps.assistantFinalQueue.clear();
 	deps.setConnectedRoute(undefined);
 }

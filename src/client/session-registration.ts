@@ -11,13 +11,15 @@ export async function collectSessionRegistration(options: {
 	sessionId: string;
 	ownerId: string;
 	startedAtMs: number;
+	connectionStartedAtMs: number;
+	connectionNonce: string;
 	clientSocketPath: string;
 	piSessionName?: string;
 	activeTelegramTurn?: ActiveTelegramTurn;
 	queuedTelegramTurns: PendingTelegramTurn[];
 	manualCompactionInProgress?: boolean;
 }): Promise<SessionRegistration> {
-	const { ctx, sessionId, ownerId, startedAtMs, clientSocketPath, piSessionName, activeTelegramTurn, queuedTelegramTurns, manualCompactionInProgress } = options;
+	const { ctx, sessionId, ownerId, startedAtMs, connectionStartedAtMs, connectionNonce, clientSocketPath, piSessionName, activeTelegramTurn, queuedTelegramTurns, manualCompactionInProgress } = options;
 	const gitRoot = await execGit(ctx.cwd, ["rev-parse", "--show-toplevel"]);
 	const gitBranch = await execGit(ctx.cwd, ["branch", "--show-current"]);
 	const gitHead = await execGit(ctx.cwd, ["rev-parse", "--short", "HEAD"]);
@@ -39,6 +41,8 @@ export async function collectSessionRegistration(options: {
 		queuedTurnCount: queuedTelegramTurns.length,
 		lastHeartbeatMs: now(),
 		connectedAtMs: startedAtMs,
+		connectionStartedAtMs,
+		connectionNonce,
 		clientSocketPath,
 		topicName: "",
 	};

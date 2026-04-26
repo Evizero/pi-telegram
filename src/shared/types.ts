@@ -151,6 +151,7 @@ export interface QueuedAttachment {
 export interface PendingTelegramTurn {
 	turnId: string;
 	sessionId: string;
+	routeId?: string;
 	chatId: number | string;
 	messageThreadId?: number;
 	replyToMessageId: number;
@@ -213,6 +214,7 @@ export interface TelegramPreviewState {
 	messageId?: number;
 	pendingText: string;
 	lastSentText: string;
+	preserveForRetry?: boolean;
 	flushTimer?: ReturnType<typeof setTimeout>;
 }
 
@@ -237,6 +239,10 @@ export interface SessionRegistration {
 	queuedTurnCount: number;
 	lastHeartbeatMs: number;
 	connectedAtMs: number;
+	connectionStartedAtMs: number;
+	connectionNonce: string;
+	staleStandDownConnectionNonce?: string;
+	staleStandDownRequestedAtMs?: number;
 	clientSocketPath: string;
 	topicName: string;
 }
@@ -293,6 +299,7 @@ export interface IpcEnvelope<TPayload = unknown> {
 	id: string;
 	type: string;
 	session_id?: string;
+	connection_nonce?: string;
 	payload: TPayload;
 	sent_at_ms: number;
 }

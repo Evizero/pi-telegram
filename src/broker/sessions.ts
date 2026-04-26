@@ -66,6 +66,22 @@ function removeTurnStateForSession(brokerState: BrokerState, targetSessionId: st
 	}
 }
 
+function pendingOfflineSessionState(brokerState: BrokerState, targetSessionId: string, stopTypingLoop: (turnId: string) => void): { hasPendingTurns: boolean; hasPendingAssistantFinals: boolean } {
+	let hasPendingTurns = false;
+	let hasPendingAssistantFinals = false;
+	for (const [turnId, pending] of Object.entries(brokerState.pendingTurns ?? {})) {
+		if (pending.turn.sessionId !== targetSessionId) continue;
+		stopTypingLoop(turnId);
+		hasPendingTurns = true;
+	}
+	for (const [turnId, pending] of Object.entries(brokerState.pendingAssistantFinals ?? {})) {
+		if (pending.turn.sessionId !== targetSessionId) continue;
+		stopTypingLoop(turnId);
+		hasPendingAssistantFinals = true;
+	}
+	return { hasPendingTurns, hasPendingAssistantFinals };
+}
+
 function detachSessionRoutes(brokerState: BrokerState, targetSessionId: string): TelegramRoute[] {
 	const removedRoutes: TelegramRoute[] = [];
 	for (const [id, route] of Object.entries(brokerState.routes)) {
@@ -74,6 +90,18 @@ function detachSessionRoutes(brokerState: BrokerState, targetSessionId: string):
 		delete brokerState.routes[id];
 	}
 	return removedRoutes;
+}
+
+function shouldPreservePreviewRefOnDeleteFailure(error: unknown): boolean {
+	if (!(error instanceof TelegramApiError)) return true;
+	const errorCode = error.errorCode ?? 0;
+	return errorCode === 429 || errorCode >= 500;
+}
+
+function isMissingDeletedPreviewError(error: unknown): boolean {
+	return error instanceof TelegramApiError
+		&& error.errorCode === 400
+		&& /message to delete not found/i.test(error.description ?? error.message);
 }
 
 function isAlreadyDeletedTopicError(error: unknown): boolean {
@@ -100,6 +128,22 @@ function isTerminalTopicCleanupError(error: unknown): boolean {
 function topicCleanupFailureReason(error: unknown): string {
 	if (error instanceof TelegramApiError) return `${error.method}: ${error.description ?? error.message}`;
 	return errorMessage(error);
+}
+
+async function clearVisiblePendingTurnPreviews(options: Pick<SessionCleanupOptions, "callTelegram">, brokerState: BrokerState, targetSessionId: string): Promise<void> {
+	for (const [turnId, pending] of Object.entries(brokerState.pendingTurns ?? {})) {
+		if (pending.turn.sessionId !== targetSessionId) continue;
+		const preview = brokerState.assistantPreviewMessages?.[turnId];
+		if (!preview) continue;
+		try {
+			await options.callTelegram("deleteMessage", { chat_id: preview.chatId, message_id: preview.messageId });
+			delete brokerState.assistantPreviewMessages?.[turnId];
+		} catch (error) {
+			if (shouldPreservePreviewRefOnDeleteFailure(error)) continue;
+			if (!isMissingDeletedPreviewError(error)) delete brokerState.assistantPreviewMessages?.[turnId];
+			else delete brokerState.assistantPreviewMessages?.[turnId];
+		}
+	}
 }
 
 async function removeSessionFromBrokerState(options: SessionCleanupOptions, brokerState: BrokerState): Promise<void> {
@@ -152,5 +196,18 @@ export async function unregisterSessionFromBroker(options: SessionCleanupOptions
 }
 
 export async function markSessionOfflineInBroker(options: SessionCleanupOptions): Promise<{ ok: true }> {
-	return await unregisterSessionFromBroker(options);
+	const { targetSessionId } = options;
+	if (!targetSessionId) return { ok: true };
+	const brokerState = await ensureBrokerState(options);
+	delete brokerState.sessions[targetSessionId];
+	removeSelectorSelectionsForSession(brokerState, targetSessionId);
+	const pendingState = pendingOfflineSessionState(brokerState, targetSessionId, options.stopTypingLoop);
+	if (!pendingState.hasPendingAssistantFinals) {
+		await clearVisiblePendingTurnPreviews(options, brokerState, targetSessionId);
+		for (const route of detachSessionRoutes(brokerState, targetSessionId)) queueRouteCleanup(brokerState, route);
+	}
+	await options.persistBrokerState();
+	await retryPendingRouteCleanupsInBroker(options);
+	options.refreshTelegramStatus();
+	return { ok: true };
 }

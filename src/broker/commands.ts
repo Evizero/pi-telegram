@@ -156,6 +156,7 @@ export class TelegramCommandRouter {
 		let turn: PendingTelegramTurn;
 		try {
 			turn = await this.deps.createTelegramTurnForSession(turnMessages, route.sessionId);
+			turn.routeId = route.routeId;
 			if (deliveryMode) turn.deliveryMode = deliveryMode;
 		} catch (error) {
 			await this.deps.sendTextReply(route.chatId, route.messageThreadId, `Failed to prepare Telegram message: ${errorMessage(error)}`);

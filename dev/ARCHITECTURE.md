@@ -57,9 +57,11 @@ The strongest drivers come directly from the intended purpose and requirements:
   (`StRS-busy-turn-intent`, `SyRS-busy-message-steers`,
   `SyRS-follow-queues-next-turn`);
 - activity and final responses must stay intelligible and non-duplicated even
-  when Telegram previews, edits, chunks, and retries are involved
-  (`StRS-activity-final-feedback`, `SyRS-activity-history-rendering`,
-  `SyRS-final-preview-deduplication`, `SyRS-final-delivery-fifo-retry`);
+  when Telegram previews, edits, chunks, pi/provider auto-retry, and Telegram
+  delivery retries are involved (`StRS-activity-final-feedback`,
+  `SyRS-activity-history-rendering`, `SyRS-final-preview-deduplication`,
+  `SyRS-final-delivery-fifo-retry`, `SyRS-retry-aware-agent-finals`,
+  `SyRS-final-text-before-error-metadata`);
 - Telegram update, webhook, retry, file, draft, media, and topic constraints are
   part of the runtime contract, not optional polish
   (`StRS-api-constrained-maintenance`, `SyRS-webhook-before-polling`,
@@ -176,6 +178,26 @@ Current-state clarification: assistant-final payloads are represented as
 first-class persisted broker state. The client only needs to retry until the
 broker durably accepts the final; the broker delivery ledger then owns FIFO
 Telegram delivery, retry windows, terminal outcomes, and partial-progress resume.
+
+### Pi provider auto-retry before Telegram finalization
+
+A pi turn reaches `agent_end` with a retryable transient provider failure such
+as `fetch failed` or `terminated`, and pi's session layer may automatically
+retry and later produce a normal assistant final.
+The Telegram bridge must treat the transient failure as an intermediate pi
+runtime state rather than as the Telegram final answer.
+The active Telegram turn remains associated with the retry path until a stable
+assistant final or clear terminal failure is known; stale preview rendering from
+the failed attempt is cleared or superseded; and raw provider error metadata is
+not allowed to replace useful non-empty assistant final text.
+The important property is that Telegram reflects the stable outcome the local pi
+session reaches, not the first retryable provider failure event observed at the
+extension hook boundary.
+
+Migration note: the current extension event surface exposes `agent_end` before
+pi session auto-retry handling completes. Until the extension can consume an
+explicit retry lifecycle event, client-side finalization needs a narrow deferred
+state or grace path around retryable assistant errors.
 
 ### Broker turnover with pending work
 
@@ -312,9 +334,11 @@ with related code when they explain the same behavior.
   reconnect grace expires.
 - Pending turns and media groups are retryable durable broker state until
   consumed, processed, or terminally failed.
-- Assistant final delivery must become retryable durable broker state until the
-  final is delivered to Telegram or terminally failed; the current in-memory
-  final queue is a migration gap, not the target architecture.
+- Assistant final delivery must remain retryable durable broker state until the
+  final is delivered to Telegram or terminally failed.
+- Retryable pi/provider errors are not stable assistant finals while pi may
+  auto-retry the same active Telegram turn; the bridge must defer Telegram
+  finalization until retry success or a clear terminal failure.
 - Busy ordinary messages steer; explicit follow-up messages queue after the
   active turn.
 - Activity collection preserves history; Telegram rendering may debounce but may
@@ -819,7 +843,7 @@ review.
 Future extraction may introduce narrower state containers for broker runtime,
 client runtime, preview/final delivery, and pi-hook lifecycle.
 
-### Assistant-final durability
+### Assistant-final durability and pi auto-retry
 
 `SyRS-final-delivery-fifo-retry` requires final responses to remain retryable
 until Telegram delivery succeeds or a terminal non-retryable outcome is recorded.
@@ -829,6 +853,14 @@ client-side retry queue only protects the handoff until durable broker
 acceptance; after that, the broker delivery ledger owns FIFO ordering,
 `retry_after` delay, terminal outcome classification, and resumable chunk and
 attachment progress.
+
+`SyRS-retry-aware-agent-finals` adds a client-side pressure point before broker
+acceptance: pi can emit an `agent_end` for a retryable transient provider error
+before the session auto-retry layer produces the final answer the local user
+sees. Finalization logic must not convert that intermediate event into a
+completed Telegram final. Future extraction should give this concern a cohesive
+client finalization home rather than scattering deferred retry state across
+unrelated callbacks.
 
 The ledger reduces duplicate visible output by skipping chunks and attachments
 already recorded as delivered. It cannot provide mathematical exactly-once

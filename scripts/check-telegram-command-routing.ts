@@ -14,6 +14,8 @@ function session(): SessionRegistration {
 		queuedTurnCount: 0,
 		lastHeartbeatMs: Date.now(),
 		connectedAtMs: Date.now(),
+		connectionStartedAtMs: Date.now(),
+		connectionNonce: "conn-1",
 		clientSocketPath: "/tmp/client.sock",
 		topicName: "project · main",
 	};

@@ -4,6 +4,7 @@ export interface ManualCompactionTurnQueueDeps {
 	getQueuedTelegramTurns: () => PendingTelegramTurn[];
 	setQueuedTelegramTurns: (turns: PendingTelegramTurn[]) => void;
 	getActiveTelegramTurn: () => ActiveTelegramTurn | undefined;
+	hasAwaitingTelegramFinalTurn: () => boolean;
 	setActiveTelegramTurn: (turn: ActiveTelegramTurn | undefined) => void;
 	prepareTurnAbort: () => void;
 	postTurnStarted: (turnId: string) => void;
@@ -51,6 +52,10 @@ export class ManualCompactionTurnQueue {
 		this.awaitingAgentStart = false;
 	}
 
+	peekPendingRemainder(): PendingTelegramTurn[] {
+		return [...this.pendingRemainder];
+	}
+
 	clearPendingRemainder(): PendingTelegramTurn[] {
 		const pending = [...this.pendingRemainder];
 		this.pendingRemainder = [];
@@ -71,7 +76,7 @@ export class ManualCompactionTurnQueue {
 
 	private startDeferredTurnIfReady(): void {
 		if (this.isActive()) return;
-		if (this.deps.getActiveTelegramTurn()) return;
+		if (this.deps.getActiveTelegramTurn() || this.deps.hasAwaitingTelegramFinalTurn()) return;
 		const queuedTelegramTurns = this.deps.getQueuedTelegramTurns();
 		if (queuedTelegramTurns.length === 0) return;
 		const [firstTurn, ...remainingTurns] = queuedTelegramTurns;
@@ -82,6 +87,6 @@ export class ManualCompactionTurnQueue {
 		this.deps.setActiveTelegramTurn({ ...firstTurn, queuedAttachments: [] });
 		this.deps.prepareTurnAbort();
 		this.deps.postTurnStarted(firstTurn.turnId);
-		this.deps.sendUserMessage(firstTurn.content);
+		this.deps.sendUserMessage(firstTurn.content, firstTurn.deliveryMode === "followUp" ? { deliverAs: "followUp" } : undefined);
 	}
 }

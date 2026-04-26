@@ -853,6 +853,52 @@
           "silent-telegram-notifications-for"
         ]
       }
+    },
+    {
+      "id": "SyRS-retry-aware-agent-finals",
+      "origin": "derived",
+      "label": "Defer transient final errors",
+      "statement": "The system shall defer Telegram finalization for an active Telegram turn when pi reports a retryable transient assistant or provider error without non-empty assistant final text, and shall deliver the subsequent stable assistant final response or a clear terminal failure outcome instead of the transient error string.",
+      "traces_to": [
+        "StRS-delivery-continuity",
+        "StRS-activity-final-feedback"
+      ],
+      "rationale": "A remote operator expects Telegram to reflect the stable outcome of the pi turn. Pi can emit an agent_end for a transient provider error before its own auto-retry produces a successful local final; treating that transient event as the Telegram final loses the later answer and breaks continuity.",
+      "acceptance_criteria": "Tests simulate an active Telegram turn whose first agent_end contains retryable errors such as fetch failed or terminated and no assistant final text: no assistant_final is sent, the Telegram turn remains associated with the retry, stale previews are cleared or safely superseded, a later successful final is delivered to Telegram, and an exhausted or non-retried transient error produces one clear terminal failure without blocking /stop or queued turns. Payloads that include non-empty assistant final text are handled by SyRS-final-text-before-error-metadata instead of being deferred solely because error metadata is present.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-26",
+      "updated": "2026-04-26",
+      "sources": {
+        "inbox": [
+          "assistant-final-lost-with"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-final-text-before-error-metadata",
+      "origin": "derived",
+      "label": "Prefer final text to errors",
+      "statement": "The system shall use non-empty assistant final text as the Telegram final response before using assistant stop or error metadata to construct a clear failure response when no assistant text is available.",
+      "traces_to": [
+        "StRS-activity-final-feedback",
+        "StRS-delivery-continuity"
+      ],
+      "rationale": "Telegram finals should preserve useful assistant output. Raw provider or stop metadata such as fetch failed or terminated is useful diagnostic context but should not replace non-empty final text that the local pi session can show.",
+      "acceptance_criteria": "Tests cover stopReason=error with non-empty text and low-context errorMessage values, confirming Telegram receives the assistant text rather than only the raw error; error-only finals construct a clear failure response from stop/error metadata instead of exposing low-context raw strings as the whole final; aborted turns continue to clear previews without creating misleading final text; and Telegram API send failures remain delivery failures rather than message content.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-26",
+      "updated": "2026-04-26",
+      "sources": {
+        "inbox": [
+          "assistant-final-lost-with"
+        ]
+      }
     }
   ]
 }

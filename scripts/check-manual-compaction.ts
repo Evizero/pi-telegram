@@ -31,6 +31,7 @@ async function checkFinishStartsFirstDeferredTurnAndDrainsRemainder(): Promise<v
 		getQueuedTelegramTurns: () => queuedTurns,
 		setQueuedTelegramTurns: (turns) => { queuedTurns = turns; },
 		getActiveTelegramTurn: () => activeTurn,
+		hasAwaitingTelegramFinalTurn: () => false,
 		setActiveTelegramTurn: (turn) => { activeTurn = turn; },
 		prepareTurnAbort: () => { started.push("prepare-abort"); },
 		postTurnStarted: (turnId) => { started.push(turnId); },
@@ -77,6 +78,7 @@ async function checkFollowOnlyStillStartsNextTurn(): Promise<void> {
 		getQueuedTelegramTurns: () => queuedTurns,
 		setQueuedTelegramTurns: (turns) => { queuedTurns = turns; },
 		getActiveTelegramTurn: () => activeTurn,
+		hasAwaitingTelegramFinalTurn: () => false,
 		setActiveTelegramTurn: (turn) => { activeTurn = turn; },
 		prepareTurnAbort: () => undefined,
 		postTurnStarted: () => undefined,
@@ -91,7 +93,7 @@ async function checkFollowOnlyStillStartsNextTurn(): Promise<void> {
 	queue.start();
 	queue.finish();
 	assert.equal(activeTurn?.turnId, "follow-only");
-	assert.deepEqual(sent, [{ text: "follow-only", deliverAs: undefined }]);
+	assert.deepEqual(sent, [{ text: "follow-only", deliverAs: "followUp" }]);
 	assert.deepEqual(queuedTurns, []);
 }
 
@@ -103,6 +105,7 @@ async function checkRepeatedManualCompactionWaitsForFinalFinish(): Promise<void>
 		getQueuedTelegramTurns: () => queuedTurns,
 		setQueuedTelegramTurns: (turns) => { queuedTurns = turns; },
 		getActiveTelegramTurn: () => activeTurn,
+		hasAwaitingTelegramFinalTurn: () => false,
 		setActiveTelegramTurn: (turn) => { activeTurn = turn; },
 		prepareTurnAbort: () => undefined,
 		postTurnStarted: () => undefined,
@@ -131,6 +134,7 @@ async function checkCancelDeferredStartPreventsBoundaryQueueing(): Promise<void>
 		getQueuedTelegramTurns: () => queuedTurns,
 		setQueuedTelegramTurns: (turns) => { queuedTurns = turns; },
 		getActiveTelegramTurn: () => activeTurn,
+		hasAwaitingTelegramFinalTurn: () => false,
 		setActiveTelegramTurn: (turn) => { activeTurn = turn; },
 		prepareTurnAbort: () => undefined,
 		postTurnStarted: () => undefined,
@@ -151,6 +155,7 @@ async function checkDeferredTurnLookupIncludesPendingRemainder(): Promise<void> 
 		getQueuedTelegramTurns: () => queuedTurns,
 		setQueuedTelegramTurns: (turns) => { queuedTurns = turns; },
 		getActiveTelegramTurn: () => activeTurn,
+		hasAwaitingTelegramFinalTurn: () => false,
 		setActiveTelegramTurn: (turn) => { activeTurn = turn; },
 		prepareTurnAbort: () => undefined,
 		postTurnStarted: () => undefined,
@@ -167,6 +172,27 @@ async function checkDeferredTurnLookupIncludesPendingRemainder(): Promise<void> 
 	queue.drainDeferredIntoActiveTurn();
 	assert.equal(queue.hasDeferredTurn("second"), false);
 	assert.equal(queue.enqueueDeferredTurn(turn("late")), false);
+}
+
+async function checkAwaitingFinalPreventsDeferredTurnStart(): Promise<void> {
+	let queuedTurns = [turn("first")];
+	let activeTurn: ActiveTelegramTurn | undefined;
+	const queue = new ManualCompactionTurnQueue({
+		getQueuedTelegramTurns: () => queuedTurns,
+		setQueuedTelegramTurns: (turns) => { queuedTurns = turns; },
+		getActiveTelegramTurn: () => activeTurn,
+		hasAwaitingTelegramFinalTurn: () => true,
+		setActiveTelegramTurn: (turn) => { activeTurn = turn; },
+		prepareTurnAbort: () => undefined,
+		postTurnStarted: () => undefined,
+		sendUserMessage: () => undefined,
+		acknowledgeConsumedTurn: () => undefined,
+	});
+
+	queue.start();
+	queue.finish();
+	assert.equal(activeTurn, undefined);
+	assert.equal(queuedTurns.length, 1);
 }
 
 async function checkAgentStartHookDrainsDeferredCompactionTurns(): Promise<void> {
@@ -187,6 +213,10 @@ async function checkAgentStartHookDrainsDeferredCompactionTurns(): Promise<void>
 		getConnectedRoute: () => undefined,
 		setConnectedRoute: () => undefined,
 		getActiveTelegramTurn: () => undefined,
+		hasDeferredTelegramTurn: () => false,
+		hasAwaitingTelegramFinalTurn: () => false,
+		hasLiveAgentRun: () => false,
+		flushDeferredTelegramTurn: async () => undefined,
 		setActiveTelegramTurn: () => undefined,
 		setQueuedTelegramTurns: () => undefined,
 		setCurrentAbort: (abort) => { currentAbort = abort; },
@@ -211,7 +241,9 @@ async function checkAgentStartHookDrainsDeferredCompactionTurns(): Promise<void>
 		updateStatus: () => { statusUpdates += 1; },
 		readLease: async () => undefined,
 		sendAssistantFinalToBroker: async () => true,
-		rememberCompletedLocalTurn: () => undefined,
+		finalizeActiveTelegramTurn: async () => "completed",
+		onAgentRetryStart: () => undefined,
+		onRetryMessageStart: () => undefined,
 		startNextTelegramTurn: () => undefined,
 		drainDeferredCompactionTurns: () => { drained += 1; },
 		onSessionStart: async () => undefined,
@@ -242,6 +274,8 @@ async function checkStatusAndRegistrationTreatManualCompactionAsBusy(): Promise<
 		sessionId: "session-1",
 		ownerId: "owner-1",
 		startedAtMs: 1,
+		connectionStartedAtMs: 2,
+		connectionNonce: "conn-1",
 		clientSocketPath: "/tmp/client.sock",
 		queuedTelegramTurns: [],
 		manualCompactionInProgress: true,
@@ -254,6 +288,7 @@ await checkFollowOnlyStillStartsNextTurn();
 await checkRepeatedManualCompactionWaitsForFinalFinish();
 await checkCancelDeferredStartPreventsBoundaryQueueing();
 await checkDeferredTurnLookupIncludesPendingRemainder();
+await checkAwaitingFinalPreventsDeferredTurnStart();
 await checkAgentStartHookDrainsDeferredCompactionTurns();
 await checkStatusAndRegistrationTreatManualCompactionAsBusy();
 console.log("Manual compaction queue checks passed");

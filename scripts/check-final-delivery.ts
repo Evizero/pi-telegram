@@ -29,6 +29,8 @@ function emptyState(): BrokerState {
 				queuedTurnCount: 0,
 				lastHeartbeatMs: now(),
 				connectedAtMs: now(),
+				connectionStartedAtMs: now(),
+				connectionNonce: "conn-1",
 				clientSocketPath: "/tmp/client.sock",
 				topicName: "project · main",
 			},
@@ -74,6 +76,7 @@ function makeLedger(options?: {
 	let state = options?.state ?? emptyState();
 	let persists = 0;
 	const completed: string[] = [];
+	const terminalFailures: string[] = [];
 	const ledger = new AssistantFinalDeliveryLedger({
 		getBrokerState: () => state,
 		setBrokerState: (next) => { state = next; },
@@ -86,9 +89,19 @@ function makeLedger(options?: {
 		callTelegramMultipart: async <TResponse>(method: string, fields: Record<string, string>, fileField: string, filePath: string, fileName: string) => (options?.callTelegramMultipart ? await options.callTelegramMultipart(method, fields, fileField, filePath, fileName) : { message_id: 1 }) as TResponse,
 		isBrokerActive: () => true,
 		rememberCompletedBrokerTurn: async (turnId) => { if (!state.completedTurnIds?.includes(turnId)) state.completedTurnIds?.push(turnId); completed.push(turnId); },
-		logTerminalFailure: () => undefined,
+		logTerminalFailure: (_turnId, reason) => { terminalFailures.push(reason); },
 	});
-	return { ledger, get state() { return state; }, get persists() { return persists; }, completed };
+	return { ledger, get state() { return state; }, get persists() { return persists; }, completed, terminalFailures };
+}
+
+async function checkAssistantFinalAcceptsWithoutLiveSessionOrRoute(): Promise<void> {
+	const state = emptyState();
+	state.sessions = {};
+	state.routes = {};
+	const env = makeLedger({ state, callTelegram: async () => new Promise(() => undefined) });
+	await env.ledger.accept({ turn: turn("orphan"), text: "hello", attachments: [] });
+	assert.equal(env.state.pendingAssistantFinals?.orphan?.text, "hello");
+	assert.ok(env.persists >= 1);
 }
 
 async function checkDuplicateAssistantFinalHandoff(): Promise<void> {
@@ -182,6 +195,64 @@ async function checkDurablePreviewMessageIsFinalizedAfterRestart(): Promise<void
 	assert.deepEqual(env.state.completedTurnIds, ["previewed"]);
 }
 
+async function checkOfflineSessionFinalCompletionQueuesRouteCleanup(): Promise<void> {
+	const state = emptyState();
+	delete state.sessions.s1;
+	state.pendingAssistantFinals = {
+		offline: entry("offline", { text: "final" }),
+	};
+	const env = makeLedger({
+		state,
+		callTelegram: async (_method, body) => ({ message_id: typeof body.message_id === "number" ? body.message_id : 55 } satisfies TelegramSentMessage),
+	});
+	await env.ledger.drainReady();
+	assert.equal(env.state.pendingAssistantFinals?.offline, undefined);
+	assert.equal(env.state.routes["123:9"], undefined);
+	assert.ok(env.state.pendingRouteCleanups?.["123:9"]);
+	assert.deepEqual(env.state.completedTurnIds, ["offline"]);
+}
+
+async function checkOfflineSessionFinalCompletionAlsoCleansPendingTurnPreviewState(): Promise<void> {
+	const state = emptyState();
+	delete state.sessions.s1;
+	state.pendingTurns = { hold: { turn: turn("hold"), updatedAtMs: now() } };
+	state.assistantPreviewMessages = { hold: { chatId: 123, messageThreadId: 9, messageId: 66, updatedAtMs: now() } };
+	state.pendingAssistantFinals = {
+		offline: entry("offline", { text: "final" }),
+	};
+	const env = makeLedger({
+		state,
+		callTelegram: async (_method, body) => ({ message_id: typeof body.message_id === "number" ? body.message_id : 55 } satisfies TelegramSentMessage),
+	});
+	await env.ledger.drainReady();
+	assert.equal(env.state.pendingAssistantFinals?.offline, undefined);
+	assert.ok(env.state.pendingTurns?.hold);
+	assert.equal(env.state.assistantPreviewMessages?.hold, undefined);
+	assert.equal(env.state.routes["123:9"], undefined);
+	assert.ok(env.state.pendingRouteCleanups?.["123:9"]);
+	assert.deepEqual(env.state.completedTurnIds, ["offline"]);
+}
+
+async function checkOfflineSessionFinalCompletionPreservesPreviewRefWhenDeleteRetryableFails(): Promise<void> {
+	const state = emptyState();
+	delete state.sessions.s1;
+	state.pendingTurns = { hold: { turn: turn("hold"), updatedAtMs: now() } };
+	state.assistantPreviewMessages = { hold: { chatId: 123, messageThreadId: 9, messageId: 66, updatedAtMs: now() } };
+	state.pendingAssistantFinals = {
+		offline: entry("offline", { text: "final" }),
+	};
+	const env = makeLedger({
+		state,
+		callTelegram: async (method, body) => {
+			if (method === "deleteMessage") throw new TelegramApiError(method, "Too Many Requests", 429, 2);
+			return { message_id: typeof body.message_id === "number" ? body.message_id : 55 } satisfies TelegramSentMessage;
+		},
+	});
+	await env.ledger.drainReady();
+	assert.ok(env.state.assistantPreviewMessages?.hold);
+	assert.equal(env.state.pendingAssistantFinals?.offline, undefined);
+}
+
 async function checkBrokerStopPreventsFurtherDelivery(): Promise<void> {
 	const sentTexts: string[] = [];
 	const chunks = ["first", "second"];
@@ -251,11 +322,63 @@ async function checkDeletePreviewRetryAfterStopsReplacementSend(): Promise<void>
 	env.ledger.clearTimer();
 }
 
-async function checkDetachedSessionFinalIsIgnored(): Promise<void> {
+async function checkDeletePreviewTransportFailureStopsReplacementSend(): Promise<void> {
+	const calls: string[] = [];
+	const state = emptyState();
+	state.pendingAssistantFinals = {
+		deleteTransport: entry("deleteTransport", {
+			text: "replacement",
+			progress: { activityCompleted: true, typingStopped: true, previewDetached: true, previewMode: "message", previewMessageId: 99, textHash: hash("replacement"), chunks: ["replacement"], sentChunkIndexes: [], sentChunkMessageIds: {}, sentAttachmentIndexes: [] },
+		}),
+	};
+	const env = makeLedger({
+		state,
+		callTelegram: async (method) => {
+			calls.push(method);
+			if (method === "deleteMessage") throw new Error("fetch failed");
+			throw new TelegramApiError(method, "Bad Request", 400, undefined);
+		},
+	});
+	await env.ledger.drainReady();
+	assert.deepEqual(calls, ["editMessageText", "editMessageText", "deleteMessage"]);
+	assert.deepEqual(env.state.pendingAssistantFinals?.deleteTransport?.progress.sentChunkIndexes, []);
+	assert.ok((env.state.pendingAssistantFinals?.deleteTransport?.retryAtMs ?? 0) > now());
+	env.ledger.clearTimer();
+}
+
+async function checkPermanentDeletePreviewErrorTerminatesWithoutDuplicateFinal(): Promise<void> {
+	const calls: string[] = [];
+	const state = emptyState();
+	state.pendingAssistantFinals = {
+		deletePermanent: entry("deletePermanent", {
+			text: "replacement",
+			progress: { activityCompleted: true, typingStopped: true, previewDetached: true, previewMode: "message", previewMessageId: 99, textHash: hash("replacement"), chunks: ["replacement"], sentChunkIndexes: [], sentChunkMessageIds: {}, sentAttachmentIndexes: [] },
+		}),
+	};
+	const env = makeLedger({
+		state,
+		callTelegram: async (method, body) => {
+			calls.push(`${method}:${String(body.text ?? body.message_id ?? "")}`);
+			if (method === "deleteMessage") throw new TelegramApiError(method, "Bad Request: message can't be deleted", 400, undefined);
+			throw new TelegramApiError(method, "Bad Request: message can't be edited", 400, undefined);
+		},
+	});
+	await env.ledger.drainReady();
+	assert.deepEqual(calls, [
+		"editMessageText:replacement",
+		"editMessageText:replacement",
+		"deleteMessage:99",
+	]);
+	assert.equal(env.state.pendingAssistantFinals?.deletePermanent, undefined);
+	assert.deepEqual(env.state.completedTurnIds, ["deletePermanent"]);
+	assert.match(env.terminalFailures[0] ?? "", /can't be deleted/i);
+}
+
+async function checkDetachedSessionFinalIsQueuedWithoutLiveSession(): Promise<void> {
 	const state = { ...emptyState(), sessions: {}, routes: {} };
 	const env = makeLedger({ state });
 	await env.ledger.accept({ turn: turn("ignored"), text: "ignored", attachments: [] });
-	assert.equal(env.state.pendingAssistantFinals?.ignored, undefined);
+	assert.equal(env.state.pendingAssistantFinals?.ignored?.text, "ignored");
 	assert.deepEqual(env.state.completedTurnIds, []);
 }
 
@@ -310,14 +433,98 @@ async function checkRetryAfterBlocksNewerFinals(): Promise<void> {
 	env.ledger.clearTimer();
 }
 
+async function checkErrorFinalWithTextPrefersText(): Promise<void> {
+	const textCalls: string[] = [];
+	const state = emptyState();
+	state.pendingAssistantFinals = {
+		errorText: entry("errorText", { text: "useful final text", stopReason: "error", errorMessage: "fetch failed" }),
+	};
+	const env = makeLedger({
+		state,
+		callTelegram: async (_method, body) => {
+			textCalls.push(String(body.text));
+			return { message_id: 61 } satisfies TelegramSentMessage;
+		},
+	});
+	await env.ledger.drainReady();
+	assert.deepEqual(textCalls, ["useful final text"]);
+	assert.deepEqual(env.state.completedTurnIds, ["errorText"]);
+}
+
+async function checkErrorOnlyFinalUsesClearFailureText(): Promise<void> {
+	const textCalls: string[] = [];
+	const state = emptyState();
+	state.pendingAssistantFinals = {
+		errorOnly: entry("errorOnly", { text: undefined, stopReason: "error", errorMessage: "terminated" }),
+	};
+	const env = makeLedger({
+		state,
+		callTelegram: async (_method, body) => {
+			textCalls.push(String(body.text));
+			return { message_id: 62 } satisfies TelegramSentMessage;
+		},
+	});
+	await env.ledger.drainReady();
+	assert.deepEqual(textCalls, ["Telegram bridge: pi failed while processing the request: terminated"]);
+	assert.deepEqual(env.state.completedTurnIds, ["errorOnly"]);
+}
+
+async function checkTransportFetchFailedStaysPending(): Promise<void> {
+	const textCalls: string[] = [];
+	const state = emptyState();
+	state.pendingAssistantFinals = {
+		transport: entry("transport", { text: "final text" }),
+	};
+	const env = makeLedger({
+		state,
+		callTelegram: async (_method, body) => {
+			textCalls.push(String(body.text));
+			throw new Error("fetch failed");
+		},
+	});
+	await env.ledger.drainReady();
+	assert.deepEqual(textCalls, ["final text"]);
+	assert.equal(env.state.pendingAssistantFinals?.transport?.status, "pending");
+	assert.ok((env.state.pendingAssistantFinals?.transport?.retryAtMs ?? 0) > now());
+	assert.deepEqual(env.state.completedTurnIds, []);
+	env.ledger.clearTimer();
+}
+
+async function checkUnauthorizedTelegramFailureGoesTerminal(): Promise<void> {
+	const state = emptyState();
+	state.pendingAssistantFinals = {
+		unauthorized: entry("unauthorized", { text: "final text" }),
+	};
+	const env = makeLedger({
+		state,
+		callTelegram: async (method) => {
+			throw new TelegramApiError(method, "Unauthorized", 401, undefined);
+		},
+	});
+	await env.ledger.drainReady();
+	assert.equal(env.state.pendingAssistantFinals?.unauthorized, undefined);
+	assert.deepEqual(env.state.completedTurnIds, ["unauthorized"]);
+	assert.match(env.terminalFailures[0] ?? "", /unauthorized/i);
+}
+
+await checkAssistantFinalAcceptsWithoutLiveSessionOrRoute();
 await checkDuplicateAssistantFinalHandoff();
 await checkChunkResumeSkipsSentChunks();
 await checkAttachmentRetryDoesNotResendText();
 await checkDurablePreviewMessageIsFinalizedAfterRestart();
+await checkOfflineSessionFinalCompletionQueuesRouteCleanup();
+await checkOfflineSessionFinalCompletionAlsoCleansPendingTurnPreviewState();
+await checkOfflineSessionFinalCompletionPreservesPreviewRefWhenDeleteRetryableFails();
 await checkBrokerStopPreventsFurtherDelivery();
 await checkClearPreviewRetryAfterStaysPending();
 await checkDeletePreviewRetryAfterStopsReplacementSend();
-await checkDetachedSessionFinalIsIgnored();
+await checkDeletePreviewTransportFailureStopsReplacementSend();
+await checkPermanentDeletePreviewErrorTerminatesWithoutDuplicateFinal();
+await checkDetachedSessionFinalIsQueuedWithoutLiveSession();
 await checkDisconnectCancelsInFlightFinalDelivery();
 await checkRetryAfterBlocksNewerFinals();
+await checkErrorFinalWithTextPrefersText();
+await checkErrorOnlyFinalUsesClearFailureText();
+await checkTransportFetchFailedStaysPending();
+await checkUnauthorizedTelegramFailureGoesTerminal();
 console.log("Final delivery ledger checks passed");

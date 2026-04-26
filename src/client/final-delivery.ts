@@ -12,6 +12,10 @@ export class AssistantFinalRetryQueue {
 		return this.pending.find((payload) => payload.turn.turnId === turnId);
 	}
 
+	pendingPayloads(): AssistantFinalPayload[] {
+		return [...this.pending];
+	}
+
 	enqueue(payload: AssistantFinalPayload, retryAfterMs?: number): void {
 		if (!this.find(payload.turn.turnId)) this.pending.push(payload);
 		if (retryAfterMs !== undefined) this.retryAtMs = Math.max(this.retryAtMs, now() + retryAfterMs + 250);

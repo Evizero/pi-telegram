@@ -17,6 +17,10 @@ export interface RuntimePiHooksDeps {
 	getConnectedRoute: () => TelegramRoute | undefined;
 	setConnectedRoute: (route: TelegramRoute | undefined) => void;
 	getActiveTelegramTurn: () => ActiveTelegramTurn | undefined;
+	hasDeferredTelegramTurn: () => boolean;
+	hasAwaitingTelegramFinalTurn: () => boolean;
+	hasLiveAgentRun: () => boolean;
+	flushDeferredTelegramTurn: (options?: { startNext?: boolean }) => Promise<string | undefined>;
 	setActiveTelegramTurn: (turn: ActiveTelegramTurn | undefined) => void;
 	setQueuedTelegramTurns: (turns: PendingTelegramTurn[]) => void;
 	setCurrentAbort: (abort: (() => void) | undefined) => void;
@@ -35,13 +39,15 @@ export interface RuntimePiHooksDeps {
 	markSessionOffline: (sessionId: string) => Promise<unknown>;
 	disconnectSessionRoute: () => Promise<void>;
 	stopClientServer: () => Promise<void>;
-	shutdownClientRoute: () => void;
+	shutdownClientRoute: () => Promise<void> | void;
 	stopBroker: () => Promise<void>;
 	hideTelegramStatus: (ctx: ExtensionContext) => void;
 	updateStatus: (ctx: ExtensionContext, error?: string) => void;
 	readLease: () => Promise<{ ownerId?: string; leaseEpoch?: number; leaseUntilMs?: number } | undefined>;
 	sendAssistantFinalToBroker: (payload: { turn: PendingTelegramTurn; text?: string; stopReason?: string; errorMessage?: string; attachments: QueuedAttachment[] }) => Promise<boolean>;
-	rememberCompletedLocalTurn: (turnId: string) => void;
+	finalizeActiveTelegramTurn: (payload: { turn: PendingTelegramTurn; text?: string; stopReason?: string; errorMessage?: string; attachments: QueuedAttachment[] }) => Promise<"completed" | "deferred">;
+	onAgentRetryStart: () => void;
+	onRetryMessageStart: () => void;
 	startNextTelegramTurn: () => void;
 	drainDeferredCompactionTurns: () => void;
 	onSessionStart: (ctx: ExtensionContext, reason: "startup" | "reload" | "new" | "resume" | "fork") => Promise<void>;
@@ -64,18 +70,18 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 			const activeTelegramTurn = deps.getActiveTelegramTurn();
 			if (!activeTelegramTurn) throw new Error("telegram_attach can only be used while replying to an active Telegram turn");
 			if (!params.paths?.length) throw new Error("At least one attachment path is required");
-			const added: string[] = [];
+			if (activeTelegramTurn.queuedAttachments.length + params.paths.length > MAX_ATTACHMENTS_PER_TURN) throw new Error(`Attachment limit reached (${MAX_ATTACHMENTS_PER_TURN})`);
+			const validated: Array<{ path: string; fileName: string }> = [];
 			for (const inputPath of params.paths) {
 				const attachmentPath = await deps.resolveAllowedAttachmentPath(inputPath);
 				if (!attachmentPath) throw new Error(`Attachment path is not allowed: ${inputPath}`);
 				const stats = await stat(attachmentPath);
 				if (!stats.isFile()) throw new Error(`Not a file: ${inputPath}`);
 				if (stats.size > MAX_FILE_BYTES) throw new Error(`File too large: ${inputPath}`);
-				if (activeTelegramTurn.queuedAttachments.length >= MAX_ATTACHMENTS_PER_TURN) throw new Error(`Attachment limit reached (${MAX_ATTACHMENTS_PER_TURN})`);
-				activeTelegramTurn.queuedAttachments.push({ path: attachmentPath, fileName: basename(attachmentPath) });
-				added.push(attachmentPath);
+				validated.push({ path: attachmentPath, fileName: basename(attachmentPath) });
 			}
-			return { content: [{ type: "text", text: `Queued ${added.length} Telegram attachment(s).` }], details: { paths: added } };
+			activeTelegramTurn.queuedAttachments.push(...validated);
+			return { content: [{ type: "text", text: `Queued ${validated.length} Telegram attachment(s).` }], details: { paths: validated.map((entry) => entry.path) } };
 		},
 	});
 
@@ -152,13 +158,23 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 		const connectedRoute = deps.getConnectedRoute();
 		if (!deps.isRoutableRoute(connectedRoute) || event.source !== "interactive") return { action: "continue" };
 		const text = event.text.trim();
-		if (!text || text.startsWith("/") || isTelegramPrompt(text)) return { action: "continue" };
 		const imagesCount = event.images?.length ?? 0;
-		void deps.postIpc(deps.getConnectedBrokerSocketPath(), "local_user_message", { text, imagesCount }, deps.getSessionId()).catch(() => undefined);
-		if (!deps.getActiveTelegramTurn()) {
+		if ((!text && imagesCount === 0) || text.startsWith("/") || isTelegramPrompt(text)) return { action: "continue" };
+		const flushedDeferredTurnId = deps.hasDeferredTelegramTurn() && !deps.hasLiveAgentRun()
+			? await deps.flushDeferredTelegramTurn({ startNext: false })
+			: undefined;
+		void deps.postIpc(deps.getConnectedBrokerSocketPath(), "local_user_message", {
+			text,
+			imagesCount,
+			routeId: connectedRoute.routeId,
+			chatId: connectedRoute.chatId,
+			messageThreadId: connectedRoute.messageThreadId,
+		}, deps.getSessionId()).catch(() => undefined);
+		if (!deps.getActiveTelegramTurn() && !deps.hasAwaitingTelegramFinalTurn() && !(flushedDeferredTurnId && deps.hasLiveAgentRun())) {
 			deps.setActiveTelegramTurn({
 				turnId: randomId("local"),
 				sessionId: deps.getSessionId(),
+				routeId: connectedRoute.routeId,
 				chatId: connectedRoute.chatId,
 				messageThreadId: connectedRoute.messageThreadId,
 				replyToMessageId: 0,
@@ -171,10 +187,12 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 	});
 
 	pi.on("session_shutdown", async () => {
-		deps.setQueuedTelegramTurns([]);
 		deps.clearMediaGroups();
-		await deps.disconnectSessionRoute().catch(() => undefined);
-		await deps.stopBroker();
+		try {
+			await deps.disconnectSessionRoute();
+		} finally {
+			await deps.stopBroker();
+		}
 	});
 
 	pi.on("model_select", async (_event, ctx) => deps.setLatestCtx(ctx));
@@ -186,6 +204,7 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 
 	pi.on("agent_start", async (_event, ctx) => {
 		deps.setLatestCtx(ctx);
+		deps.onAgentRetryStart();
 		deps.setCurrentAbort(() => ctx.abort());
 		deps.updateStatus(ctx);
 		deps.drainDeferredCompactionTurns();
@@ -194,6 +213,7 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 	pi.on("message_start", async (event) => {
 		const activeTelegramTurn = deps.getActiveTelegramTurn();
 		if (!activeTelegramTurn || !isAssistantMessage(event.message)) return;
+		deps.onRetryMessageStart();
 		await deps.postIpc(deps.getConnectedBrokerSocketPath(), "assistant_message_start", { turnId: activeTelegramTurn.turnId, chatId: activeTelegramTurn.chatId, messageThreadId: activeTelegramTurn.messageThreadId }, deps.getSessionId()).catch(() => undefined);
 	});
 
@@ -226,15 +246,17 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 	pi.on("agent_end", async (event, ctx) => {
 		deps.setLatestCtx(ctx);
 		const turn = deps.getActiveTelegramTurn();
-		deps.setCurrentAbort(undefined);
-		deps.updateStatus(ctx);
-		if (turn) {
-			const assistant = extractAssistantText(event.messages);
-			await deps.activityReporter.flush();
-			await deps.sendAssistantFinalToBroker({ turn, text: assistant.text, stopReason: assistant.stopReason, errorMessage: assistant.errorMessage, attachments: turn.queuedAttachments });
-			deps.rememberCompletedLocalTurn(turn.turnId);
-			deps.setActiveTelegramTurn(undefined);
+		try {
+			if (turn) {
+				const assistant = extractAssistantText(event.messages);
+				await deps.activityReporter.flush();
+				await deps.finalizeActiveTelegramTurn({ turn, text: assistant.text, stopReason: assistant.stopReason, errorMessage: assistant.errorMessage, attachments: turn.queuedAttachments });
+			} else {
+				deps.startNextTelegramTurn();
+			}
+		} finally {
+			deps.setCurrentAbort(undefined);
+			deps.updateStatus(ctx);
 		}
-		deps.startNextTelegramTurn();
 	});
 }

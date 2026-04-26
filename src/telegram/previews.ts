@@ -21,34 +21,62 @@ export class PreviewManager {
 		this.previews.clear();
 	}
 
-	async messageStart(turnId: string, chatId: number | string, messageThreadId?: number): Promise<void> {
+	async messageStart(turnId: string, chatId: number | string, messageThreadId?: number, reuseMessageId?: number): Promise<void> {
 		const state = this.previews.get(turnId);
-		if (state && (state.pendingText.trim().length > 0 || state.lastSentText.trim().length > 0)) {
-			await this.finalize(turnId, chatId, messageThreadId);
+		if (state) {
+			if (state.flushTimer) clearTimeout(state.flushTimer);
+			state.flushTimer = undefined;
+			await this.flushes.get(turnId)?.catch(() => undefined);
+			state.preserveForRetry = false;
+			if (reuseMessageId !== undefined) state.messageId = reuseMessageId;
+			state.mode = state.messageId !== undefined ? "message" : this.shouldUseDraft(chatId) ? "draft" : "message";
+			state.pendingText = "";
+			if (state.messageId === undefined) state.lastSentText = "";
+			return;
 		}
-		this.previews.set(turnId, { mode: this.shouldUseDraft(chatId) ? "draft" : "message", pendingText: "", lastSentText: "" });
+		this.previews.set(turnId, {
+			mode: reuseMessageId !== undefined ? "message" : this.shouldUseDraft(chatId) ? "draft" : "message",
+			messageId: reuseMessageId,
+			pendingText: "",
+			lastSentText: "",
+		});
 	}
 
-	preview(turnId: string, chatId: number | string, messageThreadId: number | undefined, text: string): void {
+	preview(turnId: string, chatId: number | string, messageThreadId: number | undefined, text: string, reuseMessageId?: number): void {
 		let state = this.previews.get(turnId);
 		if (!state) {
-			state = { mode: this.shouldUseDraft(chatId) ? "draft" : "message", pendingText: "", lastSentText: "" };
+			state = { mode: reuseMessageId !== undefined ? "message" : this.shouldUseDraft(chatId) ? "draft" : "message", messageId: reuseMessageId, pendingText: "", lastSentText: "" };
 			this.previews.set(turnId, state);
+		} else if (state.messageId === undefined && reuseMessageId !== undefined) {
+			state.messageId = reuseMessageId;
+			state.mode = "message";
 		}
 		state.pendingText = text;
 		this.scheduleFlush(turnId, chatId, messageThreadId);
 	}
 
-	async clear(turnId: string, chatId: number | string, messageThreadId?: number): Promise<void> {
+	async clear(turnId: string, chatId: number | string, messageThreadId?: number, options?: { preserveOnFailure?: boolean }): Promise<void> {
 		const state = this.previews.get(turnId);
 		if (!state) return;
 		if (state.flushTimer) clearTimeout(state.flushTimer);
 		state.flushTimer = undefined;
 		await this.flushes.get(turnId)?.catch(() => undefined);
-		this.previews.delete(turnId);
 		if (state.messageId !== undefined) {
-			await this.callTelegram("deleteMessage", { chat_id: chatId, message_id: state.messageId }).catch(() => undefined);
+			if (options?.preserveOnFailure) {
+				try {
+					await this.callTelegram("deleteMessage", { chat_id: chatId, message_id: state.messageId });
+				} catch (error) {
+					if (shouldPreservePreviewForRetry(error)) {
+						state.preserveForRetry = true;
+						return;
+					}
+					if (!isMissingDeletedPreviewMessage(error)) throw error;
+				}
+			} else {
+				await this.callTelegram("deleteMessage", { chat_id: chatId, message_id: state.messageId }).catch(() => undefined);
+			}
 		}
+		this.previews.delete(turnId);
 		this.onPreviewDetached?.(turnId);
 	}
 
@@ -83,11 +111,16 @@ export class PreviewManager {
 		}
 		if (state.messageId !== undefined) {
 			const edited = await this.editMessageText(chatId, state.messageId, text);
-			if (!edited) await this.sendTextReply(chatId, messageThreadId, text);
+			if (!edited) {
+				await this.deletePreviewMessageForReplacement(chatId, state.messageId);
+				await this.sendTextReply(chatId, messageThreadId, text);
+			}
 			this.previews.delete(turnId);
+			this.onPreviewDetached?.(turnId);
 			return true;
 		}
 		this.previews.delete(turnId);
+		this.onPreviewDetached?.(turnId);
 		await this.sendTextReply(chatId, messageThreadId, text);
 		return true;
 	}
@@ -107,13 +140,14 @@ export class PreviewManager {
 		if (state.messageId !== undefined) {
 			const edited = await this.editMessageText(chatId, state.messageId, firstChunk);
 			if (!edited) {
-				await this.callTelegram("deleteMessage", { chat_id: chatId, message_id: state.messageId }).catch(() => undefined);
+				await this.deletePreviewMessageForReplacement(chatId, state.messageId);
 				await this.sendTextReply(chatId, messageThreadId, firstChunk);
 			}
 		} else {
 			await this.sendTextReply(chatId, messageThreadId, firstChunk);
 		}
 		this.previews.delete(turnId);
+		this.onPreviewDetached?.(turnId);
 		for (const chunk of remainingChunks) await this.sendTextReply(chatId, messageThreadId, chunk);
 		return true;
 	}
@@ -148,8 +182,8 @@ export class PreviewManager {
 		return this.nextDraftId;
 	}
 
-	private shouldUseDraft(chatId: number | string): boolean {
-		return this.draftSupport !== "unsupported" && typeof chatId === "number" && Number.isInteger(chatId) && chatId > 0;
+	private shouldUseDraft(_chatId: number | string): boolean {
+		return false;
 	}
 
 	private scheduleFlush(turnId: string, chatId: number | string, messageThreadId?: number): void {
@@ -186,6 +220,14 @@ export class PreviewManager {
 			return;
 		}
 		console.warn("[pi-telegram] Telegram preview update failed:", error instanceof Error ? error.message : error);
+	}
+
+	private async deletePreviewMessageForReplacement(chatId: number | string, messageId: number): Promise<void> {
+		try {
+			await this.callTelegram("deleteMessage", { chat_id: chatId, message_id: messageId });
+		} catch (error) {
+			if (!isMissingDeletedPreviewMessage(error)) throw error;
+		}
 	}
 
 	private async flush(turnId: string, chatId: number | string, messageThreadId: number | undefined): Promise<void> {
@@ -226,9 +268,42 @@ export class PreviewManager {
 		try {
 			await this.callTelegram("editMessageText", { chat_id: chatId, message_id: state.messageId, text: truncated });
 		} catch (error) {
-			if (!this.isMessageNotModified(error)) throw error;
+			if (this.isMessageNotModified(error)) {
+				state.mode = "message";
+				state.lastSentText = truncated;
+				return;
+			}
+			if (isMissingEditablePreviewMessage(error)) {
+				const body: Record<string, unknown> = { chat_id: chatId, text: truncated };
+				if (messageThreadId !== undefined) body.message_thread_id = messageThreadId;
+				const sent = await this.callTelegram<TelegramSentMessage>("sendMessage", body);
+				state.messageId = sent.message_id;
+				state.mode = "message";
+				state.lastSentText = truncated;
+				this.onVisiblePreview?.(turnId, chatId, messageThreadId, sent.message_id);
+				return;
+			}
+			throw error;
 		}
 		state.mode = "message";
 		state.lastSentText = truncated;
 	}
+}
+
+function shouldPreservePreviewForRetry(error: unknown): boolean {
+	if (!(error instanceof TelegramApiError)) return true;
+	const errorCode = error.errorCode ?? 0;
+	return errorCode === 429 || errorCode >= 500;
+}
+
+function isMissingEditablePreviewMessage(error: unknown): boolean {
+	return error instanceof TelegramApiError
+		&& error.errorCode === 400
+		&& /message to edit not found|message can't be edited|message cannot be edited/i.test(error.description ?? error.message);
+}
+
+function isMissingDeletedPreviewMessage(error: unknown): boolean {
+	return error instanceof TelegramApiError
+		&& error.errorCode === 400
+		&& /message to delete not found/i.test(error.description ?? error.message);
 }

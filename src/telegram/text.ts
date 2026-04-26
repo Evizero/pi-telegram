@@ -1,6 +1,6 @@
 import { chunkParagraphs } from "../shared/format.js";
 import type { TelegramSentMessage } from "../shared/types.js";
-import { getTelegramRetryAfterMs } from "./api.js";
+import { getTelegramRetryAfterMs, TelegramApiError } from "./api.js";
 
 export type TelegramJsonCall = <TResponse>(method: string, body: Record<string, unknown>) => Promise<TResponse>;
 
@@ -46,9 +46,15 @@ export async function sendTelegramMarkdownReply(
 			const sent = await callTelegram<TelegramSentMessage>("sendMessage", body);
 			lastMessageId = sent.message_id;
 		} catch (error) {
-			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
+			if (getTelegramRetryAfterMs(error) !== undefined || !isTelegramFormattingError(error)) throw error;
 			lastMessageId = await sendTelegramTextReply(callTelegram, chatId, messageThreadId, chunk, options);
 		}
 	}
 	return lastMessageId;
+}
+
+function isTelegramFormattingError(error: unknown): boolean {
+	return error instanceof TelegramApiError
+		&& error.errorCode === 400
+		&& /parse entities|can't parse entities|can't find end of/i.test(error.description ?? error.message);
 }

@@ -6,7 +6,7 @@ import type { BrokerLease, BrokerState, TelegramConfig, TelegramMediaGroupState,
 import type { TelegramCommandRouter } from "./commands.js";
 import { telegramCommandName } from "./commands.js";
 import { errorMessage, hashSecret, now } from "../shared/utils.js";
-import { getTelegramRetryAfterMs } from "../telegram/api.js";
+import { getTelegramRetryAfterMs, TelegramApiError } from "../telegram/api.js";
 
 export interface RuntimeUpdateDeps {
 	getConfig: () => TelegramConfig;
@@ -29,8 +29,10 @@ export interface RuntimeUpdateDeps {
 	ensureRoutesAfterPairing: () => Promise<void>;
 	isAllowedTelegramChat: (message: TelegramMessage) => boolean;
 	stopTypingLoop: (turnId: string) => void;
+	dropAssistantPreviewState: (turnId: string) => Promise<void>;
 	postIpc: <TResponse>(socketPath: string, type: string, payload: unknown, targetSessionId?: string) => Promise<TResponse>;
 	unregisterSession: (targetSessionId: string) => Promise<unknown>;
+	markSessionOffline: (targetSessionId: string) => Promise<unknown>;
 }
 
 export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
@@ -311,7 +313,7 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 		const expiredSessionIds = Object.values(brokerState.sessions)
 			.filter((session) => now() - session.lastHeartbeatMs > SESSION_OFFLINE_MS)
 			.map((session) => session.sessionId);
-		for (const sessionId of expiredSessionIds) await deps.unregisterSession(sessionId);
+		for (const sessionId of expiredSessionIds) await deps.markSessionOffline(sessionId);
 	}
 
 	async function retryPendingTurns(): Promise<void> {
@@ -320,7 +322,35 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 		for (const pending of Object.values(brokerState.pendingTurns)) {
 			if (brokerState.pendingAssistantFinals?.[pending.turn.turnId]) continue;
 			const session = brokerState.sessions[pending.turn.sessionId];
-			if (!session || session.status === "offline") continue;
+			if (!session || session.status === "offline" || session.status === "connecting") continue;
+			const sessionRoutes = Object.values(brokerState.routes).filter((candidate) => candidate.sessionId === pending.turn.sessionId);
+			const route = sessionRoutes.find((candidate) => candidate.routeId === pending.turn.routeId)
+				?? sessionRoutes.find((candidate) => candidate.chatId === pending.turn.chatId && candidate.messageThreadId === pending.turn.messageThreadId)
+				?? (sessionRoutes.length === 1 ? sessionRoutes[0] : undefined);
+			if (route) {
+				if (pending.turn.chatId !== route.chatId || pending.turn.messageThreadId !== route.messageThreadId) {
+					const preview = brokerState.assistantPreviewMessages?.[pending.turn.turnId];
+					if (preview) {
+						try {
+							await deps.callTelegram("deleteMessage", { chat_id: preview.chatId, message_id: preview.messageId });
+							if (brokerState.assistantPreviewMessages?.[pending.turn.turnId]) delete brokerState.assistantPreviewMessages[pending.turn.turnId];
+						} catch (error) {
+							if (isMissingDeletedPreviewMessage(error)) {
+								if (brokerState.assistantPreviewMessages?.[pending.turn.turnId]) delete brokerState.assistantPreviewMessages[pending.turn.turnId];
+							} else if (shouldPreservePreviewRefOnDeleteFailure(error)) {
+								continue;
+							} else {
+								if (brokerState.assistantPreviewMessages?.[pending.turn.turnId]) delete brokerState.assistantPreviewMessages[pending.turn.turnId];
+							}
+						}
+					}
+					deps.stopTypingLoop(pending.turn.turnId);
+					await deps.dropAssistantPreviewState(pending.turn.turnId);
+					pending.turn.routeId = route.routeId;
+					pending.turn.chatId = route.chatId;
+					pending.turn.messageThreadId = route.messageThreadId;
+				}
+			}
 			try {
 				await deps.postIpc(session.clientSocketPath, "deliver_turn", pending.turn, session.sessionId);
 				pending.updatedAtMs = now();
@@ -332,4 +362,16 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 	}
 
 	return { handleUpdate, handleUpdateGroup, queueMediaGroupUpdate, schedulePendingMediaGroups, pollLoop, markOfflineSessions, retryPendingTurns };
+}
+
+function shouldPreservePreviewRefOnDeleteFailure(error: unknown): boolean {
+	if (!(error instanceof TelegramApiError)) return true;
+	const errorCode = error.errorCode ?? 0;
+	return errorCode === 429 || errorCode >= 500;
+}
+
+function isMissingDeletedPreviewMessage(error: unknown): boolean {
+	return error instanceof TelegramApiError
+		&& error.errorCode === 400
+		&& /message to delete not found/i.test(error.description ?? error.message);
 }

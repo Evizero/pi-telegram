@@ -11,6 +11,7 @@ export async function postIpc<TResponse>(
 	payload: unknown,
 	targetSessionId: string | undefined,
 	fallbackToken: string,
+	sourceConnectionNonce?: string,
 ): Promise<TResponse> {
 	const token = await readFile(TOKEN_PATH, "utf8").catch(() => fallbackToken);
 	const envelope: IpcEnvelope = {
@@ -18,6 +19,7 @@ export async function postIpc<TResponse>(
 		id: randomId("msg"),
 		type,
 		session_id: targetSessionId,
+		connection_nonce: sourceConnectionNonce,
 		payload,
 		sent_at_ms: now(),
 	};
