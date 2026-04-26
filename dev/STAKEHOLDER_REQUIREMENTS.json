@@ -2,7 +2,7 @@
   "meta": {
     "title": "pi-telegram",
     "version": "0.1.0",
-    "last_updated": "2026-04-25"
+    "last_updated": "2026-04-26"
   },
   "requirements": [
     {
@@ -362,6 +362,29 @@
         ],
         "references": [
           "telegram-views-are-connection-scoped"
+        ]
+      }
+    },
+    {
+      "id": "StRS-nonalerting-passive-supervision",
+      "origin": "derived",
+      "label": "Keep passive updates non-alerting",
+      "statement": "Remote pi operators shall be able to keep Telegram supervision views updated with passive activity updates and local-input echoes without receiving notification alerts for those passive messages.",
+      "rationale": "The operator may be working locally while Telegram is connected or may only need passive progress visibility. Alerting for local input echoes and routine activity updates creates notification noise without adding useful control value, while final answers and explicit command/error replies may still warrant normal notification behavior.",
+      "stakeholders": [
+        "remote-pi-operator"
+      ],
+      "priority": 2,
+      "validation": {
+        "method": "review",
+        "criteria": "Review a connected-session workflow to confirm passive activity updates and local-input echoes remain visible in Telegram without notification alerts, and that final answers plus explicit operator-facing command or error replies remain able to notify normally."
+      },
+      "status": "draft",
+      "created": "2026-04-26",
+      "updated": "2026-04-26",
+      "sources": {
+        "inbox": [
+          "silent-telegram-notifications-for"
         ]
       }
     }

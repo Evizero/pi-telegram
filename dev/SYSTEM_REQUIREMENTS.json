@@ -2,7 +2,7 @@
   "meta": {
     "title": "pi-telegram",
     "version": "0.1.0",
-    "last_updated": "2026-04-25"
+    "last_updated": "2026-04-26"
   },
   "requirements": [
     {
@@ -826,6 +826,31 @@
       "sources": {
         "inbox": [
           "telegram-starts-new-turn"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-silent-passive-telegram-updates",
+      "origin": "derived",
+      "label": "Silence passive Telegram updates",
+      "statement": "The system shall set disabled notifications on Telegram sendMessage calls for broker activity-renderer status messages and mirrored local pi user input while preserving ordinary notification behavior for assistant previews, final answers, and explicit operator-facing command or error replies.",
+      "traces_to": [
+        "StRS-nonalerting-passive-supervision",
+        "StRS-activity-final-feedback",
+        "StRS-remote-session-supervision",
+        "StRS-api-constrained-maintenance"
+      ],
+      "rationale": "Remote supervision should keep the Telegram view current without alerting the operator for passive broker activity rendering or echoes of local input they just typed on the computer. Telegram provides disable_notification on sendMessage, so this behavior can be checked at the bridge send boundary without changing route identity, assistant preview/final semantics, or command/error reply notification behavior.",
+      "acceptance_criteria": "Tests or inspection show all targeted broker activity-renderer sendMessage calls and local-user mirror sendMessage calls include disable_notification=true for every chunk and preserve message_thread_id, while assistant previews, final assistant replies, setup/command replies, explicit errors, attachment failure notices, and rate-limit handling are not made silent unless separately required.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-26",
+      "updated": "2026-04-26",
+      "sources": {
+        "inbox": [
+          "silent-telegram-notifications-for"
         ]
       }
     }

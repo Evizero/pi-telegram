@@ -4,7 +4,7 @@ import { mkdir, realpath, readdir, rm, stat, writeFile, chmod } from "node:fs/pr
 import { basename, isAbsolute, join, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { BROKER_DIR, BROKER_HEARTBEAT_MS, BROKER_LEASE_MS, CLIENT_HEARTBEAT_MS, DISCONNECT_REQUESTS_DIR, LOCK_DIR, LOCK_PATH, STATE_PATH, TAKEOVER_LOCK_DIR, TEMP_DIR, TOKEN_PATH } from "./shared/config.js";
-import type { ActiveTelegramTurn, BrokerLease, BrokerState, IpcEnvelope, ModelSummary, PendingTelegramTurn, QueuedAttachment, AssistantFinalPayload, SessionRegistration, TelegramApiResponse, TelegramConfig, TelegramForumTopic, TelegramMediaGroupState, TelegramMessage, TelegramRoute, TelegramSentMessage, TelegramUpdate, TelegramUser } from "./shared/types.js";
+import type { ActiveTelegramTurn, BrokerLease, BrokerState, IpcEnvelope, ModelSummary, PendingTelegramTurn, QueuedAttachment, AssistantFinalPayload, SessionRegistration, TelegramApiResponse, TelegramConfig, TelegramForumTopic, TelegramMediaGroupState, TelegramMessage, TelegramRoute, TelegramUpdate, TelegramUser } from "./shared/types.js";
 import { configureBrokerScope, readConfig, writeConfig } from "./shared/config.js";
 import { ActivityRenderer, ActivityReporter, type ActivityUpdatePayload } from "./broker/activity.js";
 import { processDisconnectRequestsInBroker, type PendingDisconnectRequest } from "./broker/disconnect-requests.js";
@@ -19,11 +19,12 @@ import { shutdownTelegramClientRoute } from "./client/route-shutdown.js";
 import { clientDeliverTelegramTurn } from "./client/turn-delivery.js";
 import { TelegramCommandRouter } from "./broker/commands.js";
 import { AssistantFinalDeliveryLedger } from "./broker/finals.js";
-import { chunkParagraphs, formatLocalUserMirrorMessage, routeId, topicNameFor } from "./shared/format.js";
+import { formatLocalUserMirrorMessage, routeId, topicNameFor } from "./shared/format.js";
 import { ensurePrivateDir, errorMessage, hashSecret, now, processExists, randomId, readJson, writeJson } from "./shared/utils.js";
 import { createIpcServer as createIpcServerBase, postIpc as postIpcBase } from "./shared/ipc.js";
 import { callTelegram as callTelegramBase, callTelegramMultipart as callTelegramMultipartBase, downloadTelegramFile as downloadTelegramFileBase, getTelegramRetryAfterMs } from "./telegram/api.js";
 import { withTelegramRetry } from "./telegram/retry.js";
+import { sendTelegramMarkdownReply, sendTelegramTextReply, type SendTextReplyOptions } from "./telegram/text.js";
 import { createTelegramTurnForSession as buildTelegramTurnForSession, durableTelegramTurn } from "./telegram/turns.js";
 import { collectSessionRegistration as buildSessionRegistration } from "./client/session-registration.js";
 import { PreviewManager } from "./telegram/previews.js";
@@ -636,7 +637,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		if (!brokerState || !sourceSessionId) return { ok: true };
 		const route = Object.values(brokerState.routes).find((candidate) => candidate.sessionId === sourceSessionId && candidate.chatId !== 0);
 		if (!route) return { ok: true };
-		await sendTextReply(route.chatId, route.messageThreadId, formatLocalUserMirrorMessage(payload.text, payload.imagesCount));
+		await sendTextReply(route.chatId, route.messageThreadId, formatLocalUserMirrorMessage(payload.text, payload.imagesCount), { disableNotification: true });
 		return { ok: true };
 	}
 	async function registerSession(registration: SessionRegistration): Promise<TelegramRoute> {
@@ -721,32 +722,11 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	function createTelegramTurnForSession(messages: TelegramMessage[], sessionIdForTurn: string): Promise<PendingTelegramTurn> {
 		return buildTelegramTurnForSession(messages, sessionIdForTurn, downloadTelegramFile);
 	}
-	async function sendTextReply(chatId: number | string, messageThreadId: number | undefined, text: string): Promise<number | undefined> {
-		const chunks = chunkParagraphs(text || " ");
-		let lastMessageId: number | undefined;
-		for (const chunk of chunks) {
-			const body: Record<string, unknown> = { chat_id: chatId, text: chunk };
-			if (messageThreadId !== undefined) body.message_thread_id = messageThreadId;
-			const sent = await callTelegram<TelegramSentMessage>("sendMessage", body);
-			lastMessageId = sent.message_id;
-		}
-		return lastMessageId;
+	async function sendTextReply(chatId: number | string, messageThreadId: number | undefined, text: string, options?: SendTextReplyOptions): Promise<number | undefined> {
+		return await sendTelegramTextReply(callTelegram, chatId, messageThreadId, text, options);
 	}
-	async function sendMarkdownReply(chatId: number | string, messageThreadId: number | undefined, text: string): Promise<number | undefined> {
-		const chunks = chunkParagraphs(text || " ");
-		let lastMessageId: number | undefined;
-		for (const chunk of chunks) {
-			const body: Record<string, unknown> = { chat_id: chatId, text: chunk, parse_mode: "Markdown" };
-			if (messageThreadId !== undefined) body.message_thread_id = messageThreadId;
-			try {
-				const sent = await callTelegram<TelegramSentMessage>("sendMessage", body);
-				lastMessageId = sent.message_id;
-			} catch (error) {
-				if (getTelegramRetryAfterMs(error) !== undefined) throw error;
-				lastMessageId = await sendTextReply(chatId, messageThreadId, chunk);
-			}
-		}
-		return lastMessageId;
+	async function sendMarkdownReply(chatId: number | string, messageThreadId: number | undefined, text: string, options?: SendTextReplyOptions): Promise<number | undefined> {
+		return await sendTelegramMarkdownReply(callTelegram, chatId, messageThreadId, text, options);
 	}
 	async function startTypingLoopFor(turnId: string, chatId: number | string, messageThreadId?: number): Promise<void> {
 		if (typingLoops.has(turnId)) return;

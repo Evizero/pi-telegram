@@ -153,6 +153,7 @@ Bridge policy:
 - Use plain text fallback only for formatting/entity failures, not for
   `retry_after` failures.
 - Avoid sending empty strings; use a placeholder only when a message must exist.
+- Use `disable_notification` only for passive visibility updates that should not alert the operator, currently broker activity-renderer status messages and mirrored local pi-user input. Do not make assistant previews, final replies, setup/command replies, explicit errors, or attachment failure notices silent by default.
 
 ### `sendMessageDraft`
 
