@@ -17,3 +17,8 @@ Evidence:
 Requirement: `SyRS-bridge-secret-privacy`.
 
 Fix direction: ensure config/state parent directories are private and create temp JSON files with restrictive mode at open/write time before token-bearing bytes are written.
+
+
+## Deep-dive triage (2026-04-27)
+
+Status: still current. `src/shared/utils.ts` `writeJson()` still creates temp JSON with `writeFile(tempPath, ..., "utf8")` and only then calls `chmod(tempPath, 0o600)`. `writeConfig()` creates `~/.pi/agent` with plain `mkdir(..., { recursive: true })` before writing token-bearing config through `writeJson()`. Other callers do use `ensurePrivateDir()` first in several broker paths, but the generic write helper still has the creation-time permission window described by this item. This should remain open.

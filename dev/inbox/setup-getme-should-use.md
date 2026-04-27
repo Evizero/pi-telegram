@@ -16,3 +16,8 @@ Evidence:
 Requirement: `SyRS-telegram-retry-after`; docs.md request/response contract.
 
 Fix direction: validate candidate bot tokens through the same low-level POST JSON helper/retry wrapper used by other Telegram API calls, parameterized with the candidate token.
+
+
+## Deep-dive triage (2026-04-27)
+
+Status: still current. `src/telegram/setup.ts` still validates the candidate token with a direct `fetch(https://api.telegram.org/bot.../getMe)` GET call, parses JSON inline, and bypasses `src/telegram/api.ts` POST/error handling plus the `withTelegramRetry()` wrapper used by the extension's normal `callTelegram()` path. This should remain open.

@@ -16,3 +16,8 @@ Evidence:
 Requirement: `SyRS-outbound-photo-document-rules`.
 
 Fix direction: classify known photo-contract failures before falling back; otherwise report or propagate the original Telegram failure.
+
+
+## Deep-dive triage (2026-04-27)
+
+Status: still current. `src/telegram/attachments.ts` still catches any non-`retry_after` `sendPhoto` error and then falls through to `sendDocument`. There is no classifier limiting fallback to known photo-contract failures such as invalid image/photo size/format. Unrelated errors such as bad chat/thread or permissions can still be masked by a document fallback attempt. This should remain open.

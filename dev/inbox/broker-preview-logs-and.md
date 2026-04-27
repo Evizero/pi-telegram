@@ -3,7 +3,7 @@ title: "Broker preview logs and client display look buggy"
 type: "bug"
 created: "2026-04-25"
 author: "Christof Salis"
-status: "open"
+status: "rejected"
 planned_as: []
 ---
 User observed the broker pi session showing repeated Telegram preview update failures:
@@ -22,3 +22,10 @@ Investigation on 2026-04-25:
 - Local broker state also showed stale offline duplicate `pi-telegram · main` sessions alongside currently online sessions; `/sessions` listed every stored session despite the "Active" heading, making old disconnected clients appear in the list.
 - Implemented fixes in this session: preview edit no-op errors are treated as success and update `lastSentText`; `/sessions` and `/use <number>` now hide long-offline sessions, sort active sessions, and add a short session-id suffix only when visible names collide.
 - Validation: `npm run check` passed.
+
+
+## Deep-dive triage (2026-04-27)
+
+Status: already fixed / stale as an open inbox item. Current code treats Telegram `message is not modified` preview edits as success in `src/telegram/previews.ts` and updates `lastSentText` on no-op edits. `/sessions` and `/use` now call `listableSessions()` in `src/broker/commands.ts`, hiding long-offline sessions, sorting visible sessions, and only adding session-id suffixes when names collide. The item body already records the implementation and `npm run check` result from 2026-04-25, so no remaining open inbox action was found.
+
+Rejected reason: Already fixed; current preview/session-list code implements the recorded investigation notes.

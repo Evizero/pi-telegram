@@ -16,3 +16,8 @@ Evidence:
 Requirement: `SyRS-telegram-retry-after`.
 
 Fix direction: track in-flight/retry-until state per typing loop and skip new typing sends while a retry-aware send is still pending or suppressed by flood control.
+
+
+## Deep-dive triage (2026-04-27)
+
+Status: still current. `startTypingLoopFor()` in `src/extension.ts` still sends one immediate `sendChatAction` and then installs `setInterval(() => void sendTyping(), 4000)`. `sendTyping()` calls the retry-aware `callTelegram()` path and swallows errors, but there is no in-flight flag, retry-until timestamp, or interval suppression while a prior `withTelegramRetry()` wait is still pending. This should remain open.
