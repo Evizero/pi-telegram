@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { registerRuntimePiHooks } from "../src/pi/hooks.js";
+import { registerRuntimePiHooks, type RuntimePiHooksDeps } from "../src/pi/hooks.js";
 import type { ActiveTelegramTurn, PendingTelegramTurn, TelegramRoute } from "../src/shared/types.js";
 
 function activeTurn(id = "turn-1"): ActiveTelegramTurn {
@@ -51,6 +51,52 @@ function buildPiHarness(): {
 		},
 	} as unknown as ExtensionAPI;
 	return { handlers, tools, pi };
+}
+
+function baseDeps(overrides: Partial<RuntimePiHooksDeps> = {}): RuntimePiHooksDeps {
+	return {
+		getConfig: () => ({}),
+		setLatestCtx: () => undefined,
+		getConnectedRoute: () => route(),
+		setConnectedRoute: () => undefined,
+		getActiveTelegramTurn: () => undefined,
+		hasDeferredTelegramTurn: () => false,
+		hasAwaitingTelegramFinalTurn: () => false,
+		hasLiveAgentRun: () => false,
+		flushDeferredTelegramTurn: async () => undefined,
+		setActiveTelegramTurn: () => undefined,
+		setQueuedTelegramTurns: () => undefined,
+		setCurrentAbort: () => undefined,
+		getSessionId: () => "session-1",
+		getOwnerId: () => "owner-1",
+		getIsBroker: () => false,
+		getBrokerState: () => undefined,
+		getConnectedBrokerSocketPath: () => "/tmp/broker.sock",
+		activityReporter: { post: () => undefined, flush: async () => undefined } as never,
+		isRoutableRoute: (candidate): candidate is TelegramRoute => Boolean(candidate),
+		resolveAllowedAttachmentPath: async () => undefined,
+		postIpc: async <TResponse>() => undefined as TResponse,
+		promptForConfig: async () => false,
+		connectTelegram: async () => undefined,
+		unregisterSession: async () => undefined,
+		markSessionOffline: async () => undefined,
+		disconnectSessionRoute: async () => undefined,
+		stopClientServer: async () => undefined,
+		shutdownClientRoute: () => undefined,
+		stopBroker: async () => undefined,
+		hideTelegramStatus: () => undefined,
+		updateStatus: () => undefined,
+		readLease: async () => undefined,
+		sendAssistantFinalToBroker: async () => true,
+		finalizeActiveTelegramTurn: async () => "completed",
+		onAgentRetryStart: () => undefined,
+		onRetryMessageStart: () => undefined,
+		startNextTelegramTurn: () => undefined,
+		drainDeferredCompactionTurns: () => undefined,
+		onSessionStart: async () => undefined,
+		clearMediaGroups: () => undefined,
+		...overrides,
+	};
 }
 
 async function checkDeferredAgentEndClearsAbortCallback(): Promise<void> {
@@ -222,6 +268,149 @@ async function checkLocalInputDuringLiveRetryDoesNotFlushDeferredTurn(): Promise
 	await (handlers.get("input")?.[0]?.({ source: "interactive", text: "local takeover", images: [] }) ?? Promise.resolve());
 	assert.equal(flushedOptions, undefined);
 	assert.equal(active?.turnId, "retrying");
+}
+
+async function checkInterleavedAssistantTextStartsNewActivitySegment(): Promise<void> {
+	const { handlers, pi } = buildPiHarness();
+	const active = activeTurn("turn-segment");
+	const ipcCalls: Array<{ type: string; payload: any }> = [];
+	const activityReporter = {
+		post: (payload: any) => { ipcCalls.push({ type: "activity_update", payload }); },
+		flush: async () => undefined,
+	};
+	registerRuntimePiHooks(pi, baseDeps({
+		getActiveTelegramTurn: () => active,
+		activityReporter: activityReporter as never,
+		postIpc: async <TResponse>(_socketPath: string, type: string, payload: unknown) => {
+			ipcCalls.push({ type, payload });
+			return undefined as TResponse;
+		},
+	}));
+
+	await (handlers.get("tool_call")?.[0]?.({ toolName: "read", input: { path: "before.ts" } }) ?? Promise.resolve());
+	await (handlers.get("message_update")?.[0]?.({
+		message: { role: "assistant", content: [{ type: "text", text: "Visible progress" }] },
+		assistantMessageEvent: { type: "text_delta", delta: "Visible progress" },
+	}) ?? Promise.resolve());
+	await (handlers.get("tool_call")?.[0]?.({ toolName: "bash", input: { command: "npm test" } }) ?? Promise.resolve());
+
+	assert.equal(ipcCalls[0]?.type, "activity_update");
+	assert.equal(ipcCalls[0]?.payload.activityId, undefined);
+	assert.equal(ipcCalls[1]?.type, "activity_complete");
+	assert.deepEqual(ipcCalls[1]?.payload, { turnId: "turn-segment", activityId: undefined });
+	assert.equal(ipcCalls[2]?.type, "assistant_preview");
+	assert.equal(ipcCalls[3]?.type, "activity_update");
+	assert.equal(ipcCalls[3]?.payload.activityId, "turn-segment:activity:1");
+}
+
+async function checkAssistantTextWithoutPriorActivityDoesNotCompleteEmptySegment(): Promise<void> {
+	const { handlers, pi } = buildPiHarness();
+	const active = activeTurn("turn-text-first");
+	const ipcCalls: Array<{ type: string; payload: any }> = [];
+	registerRuntimePiHooks(pi, baseDeps({
+		getActiveTelegramTurn: () => active,
+		postIpc: async <TResponse>(_socketPath: string, type: string, payload: unknown) => {
+			ipcCalls.push({ type, payload });
+			return undefined as TResponse;
+		},
+	}));
+
+	await (handlers.get("message_update")?.[0]?.({
+		message: { role: "assistant", content: [{ type: "text", text: "Text first" }] },
+		assistantMessageEvent: { type: "text_start", contentIndex: 0 },
+	}) ?? Promise.resolve());
+
+	assert.deepEqual(ipcCalls.map((call) => call.type), ["assistant_preview"]);
+}
+
+async function checkDeferredRetryContinuesAfterClosedActivitySegment(): Promise<void> {
+	const { handlers, pi } = buildPiHarness();
+	const active = activeTurn("turn-retry-segment");
+	const ipcCalls: Array<{ type: string; payload: any }> = [];
+	const activityReporter = {
+		post: (payload: any) => { ipcCalls.push({ type: "activity_update", payload }); },
+		flush: async () => undefined,
+	};
+	registerRuntimePiHooks(pi, baseDeps({
+		getActiveTelegramTurn: () => active,
+		activityReporter: activityReporter as never,
+		postIpc: async <TResponse>(_socketPath: string, type: string, payload: unknown) => {
+			ipcCalls.push({ type, payload });
+			return undefined as TResponse;
+		},
+		finalizeActiveTelegramTurn: async () => "deferred",
+	}));
+
+	await (handlers.get("tool_call")?.[0]?.({ toolName: "read", input: { path: "before-retry.ts" } }) ?? Promise.resolve());
+	await (handlers.get("message_update")?.[0]?.({
+		message: { role: "assistant", content: [{ type: "text", text: "Visible before retry" }] },
+		assistantMessageEvent: { type: "text_delta", delta: "Visible before retry" },
+	}) ?? Promise.resolve());
+	await (handlers.get("agent_end")?.[0]?.({ messages: [{ role: "assistant", content: [], stopReason: "error", errorMessage: "fetch failed" }] }, { ui: { theme: {} } } as ExtensionContext) ?? Promise.resolve());
+	await (handlers.get("tool_call")?.[0]?.({ toolName: "bash", input: { command: "npm test" } }) ?? Promise.resolve());
+
+	assert.equal(ipcCalls.at(-1)?.type, "activity_update");
+	assert.equal(ipcCalls.at(-1)?.payload.activityId, "turn-retry-segment:activity:1");
+}
+
+async function checkActivityCompletionFailureDoesNotAdvanceSegmentOrPostPreview(): Promise<void> {
+	const { handlers, pi } = buildPiHarness();
+	const active = activeTurn("turn-complete-fails");
+	const ipcCalls: Array<{ type: string; payload: any }> = [];
+	const activityReporter = {
+		post: (payload: any) => { ipcCalls.push({ type: "activity_update", payload }); },
+		flush: async () => undefined,
+	};
+	registerRuntimePiHooks(pi, baseDeps({
+		getActiveTelegramTurn: () => active,
+		activityReporter: activityReporter as never,
+		postIpc: async <TResponse>(_socketPath: string, type: string, payload: unknown) => {
+			ipcCalls.push({ type, payload });
+			if (type === "activity_complete") throw new Error("completion failed");
+			return undefined as TResponse;
+		},
+	}));
+
+	await (handlers.get("tool_call")?.[0]?.({ toolName: "read", input: { path: "before-failure.ts" } }) ?? Promise.resolve());
+	await (handlers.get("message_update")?.[0]?.({
+		message: { role: "assistant", content: [{ type: "text", text: "Hidden until completion succeeds" }] },
+		assistantMessageEvent: { type: "text_delta", delta: "Hidden until completion succeeds" },
+	}) ?? Promise.resolve());
+	await (handlers.get("tool_call")?.[0]?.({ toolName: "bash", input: { command: "still-base-segment" } }) ?? Promise.resolve());
+
+	assert.deepEqual(ipcCalls.map((call) => call.type), ["activity_update", "activity_complete", "activity_update"]);
+	assert.equal(ipcCalls.at(-1)?.payload.activityId, undefined);
+}
+
+async function checkAwaitingFinalHandoffKeepsSegmentStateForSameActiveTurn(): Promise<void> {
+	const { handlers, pi } = buildPiHarness();
+	let active: ActiveTelegramTurn | undefined = activeTurn("turn-awaiting-final");
+	const ipcCalls: Array<{ type: string; payload: any }> = [];
+	const activityReporter = {
+		post: (payload: any) => { ipcCalls.push({ type: "activity_update", payload }); },
+		flush: async () => undefined,
+	};
+	registerRuntimePiHooks(pi, baseDeps({
+		getActiveTelegramTurn: () => active,
+		activityReporter: activityReporter as never,
+		postIpc: async <TResponse>(_socketPath: string, type: string, payload: unknown) => {
+			ipcCalls.push({ type, payload });
+			return undefined as TResponse;
+		},
+		finalizeActiveTelegramTurn: async () => "completed",
+		setActiveTelegramTurn: (turn) => { active = turn; },
+	}));
+
+	await (handlers.get("tool_call")?.[0]?.({ toolName: "read", input: { path: "before-awaiting.ts" } }) ?? Promise.resolve());
+	await (handlers.get("message_update")?.[0]?.({
+		message: { role: "assistant", content: [{ type: "text", text: "Visible before awaiting handoff" }] },
+		assistantMessageEvent: { type: "text_delta", delta: "Visible before awaiting handoff" },
+	}) ?? Promise.resolve());
+	await (handlers.get("agent_end")?.[0]?.({ messages: [{ role: "assistant", content: [{ type: "text", text: "final" }], stopReason: "stop" }] }, { ui: { theme: {} } } as ExtensionContext) ?? Promise.resolve());
+	await (handlers.get("tool_call")?.[0]?.({ toolName: "bash", input: { command: "late-awaiting" } }) ?? Promise.resolve());
+
+	assert.equal(ipcCalls.at(-1)?.type, "activity_update");
+	assert.equal(ipcCalls.at(-1)?.payload.activityId, "turn-awaiting-final:activity:1");
 }
 
 async function checkTelegramAttachIsAtomicOnValidationFailure(): Promise<void> {
@@ -399,6 +588,11 @@ async function checkImageOnlyLocalInputStillMirrorsToTelegram(): Promise<void> {
 await checkDeferredAgentEndClearsAbortCallback();
 await checkLocalInputFlushesDeferredWithoutStartingQueuedTelegramTurn();
 await checkLocalInputDuringLiveRetryDoesNotFlushDeferredTurn();
+await checkInterleavedAssistantTextStartsNewActivitySegment();
+await checkAssistantTextWithoutPriorActivityDoesNotCompleteEmptySegment();
+await checkDeferredRetryContinuesAfterClosedActivitySegment();
+await checkActivityCompletionFailureDoesNotAdvanceSegmentOrPostPreview();
+await checkAwaitingFinalHandoffKeepsSegmentStateForSameActiveTurn();
 await checkTelegramAttachIsAtomicOnValidationFailure();
 await checkSessionShutdownLetsRouteTeardownOwnQueueDrainingAndStillStopsBroker();
 await checkImageOnlyLocalInputStillMirrorsToTelegram();

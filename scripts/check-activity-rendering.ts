@@ -105,6 +105,35 @@ async function assertCompleteRemovesActiveWorkingBeforeFinalFlush(): Promise<voi
 	assert.equal(calls.at(-1)?.method, "deleteMessage");
 }
 
+async function assertActivitySegmentsPreserveTelegramChronology(): Promise<void> {
+	const { renderer, calls } = await buildRenderer();
+	await renderer.handleUpdate({ turnId: "turn-segmented", chatId: 1, line: toolActivityLine("read", { path: "before-text.ts" }) });
+	await renderer.flush("turn-segmented");
+	assert.equal(calls.at(-1)?.method, "sendMessage");
+	assertIncludes(String(calls.at(-1)?.body.text), "before-text.ts");
+
+	await renderer.completeActivity("turn-segmented");
+	const completedBaseText = String(calls.at(-1)?.body.text);
+	assertIncludes(completedBaseText, "📖 read <code>before-text.ts</code>");
+	assertNotIncludes(completedBaseText, "<b>📖 read <code>before-text.ts</code></b>");
+	const callsBeforeClosedBaseUpdate = calls.length;
+	calls.push({ method: "assistant-preview", body: { text: "Interleaved assistant text" } });
+	await renderer.handleUpdate({ turnId: "turn-segmented", activityId: "turn-segmented:activity:1", chatId: 1, line: toolActivityLine("bash", { command: "npm test" }) });
+	await renderer.flush("turn-segmented:activity:1");
+	assert.equal(calls.at(-2)?.method, "assistant-preview");
+	assert.equal(calls.at(-1)?.method, "sendMessage");
+	assertIncludes(String(calls.at(-1)?.body.text), "npm test");
+
+	await renderer.handleUpdate({ turnId: "turn-segmented", chatId: 1, line: toolActivityLine("write", { path: "closed-base.ts" }) });
+	await renderer.flush("turn-segmented");
+	assert.equal(calls.length, callsBeforeClosedBaseUpdate + 2);
+	await renderer.complete("turn-segmented");
+	calls.push({ method: "final", body: { text: "final response" } });
+	await renderer.handleUpdate({ turnId: "turn-segmented", activityId: "turn-segmented:activity:1", chatId: 1, line: toolActivityLine("bash", undefined, true) });
+	await renderer.flush("turn-segmented:activity:1");
+	assert.equal(calls.at(-1)?.method, "final");
+}
+
 async function assertReporterFlushPreventsAfterFinalActivityEdits(): Promise<void> {
 	const { renderer, calls } = await buildRenderer();
 	let releaseSend: (() => void) | undefined;
@@ -211,6 +240,7 @@ await assertHiddenThinkingIsTransient();
 await assertHiddenThinkingPromotesToVisibleThinking();
 await assertVisibleThinkingReplacesInterleavedWorking();
 await assertCompleteRemovesActiveWorkingBeforeFinalFlush();
+await assertActivitySegmentsPreserveTelegramChronology();
 await assertReporterFlushPreventsAfterFinalActivityEdits();
 await assertClosedTurnGuardSurvivesInFlightTypingAwait();
 await assertCompleteCorrectsInFlightStaleFlush();

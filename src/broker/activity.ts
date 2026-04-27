@@ -5,6 +5,7 @@ const WORKING_ACTIVITY_LINE = "⏳ working ...";
 
 export interface ActivityUpdatePayload {
 	turnId: string;
+	activityId?: string;
 	chatId: number | string;
 	messageThreadId?: number;
 	line: string;
@@ -147,6 +148,19 @@ function removeActiveWorkingLines(state: ActivityMessageState): boolean {
 	return removed;
 }
 
+function completeActiveToolLines(state: ActivityMessageState): boolean {
+	let completed = false;
+	for (let index = 0; index < state.lines.length; index += 1) {
+		const line = state.lines[index];
+		if (!line.startsWith("*")) continue;
+		const normalized = normalizedActivityLine(line);
+		if (normalized === WORKING_ACTIVITY_LINE || normalized.startsWith("🧠 ")) continue;
+		state.lines[index] = normalized;
+		completed = true;
+	}
+	return completed;
+}
+
 export class ActivityReporter {
 	private queue: Promise<unknown> = Promise.resolve();
 
@@ -166,8 +180,11 @@ export class ActivityReporter {
 export class ActivityRenderer {
 	private readonly messages = new Map<string, ActivityMessageState>();
 	private readonly flushes = new Map<string, Promise<void>>();
+	private readonly activityIdsByTurnId = new Map<string, Set<string>>();
 	private readonly closedTurnIds: string[] = [];
 	private readonly closedTurnIdSet = new Set<string>();
+	private readonly closedActivityIds: string[] = [];
+	private readonly closedActivityIdSet = new Set<string>();
 
 	constructor(
 		private readonly callTelegram: <TResponse>(method: string, body: Record<string, unknown>) => Promise<TResponse>,
@@ -177,37 +194,52 @@ export class ActivityRenderer {
 	clearAllTimers(): void {
 		for (const state of this.messages.values()) if (state.flushTimer) clearTimeout(state.flushTimer);
 		this.messages.clear();
+		this.flushes.clear();
+		this.activityIdsByTurnId.clear();
 		this.closedTurnIds.length = 0;
 		this.closedTurnIdSet.clear();
+		this.closedActivityIds.length = 0;
+		this.closedActivityIdSet.clear();
 	}
 
-	async flush(turnId: string): Promise<void> {
-		const existing = this.flushes.get(turnId);
+	async flush(activityId: string): Promise<void> {
+		const existing = this.flushes.get(activityId);
 		if (existing) return existing;
-		const state = this.messages.get(turnId);
+		const state = this.messages.get(activityId);
 		if (!state) return;
 		if (state.flushTimer) clearTimeout(state.flushTimer);
 		state.flushTimer = undefined;
-		const flush = this.doFlush(turnId, state).finally(() => {
-			if (this.flushes.get(turnId) === flush) this.flushes.delete(turnId);
+		const flush = this.doFlush(state).finally(() => {
+			if (this.flushes.get(activityId) === flush) this.flushes.delete(activityId);
 		});
-		this.flushes.set(turnId, flush);
+		this.flushes.set(activityId, flush);
 		return flush;
 	}
 
 	async complete(turnId: string): Promise<void> {
 		this.rememberClosedTurn(turnId);
-		const state = this.messages.get(turnId);
+		const activityIds = new Set([turnId, ...(this.activityIdsByTurnId.get(turnId) ?? [])]);
+		for (const activityId of activityIds) await this.completeActivity(turnId, activityId);
+		this.activityIdsByTurnId.delete(turnId);
+	}
+
+	async completeActivity(turnId: string, activityId = turnId): Promise<void> {
+		this.rememberClosedActivity(activityId);
+		const state = this.messages.get(activityId);
 		if (state) {
 			removeActiveWorkingLines(state);
 			completeActiveThinking(state);
+			completeActiveToolLines(state);
 		}
-		const existingFlush = this.flushes.get(turnId);
+		const existingFlush = this.flushes.get(activityId);
 		if (existingFlush) await existingFlush;
-		await this.flush(turnId);
-		const finalState = this.messages.get(turnId);
+		await this.flush(activityId);
+		const finalState = this.messages.get(activityId);
 		if (finalState?.flushTimer) clearTimeout(finalState.flushTimer);
-		this.messages.delete(turnId);
+		this.messages.delete(activityId);
+		const turnActivityIds = this.activityIdsByTurnId.get(turnId);
+		turnActivityIds?.delete(activityId);
+		if (turnActivityIds?.size === 0) this.activityIdsByTurnId.delete(turnId);
 	}
 
 	private rememberClosedTurn(turnId: string): void {
@@ -219,7 +251,16 @@ export class ActivityRenderer {
 		if (oldestTurnId) this.closedTurnIdSet.delete(oldestTurnId);
 	}
 
-	private async doFlush(_turnId: string, state: ActivityMessageState): Promise<void> {
+	private rememberClosedActivity(activityId: string): void {
+		if (this.closedActivityIdSet.has(activityId)) return;
+		this.closedActivityIdSet.add(activityId);
+		this.closedActivityIds.push(activityId);
+		if (this.closedActivityIds.length <= 1000) return;
+		const oldestActivityId = this.closedActivityIds.shift();
+		if (oldestActivityId) this.closedActivityIdSet.delete(oldestActivityId);
+	}
+
+	private async doFlush(state: ActivityMessageState): Promise<void> {
 		if (state.lines.length === 0) {
 			if (state.messageId !== undefined) {
 				await this.callTelegram("deleteMessage", { chat_id: state.chatId, message_id: state.messageId }).catch(() => undefined);
@@ -241,13 +282,17 @@ export class ActivityRenderer {
 	}
 
 	async handleUpdate(payload: ActivityUpdatePayload): Promise<{ ok: true }> {
-		if (this.closedTurnIdSet.has(payload.turnId)) return { ok: true };
+		const activityId = payload.activityId ?? payload.turnId;
+		if (this.closedTurnIdSet.has(payload.turnId) || this.closedActivityIdSet.has(activityId)) return { ok: true };
 		await this.startTypingLoopFor(payload.turnId, payload.chatId, payload.messageThreadId);
-		if (this.closedTurnIdSet.has(payload.turnId)) return { ok: true };
-		let state = this.messages.get(payload.turnId);
+		if (this.closedTurnIdSet.has(payload.turnId) || this.closedActivityIdSet.has(activityId)) return { ok: true };
+		let state = this.messages.get(activityId);
 		if (!state) {
 			state = { chatId: payload.chatId, messageThreadId: payload.messageThreadId, lines: [] };
-			this.messages.set(payload.turnId, state);
+			this.messages.set(activityId, state);
+			const turnActivityIds = this.activityIdsByTurnId.get(payload.turnId) ?? new Set<string>();
+			turnActivityIds.add(activityId);
+			this.activityIdsByTurnId.set(payload.turnId, turnActivityIds);
 		}
 		const normalizedPayload = normalizedActivityLine(payload.line);
 		if (normalizedPayload === WORKING_ACTIVITY_LINE) {
@@ -260,7 +305,7 @@ export class ActivityRenderer {
 				removeActiveWorkingLines(state);
 				completeActiveThinking(state);
 			}
-			this.scheduleFlush(payload.turnId);
+			this.scheduleFlush(activityId);
 			return { ok: true };
 		}
 		if (normalizedPayload.startsWith("🧠 ")) {
@@ -270,7 +315,7 @@ export class ActivityRenderer {
 			} else if (!completeActiveThinking(state, lineToStore) && !replaceActiveWorkingWith(state, lineToStore) && state.lines.at(-1) !== normalizedPayload) {
 				state.lines.push(normalizedPayload);
 			}
-			this.scheduleFlush(payload.turnId);
+			this.scheduleFlush(activityId);
 			return { ok: true };
 		}
 		const payloadKey = toolKeyForActivityLine(payload.line);
@@ -294,13 +339,13 @@ export class ActivityRenderer {
 		} else if (state.lines.at(-1) !== payload.line) {
 			state.lines.push(payload.line);
 		}
-		this.scheduleFlush(payload.turnId);
+		this.scheduleFlush(activityId);
 		return { ok: true };
 	}
 
-	private scheduleFlush(turnId: string): void {
-		const state = this.messages.get(turnId);
+	private scheduleFlush(activityId: string): void {
+		const state = this.messages.get(activityId);
 		if (!state || state.flushTimer) return;
-		state.flushTimer = setTimeout(() => void this.flush(turnId), ACTIVITY_THROTTLE_MS);
+		state.flushTimer = setTimeout(() => void this.flush(activityId), ACTIVITY_THROTTLE_MS);
 	}
 }

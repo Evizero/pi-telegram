@@ -56,7 +56,45 @@ export interface RuntimePiHooksDeps {
 	clearMediaGroups: () => void;
 }
 
+interface ActivitySegmentState {
+	index: number;
+	activitySinceLastText: boolean;
+}
+
+function activityIdFor(turnId: string, state: ActivitySegmentState): string | undefined {
+	return state.index === 0 ? undefined : `${turnId}:activity:${state.index}`;
+}
+
 export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDeps): void {
+	const activitySegments = new Map<string, ActivitySegmentState>();
+	function activitySegmentFor(turnId: string): ActivitySegmentState {
+		let state = activitySegments.get(turnId);
+		if (!state) {
+			state = { index: 0, activitySinceLastText: false };
+			activitySegments.set(turnId, state);
+		}
+		return state;
+	}
+	function postActivity(turn: ActiveTelegramTurn, line: string): void {
+		const state = activitySegmentFor(turn.turnId);
+		state.activitySinceLastText = true;
+		deps.activityReporter.post({ turnId: turn.turnId, activityId: activityIdFor(turn.turnId, state), chatId: turn.chatId, messageThreadId: turn.messageThreadId, line });
+	}
+	async function finishActivityBeforeAssistantText(turn: ActiveTelegramTurn): Promise<boolean> {
+		const state = activitySegmentFor(turn.turnId);
+		if (!state.activitySinceLastText) return true;
+		const activityId = activityIdFor(turn.turnId, state);
+		await deps.activityReporter.flush();
+		try {
+			await deps.postIpc(deps.getConnectedBrokerSocketPath(), "activity_complete", { turnId: turn.turnId, activityId }, deps.getSessionId());
+		} catch {
+			return false;
+		}
+		state.index += 1;
+		state.activitySinceLastText = false;
+		return true;
+	}
+
 	pi.registerTool({
 		name: "telegram_attach",
 		label: "Telegram Attach",
@@ -225,10 +263,11 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 		const activeTelegramTurn = deps.getActiveTelegramTurn();
 		if (!activeTelegramTurn || !isAssistantMessage(event.message)) return;
 		const streamEvent = event.assistantMessageEvent;
+		if ((streamEvent.type === "text_start" || streamEvent.type === "text_delta" || streamEvent.type === "text_end") && !(await finishActivityBeforeAssistantText(activeTelegramTurn))) return;
 		if (streamEvent.type === "thinking_start" || streamEvent.type === "thinking_delta") {
-			deps.activityReporter.post({ turnId: activeTelegramTurn.turnId, chatId: activeTelegramTurn.chatId, messageThreadId: activeTelegramTurn.messageThreadId, line: thinkingActivityLine(false, getThinkingTitleFromEvent(streamEvent)) });
+			postActivity(activeTelegramTurn, thinkingActivityLine(false, getThinkingTitleFromEvent(streamEvent)));
 		} else if (streamEvent.type === "thinking_end") {
-			deps.activityReporter.post({ turnId: activeTelegramTurn.turnId, chatId: activeTelegramTurn.chatId, messageThreadId: activeTelegramTurn.messageThreadId, line: thinkingActivityLine(true, getThinkingTitleFromEvent(streamEvent)) });
+			postActivity(activeTelegramTurn, thinkingActivityLine(true, getThinkingTitleFromEvent(streamEvent)));
 		}
 		await deps.postIpc(deps.getConnectedBrokerSocketPath(), "assistant_preview", { turnId: activeTelegramTurn.turnId, chatId: activeTelegramTurn.chatId, messageThreadId: activeTelegramTurn.messageThreadId, text: getMessageText(event.message) }, deps.getSessionId()).catch(() => undefined);
 	});
@@ -236,37 +275,39 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 	pi.on("tool_call", async (event) => {
 		const activeTelegramTurn = deps.getActiveTelegramTurn();
 		if (!activeTelegramTurn) return { block: false };
-		deps.activityReporter.post({ turnId: activeTelegramTurn.turnId, chatId: activeTelegramTurn.chatId, messageThreadId: activeTelegramTurn.messageThreadId, line: toolActivityLine(event.toolName, event.input) });
+		postActivity(activeTelegramTurn, toolActivityLine(event.toolName, event.input));
 		return { block: false };
 	});
 
 	pi.on("tool_result", async (event) => {
 		const activeTelegramTurn = deps.getActiveTelegramTurn();
 		if (!activeTelegramTurn) return {};
-		deps.activityReporter.post({ turnId: activeTelegramTurn.turnId, chatId: activeTelegramTurn.chatId, messageThreadId: activeTelegramTurn.messageThreadId, line: toolActivityLine(event.toolName, undefined, true, event.isError) });
+		postActivity(activeTelegramTurn, toolActivityLine(event.toolName, undefined, true, event.isError));
 		return {};
 	});
 
 	pi.on("agent_end", async (event, ctx) => {
 		deps.setLatestCtx(ctx);
 		const turn = deps.getActiveTelegramTurn();
+		let finalizationResult: "completed" | "deferred" | undefined;
 		try {
 			if (turn) {
 				const assistant = extractAssistantText(event.messages);
 				const finalPayload = { turn, text: assistant.text, stopReason: assistant.stopReason, errorMessage: assistant.errorMessage, attachments: turn.queuedAttachments };
 				const retryDeferred = !assistant.text?.trim() && isRetryableAssistantError(assistant.stopReason, assistant.errorMessage);
 				if (retryDeferred) {
-					await deps.finalizeActiveTelegramTurn(finalPayload);
+					finalizationResult = await deps.finalizeActiveTelegramTurn(finalPayload);
 					await deps.activityReporter.flush();
 				} else {
 					await deps.prepareAssistantFinalForHandoff?.(finalPayload);
 					await deps.activityReporter.flush();
-					await deps.finalizeActiveTelegramTurn(finalPayload);
+					finalizationResult = await deps.finalizeActiveTelegramTurn(finalPayload);
 				}
 			} else {
 				deps.startNextTelegramTurn();
 			}
 		} finally {
+			if (turn && finalizationResult !== "deferred" && deps.getActiveTelegramTurn()?.turnId !== turn.turnId) activitySegments.delete(turn.turnId);
 			deps.setCurrentAbort(undefined);
 			deps.updateStatus(ctx);
 		}

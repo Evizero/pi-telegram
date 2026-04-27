@@ -736,7 +736,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		});
 	}
 	async function assertCurrentSessionConnection(envelope: IpcEnvelope): Promise<void> {
-		const guardedTypes = new Set(["unregister_session", "mark_session_offline", "turn_started", "assistant_message_start", "assistant_preview", "assistant_preview_clear", "activity_update", "assistant_final", "turn_consumed", "local_user_message"]);
+		const guardedTypes = new Set(["unregister_session", "mark_session_offline", "turn_started", "assistant_message_start", "assistant_preview", "assistant_preview_clear", "activity_update", "activity_complete", "assistant_final", "turn_consumed", "local_user_message"]);
 		if (!guardedTypes.has(envelope.type) || !envelope.session_id) return;
 		brokerState ??= await loadBrokerState();
 		const session = brokerState.sessions[envelope.session_id];
@@ -788,6 +788,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		if (envelope.type === "assistant_preview") return await handleAssistantPreview(envelope.payload as { turnId: string; chatId: number; messageThreadId?: number; text: string });
 		if (envelope.type === "assistant_preview_clear") return await handleAssistantPreviewClear(envelope.payload as { turnId: string; chatId: number | string; messageThreadId?: number; stopTyping?: boolean });
 		if (envelope.type === "activity_update") return await activityRenderer.handleUpdate(envelope.payload as ActivityUpdatePayload);
+		if (envelope.type === "activity_complete") return await handleActivityComplete(envelope.payload as { turnId: string; activityId?: string });
 		if (envelope.type === "assistant_final") return await assistantFinalLedger.accept(envelope.payload as AssistantFinalPayload);
 		if (envelope.type === "turn_consumed") return await handleTurnConsumed(envelope.payload as { turnId: string });
 		if (envelope.type === "local_user_message") return await handleLocalUserMessage(envelope.session_id, envelope.payload as { text: string; imagesCount?: number; routeId?: string; chatId?: number | string; messageThreadId?: number });
@@ -884,6 +885,10 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	async function handleAssistantPreviewClear(payload: { turnId: string; chatId: number | string; messageThreadId?: number; stopTyping?: boolean; preserveOnFailure?: boolean }): Promise<{ ok: true }> {
 		if (payload.stopTyping) stopTypingLoop(payload.turnId);
 		await previewManager.clear(payload.turnId, payload.chatId, payload.messageThreadId, payload.preserveOnFailure ? { preserveOnFailure: true } : undefined);
+		return { ok: true };
+	}
+	async function handleActivityComplete(payload: { turnId: string; activityId?: string }): Promise<{ ok: true }> {
+		await activityRenderer.completeActivity(payload.turnId, payload.activityId);
 		return { ok: true };
 	}
 	async function rememberCompletedBrokerTurn(turnId: string): Promise<void> {
