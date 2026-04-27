@@ -49,8 +49,8 @@ function assertPairingClear(): void {
 }
 
 function assertLocalUserMirrorFormatting(): void {
-	assert.equal(formatLocalUserMirrorMessage("hello"), "PI User Message\n\nhello");
-	assert.equal(formatLocalUserMirrorMessage("<b>literal</b>", 2), "PI User Message\n\n<b>literal</b>\n\n[2 image(s) attached in pi]");
+	assert.equal(formatLocalUserMirrorMessage("hello"), "[PI User]: hello");
+	assert.equal(formatLocalUserMirrorMessage("<b>literal</b>", 2), "[PI User]: <b>literal</b>\n\n[2 image(s) attached in pi]");
 }
 
 function assertTopicNameFormatting(): void {
