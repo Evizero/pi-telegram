@@ -56,10 +56,15 @@ export class AssistantFinalDeliveryLedger {
 
 	async cancelSession(sessionId: string): Promise<void> {
 		const state = await this.state();
-		for (const entry of Object.values(state.pendingAssistantFinals ?? {})) {
-			if (entry.turn.sessionId !== sessionId) continue;
-			this.cancelledTurnIds.add(entry.turn.turnId);
-			if (this.currentTurnId === entry.turn.turnId) {
+		await this.cancelTurns(Object.values(state.pendingAssistantFinals ?? {})
+			.filter((entry) => entry.turn.sessionId === sessionId)
+			.map((entry) => entry.turn.turnId));
+	}
+
+	async cancelTurns(turnIds: string[]): Promise<void> {
+		for (const turnId of turnIds) {
+			this.cancelledTurnIds.add(turnId);
+			if (this.currentTurnId === turnId) {
 				this.abortController.abort();
 				this.abortController = new AbortController();
 			}

@@ -38,7 +38,7 @@ export interface RuntimePiHooksDeps {
 	connectTelegram: (ctx: ExtensionContext, notify?: boolean) => Promise<void>;
 	unregisterSession: (sessionId: string) => Promise<unknown>;
 	markSessionOffline: (sessionId: string) => Promise<unknown>;
-	disconnectSessionRoute: () => Promise<void>;
+	disconnectSessionRoute: (mode?: "explicit" | "shutdown") => Promise<void>;
 	stopClientServer: () => Promise<void>;
 	shutdownClientRoute: () => Promise<void> | void;
 	stopBroker: () => Promise<void>;
@@ -125,8 +125,10 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 			deps.setLatestCtx(ctx);
 			try {
 				await deps.disconnectSessionRoute();
-			} finally {
 				deps.hideTelegramStatus(ctx);
+			} catch (error) {
+				ctx.ui.notify(errorMessage(error), "error");
+				deps.updateStatus(ctx, errorMessage(error));
 			}
 		},
 	});
@@ -191,7 +193,7 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 	pi.on("session_shutdown", async () => {
 		deps.clearMediaGroups();
 		try {
-			await deps.disconnectSessionRoute();
+			await deps.disconnectSessionRoute("shutdown");
 		} finally {
 			await deps.stopBroker();
 		}

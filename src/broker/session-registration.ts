@@ -13,7 +13,7 @@ export interface BrokerSessionRegistrationDeps {
 	sendTextReply: (chatId: number | string, messageThreadId: number | undefined, text: string) => Promise<number | undefined>;
 	callTelegram: <TResponse>(method: string, body: Record<string, unknown>, options?: { signal?: AbortSignal }) => Promise<TResponse>;
 	postStaleClientConnection: (session: SessionRegistration) => void;
-	clearDisconnectRequest: (sessionId: string) => Promise<void>;
+	honorPendingDisconnectRequest: (sessionId: string) => Promise<void>;
 	refreshTelegramStatus: () => void;
 	retryPendingTurns: () => void;
 	kickAssistantFinalLedger: () => void;
@@ -39,7 +39,10 @@ export class BrokerSessionRegistrationCoordinator {
 		const brokerState = await this.brokerState();
 		registration.lastHeartbeatMs = now();
 		registration.topicName = topicNameFor(registration);
-		const previous = brokerState.sessions[registration.sessionId];
+		let previous = brokerState.sessions[registration.sessionId];
+		if (previous && isStaleSessionConnection(previous, registration)) throw new Error("stale_session_connection");
+		await this.deps.honorPendingDisconnectRequest(registration.sessionId);
+		previous = brokerState.sessions[registration.sessionId];
 		if (previous && isStaleSessionConnection(previous, registration)) throw new Error("stale_session_connection");
 		const replacement = previous
 			&& (previous.connectionNonce !== registration.connectionNonce || previous.connectionStartedAtMs !== registration.connectionStartedAtMs)
@@ -52,7 +55,6 @@ export class BrokerSessionRegistrationCoordinator {
 			staleStandDownRequestedAtMs: replacement ? now() : undefined,
 		};
 		const route = await this.ensureRouteForSessionLocked(brokerState.sessions[registration.sessionId]);
-		await this.deps.clearDisconnectRequest(registration.sessionId);
 		await this.deps.persistBrokerState();
 		this.deps.refreshTelegramStatus();
 		return route;

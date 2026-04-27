@@ -1,6 +1,7 @@
-import type { BrokerState, TelegramRoute } from "../shared/types.js";
+import type { BrokerState, TelegramRoute, PendingTelegramTurn } from "../shared/types.js";
 import { errorMessage, now } from "../shared/utils.js";
 import { getTelegramRetryAfterMs, TelegramApiError } from "../telegram/api.js";
+import { disconnectRequestBelongsToCurrentConnection, disconnectRequestMatchesRoute, isRouteScopedDisconnectRequest, type PendingDisconnectRequest } from "./disconnect-requests.js";
 
 const DEFAULT_ROUTE_CLEANUP_RETRY_MS = 1_000;
 
@@ -13,7 +14,7 @@ interface SessionCleanupOptions {
 	refreshTelegramStatus: () => void;
 	stopTypingLoop: (turnId: string) => void;
 	callTelegram: <TResponse>(method: string, body: Record<string, unknown>) => Promise<TResponse>;
-	cancelPendingFinalDeliveries?: (sessionId: string) => Promise<void> | void;
+	cancelPendingFinalDeliveries?: (sessionId: string, turnIds?: string[]) => Promise<void> | void;
 	logTerminalCleanupFailure?: (route: TelegramRoute, reason: string) => void;
 }
 
@@ -51,17 +52,25 @@ function removeSelectorSelectionsForSession(brokerState: BrokerState, targetSess
 	}
 }
 
+function rememberCompletedTurnId(brokerState: BrokerState, turnId: string): void {
+	brokerState.completedTurnIds ??= [];
+	if (!brokerState.completedTurnIds.includes(turnId)) brokerState.completedTurnIds.push(turnId);
+	if (brokerState.completedTurnIds.length > 1000) brokerState.completedTurnIds.splice(0, brokerState.completedTurnIds.length - 1000);
+}
+
 function removeTurnStateForSession(brokerState: BrokerState, targetSessionId: string, stopTypingLoop: (turnId: string) => void): void {
 	for (const [turnId, pending] of Object.entries(brokerState.pendingTurns ?? {})) {
 		if (pending.turn.sessionId !== targetSessionId) continue;
 		stopTypingLoop(turnId);
 		delete brokerState.pendingTurns![turnId];
+		rememberCompletedTurnId(brokerState, turnId);
 		if (brokerState.assistantPreviewMessages?.[turnId]) delete brokerState.assistantPreviewMessages[turnId];
 	}
 	for (const [turnId, pending] of Object.entries(brokerState.pendingAssistantFinals ?? {})) {
 		if (pending.turn.sessionId !== targetSessionId) continue;
 		stopTypingLoop(turnId);
 		delete brokerState.pendingAssistantFinals![turnId];
+		rememberCompletedTurnId(brokerState, turnId);
 		if (brokerState.assistantPreviewMessages?.[turnId]) delete brokerState.assistantPreviewMessages[turnId];
 	}
 }
@@ -86,6 +95,45 @@ function detachSessionRoutes(brokerState: BrokerState, targetSessionId: string):
 	const removedRoutes: TelegramRoute[] = [];
 	for (const [id, route] of Object.entries(brokerState.routes)) {
 		if (route.sessionId !== targetSessionId) continue;
+		removedRoutes.push(route);
+		delete brokerState.routes[id];
+	}
+	return removedRoutes;
+}
+
+function turnBelongsToRoute(turn: PendingTelegramTurn, route: TelegramRoute): boolean {
+	if (turn.sessionId !== route.sessionId) return false;
+	if (turn.routeId !== undefined) return turn.routeId === route.routeId;
+	return String(turn.chatId) === String(route.chatId) && turn.messageThreadId === route.messageThreadId;
+}
+
+function pendingFinalTurnIdsForRoutes(brokerState: BrokerState, routes: TelegramRoute[]): string[] {
+	return Object.entries(brokerState.pendingAssistantFinals ?? {})
+		.filter(([, pending]) => routes.some((route) => turnBelongsToRoute(pending.turn, route)))
+		.map(([turnId]) => turnId);
+}
+
+function removeTurnStateForRoutes(brokerState: BrokerState, routes: TelegramRoute[], stopTypingLoop: (turnId: string) => void): void {
+	for (const [turnId, pending] of Object.entries(brokerState.pendingTurns ?? {})) {
+		if (!routes.some((route) => turnBelongsToRoute(pending.turn, route))) continue;
+		stopTypingLoop(turnId);
+		delete brokerState.pendingTurns![turnId];
+		rememberCompletedTurnId(brokerState, turnId);
+		if (brokerState.assistantPreviewMessages?.[turnId]) delete brokerState.assistantPreviewMessages[turnId];
+	}
+	for (const [turnId, pending] of Object.entries(brokerState.pendingAssistantFinals ?? {})) {
+		if (!routes.some((route) => turnBelongsToRoute(pending.turn, route))) continue;
+		stopTypingLoop(turnId);
+		delete brokerState.pendingAssistantFinals![turnId];
+		rememberCompletedTurnId(brokerState, turnId);
+		if (brokerState.assistantPreviewMessages?.[turnId]) delete brokerState.assistantPreviewMessages[turnId];
+	}
+}
+
+function detachRoutesForDisconnectRequest(brokerState: BrokerState, request: PendingDisconnectRequest): TelegramRoute[] {
+	const removedRoutes: TelegramRoute[] = [];
+	for (const [id, route] of Object.entries(brokerState.routes)) {
+		if (!disconnectRequestMatchesRoute(request, route)) continue;
 		removedRoutes.push(route);
 		delete brokerState.routes[id];
 	}
@@ -181,6 +229,32 @@ export async function retryPendingRouteCleanupsInBroker(options: RouteCleanupOpt
 	}
 	if (changed) await options.persistBrokerState();
 	return { ok: true };
+}
+
+export async function honorExplicitDisconnectRequestInBroker(options: SessionCleanupOptions & { request: PendingDisconnectRequest }): Promise<{ ok: true; honored: boolean }> {
+	const { targetSessionId, request } = options;
+	if (!targetSessionId || !isRouteScopedDisconnectRequest(request)) return { ok: true, honored: false };
+	const brokerState = await ensureBrokerState(options);
+	const currentSession = brokerState.sessions[targetSessionId];
+	const requestTargetsCurrentConnection = disconnectRequestBelongsToCurrentConnection(request, currentSession);
+	const targetRoutes = Object.values(brokerState.routes).filter((route) => disconnectRequestMatchesRoute(request, route));
+	if (requestTargetsCurrentConnection) {
+		delete brokerState.sessions[targetSessionId];
+		removeSelectorSelectionsForSession(brokerState, targetSessionId);
+		if (targetRoutes.length === 0) {
+			await options.persistBrokerState();
+			options.refreshTelegramStatus();
+			return { ok: true, honored: true };
+		}
+	} else if (targetRoutes.length === 0) return { ok: true, honored: false };
+	const pendingFinalTurnIds = pendingFinalTurnIdsForRoutes(brokerState, targetRoutes);
+	if (pendingFinalTurnIds.length > 0) await options.cancelPendingFinalDeliveries?.(targetSessionId, pendingFinalTurnIds);
+	for (const route of detachRoutesForDisconnectRequest(brokerState, request)) queueRouteCleanup(brokerState, route);
+	removeTurnStateForRoutes(brokerState, targetRoutes, options.stopTypingLoop);
+	await options.persistBrokerState();
+	await retryPendingRouteCleanupsInBroker(options);
+	options.refreshTelegramStatus();
+	return { ok: true, honored: true };
 }
 
 export async function unregisterSessionFromBroker(options: SessionCleanupOptions): Promise<{ ok: true }> {
