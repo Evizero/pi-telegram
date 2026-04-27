@@ -1,9 +1,9 @@
 ---
 title: "Keep Telegram finals pending across pi auto-retry"
-status: "review"
+status: "done"
 priority: 1
 created: "2026-04-26"
-updated: "2026-04-26"
+updated: "2026-04-27"
 author: "Christof Salis"
 assignee: ""
 labels: []
@@ -81,3 +81,4 @@ Likely affected code areas are the pi hook finalization boundary, composition-ro
 - 2026-04-26: Kept /stop resilient during deferred retry by preserving or reconstructing an abort callback from the latest session context when possible, and otherwise releasing the deferred Telegram turn without leaving queued work blocked.
 - 2026-04-26: Kept the deferred-turn marker alive until the retry attempt emits assistant message_start, while canceling only the watchdog timer on agent_start, so local input can still flush the old Telegram turn before any retry output would be re-associated.
 - 2026-04-26: Used preview-manager clear-with-preserve behavior for deferred retry preview cleanup so failed deleteMessage attempts do not drop the durable preview reference needed for later final dedupe or preview replacement.
+- 2026-04-27: Closed after confirming implementation commit 3fea14e is on main, matches the traced retry-aware finalization requirements, and npm run check passes on 2026-04-27.

@@ -1,9 +1,9 @@
 ---
 title: "Omit main branch from default Telegram topic names"
-status: "review"
+status: "done"
 priority: 3
 created: "2026-04-25"
-updated: "2026-04-25"
+updated: "2026-04-27"
 author: "Christof Salis"
 assignee: "pi-agent"
 labels: ["telegram", "topic-naming", "ux"]
@@ -37,3 +37,4 @@ Run focused checks covering `topicNameFor(...)` for `main`, non-main, session-na
 
 - 2026-04-25: 2026-04-25: Added focused checks in scripts/check-pairing-and-format.ts for main-branch omission, non-main branch retention, case-insensitive piSessionName dedupe, and truncation/hash preservation. A focused compile-and-run of that check passed. npm run check is currently blocked by unrelated pre-existing compaction-check TypeScript errors in scripts/check-manual-compaction.ts from task queue-telegram-input-during-compaction.
 - 2026-04-25: 2026-04-25: Implemented the naming change in topicNameFor(...) by omitting the Git branch segment only when the normalized branch name is main, keeping non-main branches, existing case-insensitive piSessionName dedupe, and existing truncation/hash behavior unchanged.
+- 2026-04-27: Closed after confirming implementation commit 7bf8a00 is on main, matches the traced route/topic naming requirements, and npm run check passes on 2026-04-27.
