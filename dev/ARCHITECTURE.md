@@ -56,12 +56,12 @@ The strongest drivers come directly from the intended purpose and requirements:
 - busy-turn control must distinguish steering from follow-up work
   (`StRS-busy-turn-intent`, `SyRS-busy-message-steers`,
   `SyRS-follow-queues-next-turn`);
-- activity and final responses must stay intelligible and non-duplicated even
-  when Telegram previews, edits, chunks, pi/provider auto-retry, and Telegram
-  delivery retries are involved (`StRS-activity-final-feedback`,
-  `SyRS-activity-history-rendering`, `SyRS-final-preview-deduplication`,
-  `SyRS-final-delivery-fifo-retry`, `SyRS-retry-aware-agent-finals`,
-  `SyRS-final-text-before-error-metadata`);
+- activity and final responses must stay intelligible, chronologically clear,
+  and non-duplicated even when Telegram previews, edits, chunks,
+  pi/provider auto-retry, and Telegram delivery retries are involved
+  (`StRS-activity-final-feedback`, `SyRS-activity-history-rendering`,
+  `SyRS-final-preview-deduplication`, `SyRS-final-delivery-fifo-retry`,
+  `SyRS-retry-aware-agent-finals`, `SyRS-final-text-before-error-metadata`);
 - Telegram update, callback-query, webhook, retry, file, draft, media, and topic
   constraints are part of the runtime contract, not optional polish
   (`StRS-api-constrained-maintenance`, `SyRS-webhook-before-polling`,
@@ -171,10 +171,12 @@ current run, while explicit follow-up messages do not.
 ### Telegram rate limit during final delivery
 
 A final assistant response is ready, but Telegram returns `retry_after` while
-sending a preview edit, text chunk, or attachment.
+cleaning up a detached preview, sending a final text chunk, or sending an
+attachment.
 The Telegram API layer preserves the retry signal; final delivery remains queued
-in FIFO order; newer finals do not bypass older ones; and successful chunks are
-not resent in a way that duplicates the visible response.
+in FIFO order; newer finals do not bypass older ones; final text is not edited
+into an older preview message; and successful chunks are not resent in a way that
+duplicates the visible response.
 The important property is durable, ordered completion through Telegram delivery
 or explicit terminal failure, not mere client-to-broker acceptance.
 
@@ -347,8 +349,9 @@ with related code when they explain the same behavior.
   active turn.
 - Activity collection preserves history; Telegram rendering may debounce but may
   not erase collected event meaning.
-- Final preview finalization is chunk-aware and must avoid duplicate visible
-  responses.
+- Final delivery detaches streamed preview messages before appending final
+  assistant content as new Telegram messages; preview edits must not become the
+  visible final response.
 - Telegram `retry_after` is a control signal, not a generic failure.
 - Telegram attachments are untrusted and local files are uploaded only through
   explicit pi attachment intent and allowlisted paths.
@@ -471,10 +474,11 @@ and queued outbound attachments.
 `BrokerState.pendingAssistantFinals` persists those payloads plus delivery
 progress until Telegram delivery succeeds or a terminal non-retryable outcome is
 recorded. `BrokerState.assistantPreviewMessages` records visible preview message
-IDs so broker takeover can finalize an existing preview instead of sending a new
-final beside a stale preview. The ledger tracks final text chunk progress and
-outbound attachment progress so retries and broker turnover can resume without
-intentionally resending already-recorded visible output.
+IDs so broker takeover can detach existing previews before appending fresh final
+messages, rather than editing older preview messages into final content. The
+ledger tracks final text chunk progress and outbound attachment progress so
+retries and broker turnover can resume without intentionally resending
+already-recorded visible output.
 
 ## Architectural decomposition
 
@@ -679,11 +683,13 @@ Assistant text streams through `PreviewManager`, which chooses draft or message
 preview mode according to Telegram constraints. Chronology barriers may complete
 prior activity before showing assistant text, but those barriers must not depend
 on low-value typing delivery.
-On final response, the broker first persists an assistant-final ledger entry and
-then finalizes preview state into one visible final sequence. Long text is
-chunked, attachments are sent only from explicit pi queues, progress is persisted
-after visible delivery steps, and retryable failures keep final delivery pending
-without allowing newer finals to bypass the older one.
+On final response, the broker first persists an assistant-final ledger entry,
+closes outstanding activity, detaches any streamed preview, performs preview
+cleanup when Telegram permits it, and then appends final assistant text as new
+Telegram messages. Long text is chunked, attachments are sent only from explicit
+pi queues, progress is
+persisted after visible delivery steps, and retryable failures keep final
+delivery pending without allowing newer finals to bypass the older one.
 
 This scenario protects `SyRS-activity-history-rendering`,
 `SyRS-final-preview-deduplication`, `SyRS-final-delivery-fifo-retry`,

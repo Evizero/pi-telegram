@@ -109,19 +109,10 @@ export class PreviewManager {
 			await this.clear(turnId, chatId, messageThreadId);
 			return true;
 		}
-		if (state.messageId !== undefined) {
-			const edited = await this.editMessageText(chatId, state.messageId, text);
-			if (!edited) {
-				await this.deletePreviewMessageForReplacement(chatId, state.messageId);
-				await this.sendTextReply(chatId, messageThreadId, text);
-			}
-			this.previews.delete(turnId);
-			this.onPreviewDetached?.(turnId);
-			return true;
-		}
+		if (state.messageId !== undefined) await this.deletePreviewMessageForFinal(chatId, state.messageId);
+		await this.sendTextReply(chatId, messageThreadId, text);
 		this.previews.delete(turnId);
 		this.onPreviewDetached?.(turnId);
-		await this.sendTextReply(chatId, messageThreadId, text);
 		return true;
 	}
 
@@ -137,18 +128,11 @@ export class PreviewManager {
 			await this.clear(turnId, chatId, messageThreadId);
 			return true;
 		}
-		if (state.messageId !== undefined) {
-			const edited = await this.editMessageText(chatId, state.messageId, firstChunk);
-			if (!edited) {
-				await this.deletePreviewMessageForReplacement(chatId, state.messageId);
-				await this.sendTextReply(chatId, messageThreadId, firstChunk);
-			}
-		} else {
-			await this.sendTextReply(chatId, messageThreadId, firstChunk);
-		}
+		if (state.messageId !== undefined) await this.deletePreviewMessageForFinal(chatId, state.messageId);
+		await this.sendTextReply(chatId, messageThreadId, firstChunk);
+		for (const chunk of remainingChunks) await this.sendTextReply(chatId, messageThreadId, chunk);
 		this.previews.delete(turnId);
 		this.onPreviewDetached?.(turnId);
-		for (const chunk of remainingChunks) await this.sendTextReply(chatId, messageThreadId, chunk);
 		return true;
 	}
 
@@ -222,11 +206,12 @@ export class PreviewManager {
 		console.warn("[pi-telegram] Telegram preview update failed:", error instanceof Error ? error.message : error);
 	}
 
-	private async deletePreviewMessageForReplacement(chatId: number | string, messageId: number): Promise<void> {
+	private async deletePreviewMessageForFinal(chatId: number | string, messageId: number): Promise<void> {
 		try {
 			await this.callTelegram("deleteMessage", { chat_id: chatId, message_id: messageId });
 		} catch (error) {
-			if (!isMissingDeletedPreviewMessage(error)) throw error;
+			if (isMissingDeletedPreviewMessage(error)) return;
+			if (shouldRetryPreviewFinalCleanup(error)) throw error;
 		}
 	}
 
@@ -306,4 +291,11 @@ function isMissingDeletedPreviewMessage(error: unknown): boolean {
 	return error instanceof TelegramApiError
 		&& error.errorCode === 400
 		&& /message to delete not found/i.test(error.description ?? error.message);
+}
+
+function shouldRetryPreviewFinalCleanup(error: unknown): boolean {
+	if (!(error instanceof TelegramApiError)) return true;
+	if (getTelegramRetryAfterMs(error) !== undefined) return true;
+	const errorCode = error.errorCode ?? 0;
+	return errorCode >= 500;
 }

@@ -175,7 +175,7 @@ async function checkAttachmentRetryDoesNotResendText(): Promise<void> {
 	}
 }
 
-async function checkDurablePreviewMessageIsFinalizedAfterRestart(): Promise<void> {
+async function checkDurablePreviewMessageIsReplacedAfterRestart(): Promise<void> {
 	const calls: Array<{ method: string; messageId?: unknown; text?: unknown }> = [];
 	const state = emptyState();
 	state.assistantPreviewMessages = { previewed: { chatId: 123, messageThreadId: 9, messageId: 44, updatedAtMs: now() } };
@@ -190,9 +190,131 @@ async function checkDurablePreviewMessageIsFinalizedAfterRestart(): Promise<void
 		},
 	});
 	await env.ledger.drainReady();
-	assert.deepEqual(calls, [{ method: "editMessageText", messageId: 44, text: "final" }]);
+	assert.deepEqual(calls, [
+		{ method: "deleteMessage", messageId: 44, text: undefined },
+		{ method: "sendMessage", messageId: undefined, text: "final" },
+	]);
 	assert.equal(env.state.assistantPreviewMessages?.previewed, undefined);
 	assert.deepEqual(env.state.completedTurnIds, ["previewed"]);
+}
+
+async function checkLegacyPreviewEditedFirstChunkIsResentFreshAfterCleanup(): Promise<void> {
+	const calls: Array<{ method: string; messageId?: unknown; text?: unknown }> = [];
+	const state = emptyState();
+	state.pendingAssistantFinals = {
+		legacyPreviewEdit: entry("legacyPreviewEdit", {
+			text: "first\n\nsecond",
+			progress: {
+				activityCompleted: true,
+				typingStopped: true,
+				previewDetached: true,
+				previewMode: "message",
+				previewMessageId: 44,
+				textHash: hash("first\n\nsecond"),
+				chunks: ["first", "second"],
+				sentChunkIndexes: [0],
+				sentChunkMessageIds: { "0": 44 },
+				sentAttachmentIndexes: [],
+			},
+		}),
+	};
+	const env = makeLedger({
+		state,
+		callTelegram: async (method, body) => {
+			calls.push({ method, messageId: body.message_id, text: body.text });
+			return { message_id: method === "sendMessage" && body.text === "first" ? 45 : 46 } satisfies TelegramSentMessage;
+		},
+	});
+	await env.ledger.drainReady();
+	assert.deepEqual(calls, [
+		{ method: "deleteMessage", messageId: 44, text: undefined },
+		{ method: "sendMessage", messageId: undefined, text: "first" },
+		{ method: "sendMessage", messageId: undefined, text: "second" },
+	]);
+	assert.deepEqual(env.state.completedTurnIds, ["legacyPreviewEdit"]);
+}
+
+async function checkLegacyPreviewEditedFinalResendsAlreadySentChunksInOrder(): Promise<void> {
+	const calls: Array<{ method: string; messageId?: unknown; text?: unknown }> = [];
+	const state = emptyState();
+	state.pendingAssistantFinals = {
+		legacySentSecond: entry("legacySentSecond", {
+			text: "first\n\nsecond",
+			progress: {
+				activityCompleted: true,
+				typingStopped: true,
+				previewDetached: true,
+				previewMode: "message",
+				previewMessageId: 44,
+				textHash: hash("first\n\nsecond"),
+				chunks: ["first", "second"],
+				sentChunkIndexes: [0, 1],
+				sentChunkMessageIds: { "0": 44, "1": 47 },
+				sentAttachmentIndexes: [],
+			},
+		}),
+	};
+	const env = makeLedger({
+		state,
+		callTelegram: async (method, body) => {
+			calls.push({ method, messageId: body.message_id, text: body.text });
+			return { message_id: method === "sendMessage" && body.text === "first" ? 45 : 46 } satisfies TelegramSentMessage;
+		},
+	});
+	await env.ledger.drainReady();
+	assert.deepEqual(calls, [
+		{ method: "deleteMessage", messageId: 44, text: undefined },
+		{ method: "deleteMessage", messageId: 47, text: undefined },
+		{ method: "sendMessage", messageId: undefined, text: "first" },
+		{ method: "sendMessage", messageId: undefined, text: "second" },
+	]);
+	assert.deepEqual(env.state.completedTurnIds, ["legacySentSecond"]);
+}
+
+async function checkLegacyPreviewEditedFirstChunkSurvivesStopAfterCleanup(): Promise<void> {
+	const calls: Array<{ method: string; messageId?: unknown; text?: unknown }> = [];
+	const state = emptyState();
+	state.pendingAssistantFinals = {
+		legacyStop: entry("legacyStop", {
+			text: "first\n\nsecond",
+			progress: {
+				activityCompleted: true,
+				typingStopped: true,
+				previewDetached: true,
+				previewMode: "message",
+				previewMessageId: 44,
+				textHash: hash("first\n\nsecond"),
+				chunks: ["first", "second"],
+				sentChunkIndexes: [0],
+				sentChunkMessageIds: { "0": 44 },
+				sentAttachmentIndexes: [],
+			},
+		}),
+	};
+	let stopAfterDelete = true;
+	const env = makeLedger({
+		state,
+		callTelegram: async (method, body) => {
+			calls.push({ method, messageId: body.message_id, text: body.text });
+			if (method === "deleteMessage" && stopAfterDelete) {
+				stopAfterDelete = false;
+				env.ledger.stop();
+			}
+			return { message_id: method === "sendMessage" && body.text === "first" ? 45 : 46 } satisfies TelegramSentMessage;
+		},
+	});
+	await env.ledger.drainReady();
+	assert.deepEqual(calls, [{ method: "deleteMessage", messageId: 44, text: undefined }]);
+	assert.deepEqual(env.state.pendingAssistantFinals?.legacyStop?.progress.sentChunkIndexes, []);
+	assert.equal(env.state.pendingAssistantFinals?.legacyStop?.progress.previewCleanupDone, true);
+	env.ledger.start();
+	await env.ledger.drainReady();
+	assert.deepEqual(calls, [
+		{ method: "deleteMessage", messageId: 44, text: undefined },
+		{ method: "sendMessage", messageId: undefined, text: "first" },
+		{ method: "sendMessage", messageId: undefined, text: "second" },
+	]);
+	assert.deepEqual(env.state.completedTurnIds, ["legacyStop"]);
 }
 
 async function checkOfflineSessionFinalCompletionQueuesRouteCleanup(): Promise<void> {
@@ -316,7 +438,7 @@ async function checkDeletePreviewRetryAfterStopsReplacementSend(): Promise<void>
 		},
 	});
 	await env.ledger.drainReady();
-	assert.deepEqual(calls, ["editMessageText", "editMessageText", "deleteMessage"]);
+	assert.deepEqual(calls, ["deleteMessage"]);
 	assert.deepEqual(env.state.pendingAssistantFinals?.deleteRetry?.progress.sentChunkIndexes, []);
 	assert.ok((env.state.pendingAssistantFinals?.deleteRetry?.retryAtMs ?? 0) > now());
 	env.ledger.clearTimer();
@@ -340,13 +462,36 @@ async function checkDeletePreviewTransportFailureStopsReplacementSend(): Promise
 		},
 	});
 	await env.ledger.drainReady();
-	assert.deepEqual(calls, ["editMessageText", "editMessageText", "deleteMessage"]);
+	assert.deepEqual(calls, ["deleteMessage"]);
 	assert.deepEqual(env.state.pendingAssistantFinals?.deleteTransport?.progress.sentChunkIndexes, []);
 	assert.ok((env.state.pendingAssistantFinals?.deleteTransport?.retryAtMs ?? 0) > now());
 	env.ledger.clearTimer();
 }
 
-async function checkPermanentDeletePreviewErrorTerminatesWithoutDuplicateFinal(): Promise<void> {
+async function checkDeletePreviewMissingStillSendsReplacementFinal(): Promise<void> {
+	const calls: string[] = [];
+	const state = emptyState();
+	state.pendingAssistantFinals = {
+		deleteMissing: entry("deleteMissing", {
+			text: "replacement",
+			progress: { activityCompleted: true, typingStopped: true, previewDetached: true, previewMode: "message", previewMessageId: 99, textHash: hash("replacement"), chunks: ["replacement"], sentChunkIndexes: [], sentChunkMessageIds: {}, sentAttachmentIndexes: [] },
+		}),
+	};
+	const env = makeLedger({
+		state,
+		callTelegram: async (method, body) => {
+			calls.push(`${method}:${String(body.text ?? body.message_id ?? "")}`);
+			if (method === "deleteMessage") throw new TelegramApiError(method, "Bad Request: message to delete not found", 400, undefined);
+			return { message_id: 100 } satisfies TelegramSentMessage;
+		},
+	});
+	await env.ledger.drainReady();
+	assert.deepEqual(calls, ["deleteMessage:99", "sendMessage:replacement"]);
+	assert.equal(env.state.pendingAssistantFinals?.deleteMissing, undefined);
+	assert.deepEqual(env.state.completedTurnIds, ["deleteMissing"]);
+}
+
+async function checkPermanentDeletePreviewErrorAppendsFreshFinal(): Promise<void> {
 	const calls: string[] = [];
 	const state = emptyState();
 	state.pendingAssistantFinals = {
@@ -360,18 +505,14 @@ async function checkPermanentDeletePreviewErrorTerminatesWithoutDuplicateFinal()
 		callTelegram: async (method, body) => {
 			calls.push(`${method}:${String(body.text ?? body.message_id ?? "")}`);
 			if (method === "deleteMessage") throw new TelegramApiError(method, "Bad Request: message can't be deleted", 400, undefined);
-			throw new TelegramApiError(method, "Bad Request: message can't be edited", 400, undefined);
+			return { message_id: 100 } satisfies TelegramSentMessage;
 		},
 	});
 	await env.ledger.drainReady();
-	assert.deepEqual(calls, [
-		"editMessageText:replacement",
-		"editMessageText:replacement",
-		"deleteMessage:99",
-	]);
+	assert.deepEqual(calls, ["deleteMessage:99", "sendMessage:replacement"]);
 	assert.equal(env.state.pendingAssistantFinals?.deletePermanent, undefined);
 	assert.deepEqual(env.state.completedTurnIds, ["deletePermanent"]);
-	assert.match(env.terminalFailures[0] ?? "", /can't be deleted/i);
+	assert.deepEqual(env.terminalFailures, []);
 }
 
 async function checkDetachedSessionFinalIsQueuedWithoutLiveSession(): Promise<void> {
@@ -469,6 +610,68 @@ async function checkErrorOnlyFinalUsesClearFailureText(): Promise<void> {
 	assert.deepEqual(env.state.completedTurnIds, ["errorOnly"]);
 }
 
+async function checkErrorOnlyFinalAppendsAfterPermanentPreviewCleanupFailure(): Promise<void> {
+	const calls: string[] = [];
+	const state = emptyState();
+	state.pendingAssistantFinals = {
+		errorPreview: entry("errorPreview", {
+			text: undefined,
+			stopReason: "error",
+			errorMessage: "terminated",
+			progress: { activityCompleted: true, typingStopped: true, previewDetached: true, previewMode: "message", previewMessageId: 99, sentChunkIndexes: [], sentChunkMessageIds: {}, sentAttachmentIndexes: [] },
+		}),
+	};
+	const env = makeLedger({
+		state,
+		callTelegram: async (method, body) => {
+			calls.push(`${method}:${String(body.text ?? body.message_id ?? "")}`);
+			if (method === "deleteMessage") throw new TelegramApiError(method, "Bad Request: message can't be deleted", 400, undefined);
+			return { message_id: 63 } satisfies TelegramSentMessage;
+		},
+	});
+	await env.ledger.drainReady();
+	assert.deepEqual(calls, ["deleteMessage:99", "sendMessage:Telegram bridge: pi failed while processing the request: terminated"]);
+	assert.deepEqual(env.state.completedTurnIds, ["errorPreview"]);
+	assert.deepEqual(env.terminalFailures, []);
+}
+
+async function checkAttachmentOnlyFinalAppendsNoticeAfterPermanentPreviewCleanupFailure(): Promise<void> {
+	const tempDir = mkdtempSync(join(tmpdir(), "pi-telegram-final-check-"));
+	try {
+		const attachmentPath = join(tempDir, "artifact.txt");
+		writeFileSync(attachmentPath, "artifact");
+		const calls: string[] = [];
+		const uploads: string[] = [];
+		const state = emptyState();
+		state.pendingAssistantFinals = {
+			attachmentPreview: entry("attachmentPreview", {
+				text: undefined,
+				attachments: [{ path: attachmentPath, fileName: "artifact.txt" }],
+				progress: { activityCompleted: true, typingStopped: true, previewDetached: true, previewMode: "message", previewMessageId: 99, sentChunkIndexes: [], sentChunkMessageIds: {}, sentAttachmentIndexes: [] },
+			}),
+		};
+		const env = makeLedger({
+			state,
+			callTelegram: async (method, body) => {
+				calls.push(`${method}:${String(body.text ?? body.message_id ?? "")}`);
+				if (method === "deleteMessage") throw new TelegramApiError(method, "Bad Request: message can't be deleted", 400, undefined);
+				return { message_id: 64 } satisfies TelegramSentMessage;
+			},
+			callTelegramMultipart: async (method) => {
+				uploads.push(method);
+				return { message_id: 65 } satisfies TelegramSentMessage;
+			},
+		});
+		await env.ledger.drainReady();
+		assert.deepEqual(calls, ["deleteMessage:99", "sendMessage:Attached requested file(s)."]);
+		assert.deepEqual(uploads, ["sendDocument"]);
+		assert.deepEqual(env.state.completedTurnIds, ["attachmentPreview"]);
+		assert.deepEqual(env.terminalFailures, []);
+	} finally {
+		rmSync(tempDir, { recursive: true, force: true });
+	}
+}
+
 async function checkTransportFetchFailedStaysPending(): Promise<void> {
 	const textCalls: string[] = [];
 	const state = emptyState();
@@ -511,7 +714,10 @@ await checkAssistantFinalAcceptsWithoutLiveSessionOrRoute();
 await checkDuplicateAssistantFinalHandoff();
 await checkChunkResumeSkipsSentChunks();
 await checkAttachmentRetryDoesNotResendText();
-await checkDurablePreviewMessageIsFinalizedAfterRestart();
+await checkDurablePreviewMessageIsReplacedAfterRestart();
+await checkLegacyPreviewEditedFirstChunkIsResentFreshAfterCleanup();
+await checkLegacyPreviewEditedFinalResendsAlreadySentChunksInOrder();
+await checkLegacyPreviewEditedFirstChunkSurvivesStopAfterCleanup();
 await checkOfflineSessionFinalCompletionQueuesRouteCleanup();
 await checkOfflineSessionFinalCompletionAlsoCleansPendingTurnPreviewState();
 await checkOfflineSessionFinalCompletionPreservesPreviewRefWhenDeleteRetryableFails();
@@ -519,12 +725,15 @@ await checkBrokerStopPreventsFurtherDelivery();
 await checkClearPreviewRetryAfterStaysPending();
 await checkDeletePreviewRetryAfterStopsReplacementSend();
 await checkDeletePreviewTransportFailureStopsReplacementSend();
-await checkPermanentDeletePreviewErrorTerminatesWithoutDuplicateFinal();
+await checkDeletePreviewMissingStillSendsReplacementFinal();
+await checkPermanentDeletePreviewErrorAppendsFreshFinal();
 await checkDetachedSessionFinalIsQueuedWithoutLiveSession();
 await checkDisconnectCancelsInFlightFinalDelivery();
 await checkRetryAfterBlocksNewerFinals();
 await checkErrorFinalWithTextPrefersText();
 await checkErrorOnlyFinalUsesClearFailureText();
+await checkErrorOnlyFinalAppendsAfterPermanentPreviewCleanupFailure();
+await checkAttachmentOnlyFinalAppendsNoticeAfterPermanentPreviewCleanupFailure();
 await checkTransportFetchFailedStaysPending();
 await checkUnauthorizedTelegramFailureGoesTerminal();
 console.log("Final delivery ledger checks passed");

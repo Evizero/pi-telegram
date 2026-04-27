@@ -193,6 +193,9 @@ export interface AssistantFinalDeliveryProgress {
 	typingStopped?: boolean;
 	previewDetached?: boolean;
 	previewCleared?: boolean;
+	previewCleanupDone?: boolean;
+	previewCleanupTerminalReason?: string;
+	legacyPreviewEditedFinalReset?: boolean;
 	previewMode?: "draft" | "message";
 	previewMessageId?: number;
 	textHash?: string;

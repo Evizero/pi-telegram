@@ -248,15 +248,15 @@ export class AssistantFinalDeliveryLedger {
 			return;
 		}
 		if (entry.stopReason === "error") {
-			await this.clearPreview(entry);
 			await this.deliverText(entry, formatAssistantFailureText(entry.stopReason, entry.errorMessage));
 			return;
 		}
-		await this.clearPreview(entry);
 		if (entry.attachments.length > 0) {
 			await this.deliverText(entry, "Attached requested file(s).");
 			await this.deliverAttachments(entry);
+			return;
 		}
+		await this.clearPreview(entry);
 	}
 
 	private async clearPreview(entry: PendingAssistantFinalDelivery): Promise<void> {
@@ -312,7 +312,15 @@ export class AssistantFinalDeliveryLedger {
 		}
 		const chunks = progress.chunks ?? [];
 		if (chunks.length === 0) return;
-		await this.detachPreview(entry);
+		const firstChunkWasPreviewEdit = wasFirstChunkDeliveredByPreviewEdit(progress);
+		if (firstChunkWasPreviewEdit) {
+			progress.legacyPreviewEditedFinalReset = true;
+			progress.sentChunkIndexes = [];
+			entry.updatedAtMs = now();
+			await this.deps.persistBrokerState();
+		}
+		await this.cleanupPreviewBeforeFinal(entry);
+		await this.cleanupLegacyPreviewEditedFinalChunks(entry);
 		for (let index = 0; index < chunks.length; index += 1) {
 			if (progress.sentChunkIndexes?.includes(index)) continue;
 			await this.assertCanDeliver();
@@ -327,16 +335,54 @@ export class AssistantFinalDeliveryLedger {
 	}
 
 	private async deliverFirstChunk(entry: PendingAssistantFinalDelivery, chunk: string): Promise<number | undefined> {
-		const previewMessageId = entry.progress.previewMessageId;
-		if (entry.progress.previewMode === "message" && previewMessageId !== undefined) {
-			const edited = await this.editMessageText(entry.turn.chatId, previewMessageId, chunk);
-			if (edited) return previewMessageId;
-			await this.assertCanDeliver();
-			await this.deps.callTelegram("deleteMessage", { chat_id: entry.turn.chatId, message_id: previewMessageId }, { signal: this.abortController.signal }).catch((error) => {
-				if (!isIgnorableDeletePreviewError(error)) throw error;
-			});
-		}
+		await this.cleanupPreviewBeforeFinal(entry);
 		return await this.sendMarkdownMessage(entry, chunk);
+	}
+
+	private async cleanupPreviewBeforeFinal(entry: PendingAssistantFinalDelivery): Promise<void> {
+		await this.assertCanDeliver();
+		await this.detachPreview(entry);
+		const progress = entry.progress;
+		if (progress.previewCleanupDone) return;
+		if (progress.previewMode === "message" && progress.previewMessageId !== undefined) {
+			try {
+				await this.deps.callTelegram("deleteMessage", { chat_id: entry.turn.chatId, message_id: progress.previewMessageId }, { signal: this.abortController.signal });
+				progress.previewCleared = true;
+			} catch (error) {
+				if (isIgnorableDeletePreviewError(error)) {
+					progress.previewCleared = true;
+				} else if (shouldRetryPreviewCleanupFailure(error)) {
+					throw error;
+				} else {
+					progress.previewCleanupTerminalReason = finalDeliveryErrorMessage(error);
+				}
+			}
+		}
+		progress.previewCleanupDone = true;
+		entry.updatedAtMs = now();
+		await this.deps.persistBrokerState();
+	}
+
+	private async cleanupLegacyPreviewEditedFinalChunks(entry: PendingAssistantFinalDelivery): Promise<void> {
+		const progress = entry.progress;
+		if (!progress.legacyPreviewEditedFinalReset) return;
+		for (const [index, messageId] of Object.entries(progress.sentChunkMessageIds ?? {})) {
+			if (index === "0" || messageId === progress.previewMessageId) continue;
+			await this.assertCanDeliver();
+			try {
+				await this.deps.callTelegram("deleteMessage", { chat_id: entry.turn.chatId, message_id: messageId }, { signal: this.abortController.signal });
+			} catch (error) {
+				if (isIgnorableDeletePreviewError(error)) continue;
+				if (shouldRetryPreviewCleanupFailure(error)) throw error;
+				progress.previewCleanupTerminalReason = progress.previewCleanupTerminalReason
+					? `${progress.previewCleanupTerminalReason}; ${finalDeliveryErrorMessage(error)}`
+					: finalDeliveryErrorMessage(error);
+			}
+		}
+		progress.sentChunkMessageIds = {};
+		progress.legacyPreviewEditedFinalReset = false;
+		entry.updatedAtMs = now();
+		await this.deps.persistBrokerState();
 	}
 
 	private async sendMarkdownMessage(entry: PendingAssistantFinalDelivery, text: string): Promise<number | undefined> {
@@ -356,23 +402,6 @@ export class AssistantFinalDeliveryLedger {
 		}
 	}
 
-	private async editMessageText(chatId: number | string, messageId: number, text: string): Promise<boolean> {
-		try {
-			await this.deps.callTelegram("editMessageText", { chat_id: chatId, message_id: messageId, text, parse_mode: "Markdown" }, { signal: this.abortController.signal });
-			return true;
-		} catch (error) {
-			if (isMessageNotModified(error)) return true;
-			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
-			await this.assertCanDeliver();
-			try {
-				await this.deps.callTelegram("editMessageText", { chat_id: chatId, message_id: messageId, text }, { signal: this.abortController.signal });
-				return true;
-			} catch (fallbackError) {
-				if (getTelegramRetryAfterMs(fallbackError) !== undefined) throw fallbackError;
-				return isMessageNotModified(fallbackError);
-			}
-		}
-	}
 
 	private async deliverAttachments(entry: PendingAssistantFinalDelivery): Promise<void> {
 		entry.progress.sentAttachmentIndexes ??= [];
@@ -412,10 +441,6 @@ function hashText(text: string): string {
 	return createHash("sha256").update(text).digest("hex");
 }
 
-function isMessageNotModified(error: unknown): boolean {
-	return error instanceof TelegramApiError && /message is not modified/i.test(error.description ?? error.message);
-}
-
 function shouldPreservePreviewRefOnDeleteFailure(error: unknown): boolean {
 	if (!(error instanceof TelegramApiError)) return true;
 	const errorCode = error.errorCode ?? 0;
@@ -426,6 +451,21 @@ function isIgnorableDeletePreviewError(error: unknown): boolean {
 	return error instanceof TelegramApiError
 		&& error.errorCode === 400
 		&& /message to delete not found/i.test(error.description ?? error.message);
+}
+
+function shouldRetryPreviewCleanupFailure(error: unknown): boolean {
+	if (!(error instanceof TelegramApiError)) return true;
+	if (getTelegramRetryAfterMs(error) !== undefined) return true;
+	const errorCode = error.errorCode ?? 0;
+	return errorCode >= 500;
+}
+
+function wasFirstChunkDeliveredByPreviewEdit(progress: PendingAssistantFinalDelivery["progress"]): boolean {
+	return progress.previewCleanupDone !== true
+		&& progress.previewMode === "message"
+		&& progress.previewMessageId !== undefined
+		&& (progress.sentChunkIndexes ?? []).includes(0)
+		&& progress.sentChunkMessageIds?.["0"] === progress.previewMessageId;
 }
 
 function isTelegramFormattingError(error: unknown): boolean {

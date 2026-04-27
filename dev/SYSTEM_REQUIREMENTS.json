@@ -294,20 +294,25 @@
     {
       "id": "SyRS-final-preview-deduplication",
       "origin": "derived",
-      "label": "Deduplicate preview finalization",
-      "statement": "The system shall finalize streamed assistant previews into final Telegram messages without duplicating preview text, final chunks, or attachment notifications.",
+      "label": "Send finals after previews",
+      "statement": "The system shall detach any streamed assistant preview before final delivery and send final assistant response text as new Telegram messages rather than editing an older preview message into the final response.",
       "traces_to": [
         "StRS-activity-final-feedback",
         "StRS-delivery-continuity"
       ],
-      "rationale": "The Telegram view must be readable and trustworthy; duplicate previews or chunks make remote supervision confusing.",
-      "acceptance_criteria": "Tests cover short and long final responses and show the existing preview is edited or cleared correctly, long finals are chunked once, and fallback sends do not leave stale duplicate preview messages.",
+      "rationale": "Remote supervision depends on Telegram chronology as well as deduplication. Editing an earlier preview into the final answer can make the final appear before later Activity messages even when final delivery closes activity first; detaching the preview and appending fresh final messages keeps the visible result understandable while preserving duplicate-prevention goals. Preview cleanup should occur when Telegram permits it, but final answer text must not be delivered by reusing the preview message.",
+      "acceptance_criteria": "Tests show that when a visible preview exists, final delivery detaches it before sending final text with sendMessage; final content is not produced by editMessageText on the preview; missing/already-deleted previews still allow the final to be sent once; retry_after or ambiguous transport/server failures during preview cleanup keep the final pending without sending or bypassing FIFO ordering; permanent preview-cleanup failures still lead to final assistant text being appended with sendMessage rather than terminally losing the final or editing it into the preview; chunked final text and attachments are delivered once in order with route/thread context preserved.",
       "verification": {
         "method": "test"
       },
       "status": "draft",
       "created": "2026-04-25",
-      "updated": "2026-04-25"
+      "updated": "2026-04-27",
+      "sources": {
+        "inbox": [
+          "final-telegram-message-can"
+        ]
+      }
     },
     {
       "id": "SyRS-final-delivery-fifo-retry",

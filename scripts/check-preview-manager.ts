@@ -222,7 +222,6 @@ async function checkFinalizeDeletesStalePreviewBeforeSendingReplacementFinal(): 
 		async <TResponse>(method: string, body: Record<string, unknown>) => {
 			calls.push(`${method}:${String(body.text ?? body.message_id ?? "")}`);
 			if (method === "sendMessage") return ({ message_id: calls.length === 1 ? 101 : 102 } satisfies TelegramSentMessage) as TResponse;
-			if (method === "editMessageText") throw new TelegramApiError(method, "Bad Request: message can't be edited", 400, undefined);
 			if (method === "deleteMessage") return true as TResponse;
 			throw new Error(`unexpected method: ${method}`);
 		},
@@ -240,48 +239,45 @@ async function checkFinalizeDeletesStalePreviewBeforeSendingReplacementFinal(): 
 	assert.equal(finalized, true);
 	assert.deepEqual(calls, [
 		"sendMessage:preview text",
-		"editMessageText:final text",
-		"editMessageText:final text",
 		"deleteMessage:101",
 		"reply:final text",
 	]);
 	assert.equal(managerInternals(manager).previews.has("turn"), false);
 }
 
-async function checkFinalizeStopsOnPermanentDeleteFailure(): Promise<void> {
+async function checkFinalizeAppendsAfterPermanentDeleteFailure(): Promise<void> {
 	const calls: string[] = [];
 	const manager = new PreviewManager(
 		async <TResponse>(method: string, body: Record<string, unknown>) => {
 			calls.push(`${method}:${String(body.text ?? body.message_id ?? "")}`);
 			if (method === "sendMessage") return ({ message_id: 105 } satisfies TelegramSentMessage) as TResponse;
-			if (method === "editMessageText") throw new TelegramApiError(method, "Bad Request: message can't be edited", 400, undefined);
 			if (method === "deleteMessage") throw new TelegramApiError(method, "Bad Request: message can't be deleted", 400, undefined);
 			throw new Error(`unexpected method: ${method}`);
 		},
-		async () => {
-			throw new Error("replacement final should not be sent when preview deletion is permanently blocked");
+		async (_chatId, _threadId, text) => {
+			calls.push(`reply:${text}`);
+			return 106;
 		},
 	);
 
 	await manager.messageStart("turn", -100, 5);
 	manager.preview("turn", -100, 5, "preview text");
 	await flushNow(manager, "turn", -100, 5);
-	await assert.rejects(() => manager.finalize("turn", -100, 5, "final text"), /can't be deleted/i);
+	const finalized = await manager.finalize("turn", -100, 5, "final text");
+	assert.equal(finalized, true);
 	assert.deepEqual(calls, [
 		"sendMessage:preview text",
-		"editMessageText:final text",
-		"editMessageText:final text",
 		"deleteMessage:105",
+		"reply:final text",
 	]);
 }
 
-async function checkFinalizeDoesNotDuplicateWhenDeleteRetryableFails(): Promise<void> {
+async function checkFinalizeDoesNotAppendWhenDeleteRetryableFails(): Promise<void> {
 	const calls: string[] = [];
 	const manager = new PreviewManager(
 		async <TResponse>(method: string, body: Record<string, unknown>) => {
 			calls.push(`${method}:${String(body.text ?? body.message_id ?? "")}`);
 			if (method === "sendMessage") return ({ message_id: 111 } satisfies TelegramSentMessage) as TResponse;
-			if (method === "editMessageText") throw new TelegramApiError(method, "Bad Request: message can't be edited", 400, undefined);
 			if (method === "deleteMessage") throw new TelegramApiError(method, "Too Many Requests", 429, 2);
 			throw new Error(`unexpected method: ${method}`);
 		},
@@ -296,9 +292,37 @@ async function checkFinalizeDoesNotDuplicateWhenDeleteRetryableFails(): Promise<
 	await assert.rejects(() => manager.finalize("turn", -100, 5, "final text"), /Too Many Requests/);
 	assert.deepEqual(calls, [
 		"sendMessage:preview text",
-		"editMessageText:final text",
-		"editMessageText:final text",
 		"deleteMessage:111",
+	]);
+}
+
+async function checkFinalizeKeepsStateWhenFreshFinalSendFails(): Promise<void> {
+	const calls: string[] = [];
+	let replyAttempts = 0;
+	const manager = new PreviewManager(
+		async <TResponse>(method: string, body: Record<string, unknown>) => {
+			calls.push(`${method}:${String(body.text ?? body.message_id ?? "")}`);
+			if (method === "sendMessage") return ({ message_id: 121 } satisfies TelegramSentMessage) as TResponse;
+			if (method === "deleteMessage") return true as TResponse;
+			throw new Error(`unexpected method: ${method}`);
+		},
+		async (_chatId, _threadId, text) => {
+			replyAttempts += 1;
+			calls.push(`reply:${text}`);
+			throw new TelegramApiError("sendMessage", "Too Many Requests", 429, 2);
+		},
+	);
+
+	await manager.messageStart("turn", -100, 5);
+	manager.preview("turn", -100, 5, "preview text");
+	await flushNow(manager, "turn", -100, 5);
+	await assert.rejects(() => manager.finalize("turn", -100, 5, "final text"), /Too Many Requests/);
+	assert.equal(replyAttempts, 1);
+	assert.equal(managerInternals(manager).previews.has("turn"), true);
+	assert.deepEqual(calls, [
+		"sendMessage:preview text",
+		"deleteMessage:121",
+		"reply:final text",
 	]);
 }
 
@@ -329,7 +353,8 @@ await checkTeardownClearDoesNotPreserveOnDeleteFailure();
 await checkRetryPreserveClearSurfacesPermanentDeleteFailure();
 await checkRetryPreviewRecoversWhenPreservedMessageWasAlreadyGone();
 await checkFinalizeDeletesStalePreviewBeforeSendingReplacementFinal();
-await checkFinalizeStopsOnPermanentDeleteFailure();
-await checkFinalizeDoesNotDuplicateWhenDeleteRetryableFails();
+await checkFinalizeAppendsAfterPermanentDeleteFailure();
+await checkFinalizeDoesNotAppendWhenDeleteRetryableFails();
+await checkFinalizeKeepsStateWhenFreshFinalSendFails();
 await checkPreviewRehydratesDurableMessageIdWithoutMessageStart();
 console.log("Preview manager checks passed");
