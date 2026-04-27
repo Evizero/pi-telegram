@@ -1,7 +1,10 @@
 import { MODEL_LIST_TTL_MS, SESSION_LIST_OFFLINE_GRACE_MS } from "../shared/config.js";
 import { routeId } from "../shared/format.js";
-import type { BrokerState, ModelSummary, PendingTelegramTurn, SessionRegistration, TelegramMessage, TelegramRoute } from "../shared/types.js";
+import type { BrokerState, InlineKeyboardMarkup, ModelSummary, PendingTelegramTurn, SessionRegistration, TelegramCallbackQuery, TelegramMessage, TelegramModelPickerState, TelegramRoute } from "../shared/types.js";
 import { errorMessage, now } from "../shared/utils.js";
+import { getTelegramRetryAfterMs } from "../telegram/api.js";
+import { answerTelegramCallbackQuery, editTelegramTextMessage } from "../telegram/text.js";
+import { createModelPickerState, exactModelSelector, isModelPickerCallbackData, parseModelPickerCallback, renderInitialModelPicker, renderModelPicker, renderProviderPicker } from "./model-picker.js";
 
 export function telegramCommandName(text: string): string {
 	const command = text.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
@@ -28,12 +31,15 @@ export interface TelegramCommandRouterDeps {
 	markOfflineSessions: () => Promise<void>;
 	createTelegramTurnForSession: (messages: TelegramMessage[], sessionIdForTurn: string) => Promise<PendingTelegramTurn>;
 	durableTelegramTurn: (turn: PendingTelegramTurn) => PendingTelegramTurn;
-	sendTextReply: (chatId: number | string, messageThreadId: number | undefined, text: string) => Promise<number | undefined>;
+	sendTextReply: (chatId: number | string, messageThreadId: number | undefined, text: string, options?: { replyMarkup?: InlineKeyboardMarkup }) => Promise<number | undefined>;
+	callTelegram: <TResponse>(method: string, body: Record<string, unknown>) => Promise<TResponse>;
 	postIpc: <TResponse>(socketPath: string, type: string, payload: unknown, targetSessionId?: string) => Promise<TResponse>;
 	stopTypingLoop: (turnId: string) => void;
 	unregisterSession: (targetSessionId: string) => Promise<unknown>;
 	brokerInfo: () => string;
 }
+
+const COMPLETED_MODEL_PICKER_TTL_MS = 24 * 60 * 60 * 1000;
 
 export class TelegramCommandRouter {
 	private readonly modelListCache = new Map<string, { expiresAt: number; models: ModelSummary[] }>();
@@ -53,6 +59,55 @@ export class TelegramCommandRouter {
 		return undefined;
 	}
 
+	async dispatchCallback(query: TelegramCallbackQuery): Promise<boolean> {
+		if (!isModelPickerCallbackData(query.data)) return false;
+		const brokerState = this.deps.getBrokerState();
+		if (!brokerState) return true;
+		const callback = parseModelPickerCallback(query.data);
+		if (!callback) {
+			await this.tryAnswerCallback(query.id, "This model picker button is invalid.", true);
+			return true;
+		}
+		const picker = brokerState.modelPickers?.[callback.token];
+		if (!picker) {
+			await this.tryAnswerCallback(query.id, "Model picker expired. Send /model again.", true);
+			await this.tryEditCallbackMessage(query, "Model picker expired. Send /model again.");
+			return true;
+		}
+		if (!this.callbackMatchesPicker(query, picker) || !this.pickerRouteStillValid(brokerState, picker)) {
+			await this.tryAnswerCallback(query.id, "This model picker no longer matches the active session. Send /model again.", true);
+			return true;
+		}
+		if (picker.completedText && this.completedPickerStillRetryable(picker)) {
+			await this.finishCompletedPicker(query, picker, picker.completedText);
+			return true;
+		}
+		if (picker.expiresAtMs < now()) {
+			delete brokerState.modelPickers![callback.token];
+			await this.deps.persistBrokerState();
+			await this.tryAnswerCallback(query.id, "Model picker expired. Send /model again.", true);
+			await this.tryEditCallbackMessage(query, "Model picker expired. Send /model again.");
+			return true;
+		}
+		picker.updatedAtMs = now();
+		if (callback.kind === "providers") {
+			const rendered = renderProviderPicker(picker, callback.page);
+			await this.deps.persistBrokerState();
+			await this.tryEditPickerMessage(query, picker, rendered.text, rendered.replyMarkup);
+			await this.tryAnswerCallback(query.id);
+			return true;
+		}
+		if (callback.kind === "models") {
+			const rendered = renderModelPicker(picker, callback.groupIndex, callback.page);
+			await this.deps.persistBrokerState();
+			await this.tryEditPickerMessage(query, picker, rendered.text, rendered.replyMarkup);
+			await this.tryAnswerCallback(query.id);
+			return true;
+		}
+		await this.selectModelFromPicker(query, picker, callback.modelIndex);
+		return true;
+	}
+
 	async dispatch(messages: TelegramMessage[]): Promise<void> {
 		const firstMessage = messages[0];
 		const brokerState = this.deps.getBrokerState();
@@ -60,7 +115,7 @@ export class TelegramCommandRouter {
 		const rawText = messages.map((message) => (message.text || message.caption || "").trim()).find((text) => text.length > 0) || "";
 		const lower = rawText.toLowerCase();
 		const command = telegramCommandName(rawText);
-		if (this.pruneSelectorSelections(brokerState)) await this.deps.persistBrokerState();
+		if (this.pruneSelectorSelections(brokerState) || this.pruneModelPickers(brokerState)) await this.deps.persistBrokerState();
 		const route = this.routeForMessage(firstMessage);
 		if (command === "/sessions") {
 			await this.sendSessions(firstMessage.chat.id, firstMessage.message_thread_id);
@@ -126,9 +181,8 @@ export class TelegramCommandRouter {
 			try {
 				await this.handleModelCommand(route, session, rawText);
 			} catch (error) {
-				session.status = "offline";
-				await this.deps.persistBrokerState();
-				await this.deps.sendTextReply(route.chatId, route.messageThreadId, `Failed to change model: ${errorMessage(error)}`);
+				if (getTelegramRetryAfterMs(error) !== undefined) throw error;
+				await this.trySendTextReply(route.chatId, route.messageThreadId, `Failed to change model: ${errorMessage(error)}`);
 			}
 			return;
 		}
@@ -173,6 +227,140 @@ export class TelegramCommandRouter {
 			this.deps.stopTypingLoop(turn.turnId);
 			await this.deps.sendTextReply(route.chatId, route.messageThreadId, `Failed to deliver turn; will retry while the session is connected: ${errorMessage(error)}`);
 		}
+	}
+
+	private async selectModelFromPicker(query: TelegramCallbackQuery, picker: TelegramModelPickerState, modelIndex: number): Promise<void> {
+		const brokerState = this.deps.getBrokerState();
+		const session = brokerState?.sessions[picker.sessionId];
+		const model = picker.models[modelIndex];
+		if (!brokerState || !session || session.status === "offline" || !model) {
+			if (brokerState?.modelPickers?.[picker.token]) delete brokerState.modelPickers[picker.token];
+			await this.deps.persistBrokerState();
+			await this.tryAnswerCallback(query.id, "Model picker expired. Send /model again.", true);
+			await this.tryEditCallbackMessage(query, "Model picker expired. Send /model again.");
+			return;
+		}
+		const selector = exactModelSelector(model);
+		let result: { text: string };
+		try {
+			result = await this.deps.postIpc<{ text: string }>(session.clientSocketPath, "set_model", { selector, exact: true }, session.sessionId);
+		} catch (error) {
+			session.status = "offline";
+			delete brokerState.modelPickers?.[picker.token];
+			await this.deps.persistBrokerState();
+			await this.tryAnswerCallback(query.id, "Failed to change model.", true);
+			await this.trySendTextReply(picker.chatId, picker.messageThreadId, `Failed to change model: ${errorMessage(error)}`);
+			return;
+		}
+		picker.completedText = result.text;
+		picker.selectedAtMs = now();
+		picker.updatedAtMs = now();
+		picker.expiresAtMs = now() + MODEL_LIST_TTL_MS;
+		await this.deps.persistBrokerState();
+		await this.finishCompletedPicker(query, picker, result.text);
+	}
+
+	private async finishCompletedPicker(query: TelegramCallbackQuery, picker: TelegramModelPickerState, text: string): Promise<void> {
+		await this.tryEditOrSendPickerResult(query, picker, text);
+		await this.tryAnswerCallback(query.id, "Model selection handled.");
+		const brokerState = this.deps.getBrokerState();
+		if (brokerState?.modelPickers?.[picker.token]) delete brokerState.modelPickers[picker.token];
+		await this.deps.persistBrokerState();
+	}
+
+	private callbackMatchesPicker(query: TelegramCallbackQuery, picker: TelegramModelPickerState): boolean {
+		const message = query.message;
+		if (!message) return false;
+		if (String(message.chat.id) !== String(picker.chatId)) return false;
+		if (message.message_thread_id !== picker.messageThreadId) return false;
+		if (picker.messageId !== undefined && message.message_id !== picker.messageId) return false;
+		return true;
+	}
+
+	private pickerRouteStillValid(brokerState: BrokerState, picker: TelegramModelPickerState): boolean {
+		const session = brokerState.sessions[picker.sessionId];
+		if (!session || session.status === "offline") return false;
+		return Object.values(brokerState.routes).some((route) => route.sessionId === picker.sessionId && route.routeId === picker.routeId && String(route.chatId) === String(picker.chatId) && route.messageThreadId === picker.messageThreadId);
+	}
+
+	private async editPickerMessage(query: TelegramCallbackQuery, picker: TelegramModelPickerState, text: string, replyMarkup?: InlineKeyboardMarkup): Promise<void> {
+		const messageId = query.message?.message_id ?? picker.messageId;
+		if (messageId === undefined) {
+			await this.deps.sendTextReply(picker.chatId, picker.messageThreadId, text, replyMarkup ? { replyMarkup } : undefined);
+			return;
+		}
+		await editTelegramTextMessage(this.deps.callTelegram, picker.chatId, messageId, text, replyMarkup);
+	}
+
+	private async tryEditPickerMessage(query: TelegramCallbackQuery, picker: TelegramModelPickerState, text: string, replyMarkup?: InlineKeyboardMarkup): Promise<void> {
+		await this.editPickerMessage(query, picker, text, replyMarkup).catch((error) => {
+			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
+		});
+	}
+
+	private async tryEditOrSendPickerResult(query: TelegramCallbackQuery, picker: TelegramModelPickerState, text: string): Promise<void> {
+		try {
+			await this.editPickerMessage(query, picker, text);
+		} catch (error) {
+			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
+			await this.deps.sendTextReply(picker.chatId, picker.messageThreadId, text).catch((sendError) => {
+				if (getTelegramRetryAfterMs(sendError) !== undefined) throw sendError;
+			});
+		}
+	}
+
+	private async tryEditCallbackMessage(query: TelegramCallbackQuery, text: string): Promise<void> {
+		const message = query.message;
+		if (!message) return;
+		await editTelegramTextMessage(this.deps.callTelegram, message.chat.id, message.message_id, text).catch((error) => {
+			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
+		});
+	}
+
+	private async tryAnswerCallback(callbackQueryId: string, text?: string, showAlert = false): Promise<void> {
+		await answerTelegramCallbackQuery(this.deps.callTelegram, callbackQueryId, text, { showAlert }).catch((error) => {
+			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
+		});
+	}
+
+	private async trySendTextReply(chatId: number | string, messageThreadId: number | undefined, text: string, options?: { replyMarkup?: InlineKeyboardMarkup }): Promise<void> {
+		await this.deps.sendTextReply(chatId, messageThreadId, text, options).catch((error) => {
+			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
+		});
+	}
+
+	private async queryModels(session: SessionRegistration, payload: { filter?: string }): Promise<{ current?: string; models: ModelSummary[] }> {
+		try {
+			return await this.deps.postIpc<{ current?: string; models: ModelSummary[] }>(session.clientSocketPath, "query_models", payload, session.sessionId);
+		} catch (error) {
+			session.status = "offline";
+			await this.deps.persistBrokerState();
+			throw error;
+		}
+	}
+
+	private async setModel(session: SessionRegistration, payload: { selector: string; exact?: boolean }): Promise<{ text: string }> {
+		try {
+			return await this.deps.postIpc<{ text: string }>(session.clientSocketPath, "set_model", payload, session.sessionId);
+		} catch (error) {
+			session.status = "offline";
+			await this.deps.persistBrokerState();
+			throw error;
+		}
+	}
+
+	private completedPickerStillRetryable(picker: TelegramModelPickerState): boolean {
+		return (picker.selectedAtMs ?? picker.updatedAtMs) + COMPLETED_MODEL_PICKER_TTL_MS > now();
+	}
+
+	private pruneModelPickers(brokerState: BrokerState): boolean {
+		let changed = false;
+		for (const [token, picker] of Object.entries(brokerState.modelPickers ?? {})) {
+			if (brokerState.sessions[picker.sessionId] && (picker.expiresAtMs > now() || (picker.completedText && this.completedPickerStillRetryable(picker)))) continue;
+			delete brokerState.modelPickers![token];
+			changed = true;
+		}
+		return changed;
 	}
 
 	private pruneSelectorSelections(brokerState: BrokerState): boolean {
@@ -245,28 +433,50 @@ export class TelegramCommandRouter {
 
 	private async handleModelCommand(route: TelegramRoute, session: SessionRegistration, text: string): Promise<void> {
 		const args = text.trim().split(/\s+/).slice(1);
-		if (args.length === 0 || args[0]?.toLowerCase() === "list") {
-			const filter = args[0]?.toLowerCase() === "list" ? args.slice(1).join(" ").trim() : "";
-			const result = await this.deps.postIpc<{ current?: string; models: ModelSummary[] }>(session.clientSocketPath, "query_models", { filter }, session.sessionId);
+		if (args.length === 0) {
+			const result = await this.queryModels(session, {});
+			if (result.models.length === 0) {
+				await this.trySendTextReply(route.chatId, route.messageThreadId, `Current: ${result.current ?? "unknown"}\n\nNo available models matched.`);
+				return;
+			}
+			this.modelListCache.set(`${route.routeId}:${route.sessionId}`, { expiresAt: now() + MODEL_LIST_TTL_MS, models: result.models.slice(0, 30) });
+			const picker = createModelPickerState(route, result.current, result.models);
+			const rendered = renderInitialModelPicker(picker);
+			const messageId = await this.deps.sendTextReply(route.chatId, route.messageThreadId, rendered.text, { replyMarkup: rendered.replyMarkup });
+			picker.messageId = messageId;
+			const brokerState = this.deps.getBrokerState();
+			if (brokerState) {
+				brokerState.modelPickers ??= {};
+				brokerState.modelPickers[picker.token] = picker;
+				this.pruneModelPickers(brokerState);
+				await this.deps.persistBrokerState();
+			}
+			return;
+		}
+		if (args[0]?.toLowerCase() === "list") {
+			const filter = args.slice(1).join(" ").trim();
+			const result = await this.queryModels(session, { filter });
 			const shownModels = result.models.slice(0, 30);
 			this.modelListCache.set(`${route.routeId}:${route.sessionId}`, { expiresAt: now() + MODEL_LIST_TTL_MS, models: shownModels });
 			const lines = [`Current: ${result.current ?? "unknown"}`, ""];
 			if (shownModels.length === 0) lines.push("No available models matched.");
 			else shownModels.forEach((model, index) => lines.push(`${index + 1}. ${model.label}`));
-			await this.deps.sendTextReply(route.chatId, route.messageThreadId, lines.join("\n"));
+			await this.trySendTextReply(route.chatId, route.messageThreadId, lines.join("\n"));
 			return;
 		}
 		let selector = args.join(" ").trim();
-		if (/^\d+$/.test(selector)) {
+		const numericSelection = /^\d+$/.test(selector);
+		if (numericSelection) {
 			const cache = this.modelListCache.get(`${route.routeId}:${route.sessionId}`);
 			const index = Number(selector) - 1;
 			if (!cache || cache.expiresAt < now() || !cache.models[index]) {
-				await this.deps.sendTextReply(route.chatId, route.messageThreadId, "Model list expired or number not found. Send /model first.");
+				await this.trySendTextReply(route.chatId, route.messageThreadId, "Model list expired or number not found. Send /model first.");
 				return;
 			}
 			selector = `${cache.models[index].provider}/${cache.models[index].id}`;
 		}
-		const result = await this.deps.postIpc<{ text: string }>(session.clientSocketPath, "set_model", { selector }, session.sessionId);
-		await this.deps.sendTextReply(route.chatId, route.messageThreadId, result.text);
+		const setModelPayload = numericSelection ? { selector, exact: true } : { selector };
+		const result = await this.setModel(session, setModelPayload);
+		await this.trySendTextReply(route.chatId, route.messageThreadId, result.text);
 	}
 }

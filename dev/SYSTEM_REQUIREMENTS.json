@@ -2,7 +2,7 @@
   "meta": {
     "title": "pi-telegram",
     "version": "0.1.0",
-    "last_updated": "2026-04-26"
+    "last_updated": "2026-04-27"
   },
   "requirements": [
     {
@@ -897,6 +897,31 @@
       "sources": {
         "inbox": [
           "assistant-final-lost-with"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-interactive-model-picker",
+      "origin": "derived",
+      "label": "Pick exact model interactively",
+      "statement": "The system shall let the paired Telegram user change the selected pi session's model through interactive Telegram controls that preserve the exact local provider/model identity, including subscription-provider grouping when multiple providers expose the same model IDs.",
+      "traces_to": [
+        "StRS-remote-session-supervision",
+        "StRS-local-first-authority",
+        "StRS-paired-user-control",
+        "StRS-api-constrained-maintenance"
+      ],
+      "rationale": "Remote model switching is part of using Telegram as a control surface for local pi sessions, but provider identity must stay local and exact because optional subscription extensions can expose the same model ID through multiple provider accounts.",
+      "acceptance_criteria": "Tests or a focused demonstration show that bare /model presents an interactive picker; catalogs with multiple provider/subscription groups that expose overlapping model IDs first present provider/subscription choices and then scoped model choices; single-group catalogs go directly to model choices; pagination keeps selections usable when a page would exceed the button budget; callback handling authorizes the paired user/chat, rejects expired or mismatched route/session state without changing models, and sends the exact provider/id to the target session; existing /model <number> and /model <selector> compatibility remains intact.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-27",
+      "updated": "2026-04-27",
+      "sources": {
+        "inbox": [
+          "interactive-telegram-model-picker"
         ]
       }
     }

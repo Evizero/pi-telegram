@@ -197,6 +197,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		createTelegramTurnForSession,
 		durableTelegramTurn,
 		sendTextReply,
+		callTelegram,
 		postIpc,
 		stopTypingLoop,
 		unregisterSession,
@@ -985,7 +986,10 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		if (envelope.type === "query_status") return { text: await clientStatusText() };
 		if (envelope.type === "compact_session") return clientCompact();
 		if (envelope.type === "query_models") return clientQueryModels((envelope.payload as { filter?: string }).filter);
-		if (envelope.type === "set_model") return await clientSetModel((envelope.payload as { selector: string }).selector);
+		if (envelope.type === "set_model") {
+			const payload = envelope.payload as { selector: string; exact?: boolean };
+			return await clientSetModel(payload.selector, payload.exact);
+		}
 		if (envelope.type === "shutdown_client_route") {
 			await shutdownClientRoute();
 			setTimeout(() => void stopClientServer(), 0);
@@ -1025,8 +1029,8 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	function clientQueryModels(filter?: string): { current?: string; models: ModelSummary[] } {
 		return clientRuntime.queryModels(filter);
 	}
-	function clientSetModel(selector: string): Promise<{ text: string }> {
-		return clientRuntime.setModel(selector);
+	function clientSetModel(selector: string, exact?: boolean): Promise<{ text: string }> {
+		return clientRuntime.setModel(selector, exact);
 	}
 	function resolveAllowedAttachmentPath(inputPath: string): Promise<string | undefined> {
 		return resolveSafeAttachmentPath(inputPath, latestCtx?.cwd);

@@ -2,11 +2,12 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { RECENT_UPDATE_LIMIT, SESSION_OFFLINE_MS, TELEGRAM_MEDIA_GROUP_DEBOUNCE_MS } from "../shared/config.js";
 import { clearPairingState, isMessageBeforePairingWindow, isPairingPending, PAIRING_MAX_FAILED_ATTEMPTS, pairingCandidateFromText } from "../shared/pairing.js";
-import type { BrokerLease, BrokerState, TelegramConfig, TelegramMediaGroupState, TelegramMessage, TelegramUpdate } from "../shared/types.js";
+import type { BrokerLease, BrokerState, TelegramCallbackQuery, TelegramConfig, TelegramMediaGroupState, TelegramMessage, TelegramUpdate } from "../shared/types.js";
 import type { TelegramCommandRouter } from "./commands.js";
 import { telegramCommandName } from "./commands.js";
 import { errorMessage, hashSecret, now } from "../shared/utils.js";
 import { getTelegramRetryAfterMs, TelegramApiError } from "../telegram/api.js";
+import { answerTelegramCallbackQuery } from "../telegram/text.js";
 
 export interface RuntimeUpdateDeps {
 	getConfig: () => TelegramConfig;
@@ -35,7 +36,15 @@ export interface RuntimeUpdateDeps {
 	markSessionOffline: (targetSessionId: string) => Promise<unknown>;
 }
 
+const ALLOWED_UPDATES = ["message", "edited_message", "callback_query"];
+
 export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
+	async function tryAnswerCallback(callbackQueryId: string, text: string, showAlert = true): Promise<void> {
+		await answerTelegramCallbackQuery(deps.callTelegram, callbackQueryId, text, { showAlert }).catch((error) => {
+			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
+		});
+	}
+
 	async function tryHandleTopicSetupMessage(message: TelegramMessage): Promise<boolean> {
 		const text = (message.text ?? "").trim();
 		if (telegramCommandName(text) !== "/topicsetup") return false;
@@ -72,6 +81,10 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 	}
 
 	async function handleUpdate(update: TelegramUpdate, ctx: ExtensionContext): Promise<void> {
+		if (update.callback_query) {
+			await handleCallbackUpdate(update.callback_query);
+			return;
+		}
 		const message = update.message || update.edited_message;
 		if (!message || !message.from || message.from.is_bot) return;
 		const config = deps.getConfig();
@@ -92,6 +105,36 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 			await deps.ensureRoutesAfterPairing();
 		}
 		await deps.commandRouter.dispatch([message]);
+	}
+
+	async function handleCallbackUpdate(query: TelegramCallbackQuery): Promise<void> {
+		if (query.from.is_bot) return;
+		const config = deps.getConfig();
+		if (config.allowedUserId === undefined) {
+			await tryAnswerCallback(query.id, "Pair this bot from pi first.");
+			return;
+		}
+		if (query.from.id !== config.allowedUserId) {
+			await tryAnswerCallback(query.id, "This bot is not authorized for your account.");
+			return;
+		}
+		if (!query.message) {
+			await tryAnswerCallback(query.id, "This button is no longer available.");
+			return;
+		}
+		const messageForAuth = { ...query.message, from: query.from };
+		if (!deps.isAllowedTelegramChat(messageForAuth)) {
+			await tryAnswerCallback(query.id, "This chat is not authorized for this bridge.");
+			return;
+		}
+		if (query.message.chat.type === "private" && config.allowedChatId === undefined) {
+			const nextConfig = { ...config, allowedChatId: query.message.chat.id };
+			deps.setConfig(nextConfig);
+			await deps.writeConfig(nextConfig);
+			await deps.ensureRoutesAfterPairing();
+		}
+		const handled = await deps.commandRouter.dispatchCallback(query);
+		if (!handled) await tryAnswerCallback(query.id, "This button is not supported.");
 	}
 
 	async function handlePairingUpdate(message: TelegramMessage, config: TelegramConfig): Promise<void> {
@@ -233,7 +276,7 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 		if (!brokerState || brokerState.lastProcessedUpdateId !== undefined) return;
 		const config = deps.getConfig();
 		if (isPairingPending(config, now())) return;
-		const updates = await deps.callTelegram<TelegramUpdate[]>("getUpdates", { offset: -1, limit: 1, timeout: 0, allowed_updates: ["message", "edited_message"] }, { signal });
+		const updates = await deps.callTelegram<TelegramUpdate[]>("getUpdates", { offset: -1, limit: 1, timeout: 0, allowed_updates: ALLOWED_UPDATES }, { signal });
 		const latest = updates.at(-1);
 		if (latest) {
 			brokerState.lastProcessedUpdateId = latest.update_id;
@@ -272,7 +315,7 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 						offset: brokerState.lastProcessedUpdateId !== undefined ? brokerState.lastProcessedUpdateId + 1 : undefined,
 						limit: 25,
 						timeout: 30,
-						allowed_updates: ["message", "edited_message"],
+						allowed_updates: ALLOWED_UPDATES,
 					},
 					{ signal },
 				);

@@ -126,7 +126,7 @@ export class ClientRuntime {
 		return buildClientQueryModels(this.deps.getLatestCtx(), filter);
 	}
 
-	setModel(selector: string): Promise<{ text: string }> {
-		return setClientModel(this.deps.getLatestCtx(), (model) => this.deps.pi.setModel(model), selector);
+	setModel(selector: string, exact?: boolean): Promise<{ text: string }> {
+		return setClientModel(this.deps.getLatestCtx(), (model) => this.deps.pi.setModel(model), selector, { exact });
 	}
 }

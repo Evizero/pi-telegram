@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { MAX_MESSAGE_LENGTH } from "../src/shared/config.js";
 import type { TelegramSentMessage } from "../src/shared/types.js";
 import { TelegramApiError } from "../src/telegram/api.js";
-import { sendTelegramMarkdownReply, sendTelegramTextReply, type TelegramJsonCall } from "../src/telegram/text.js";
+import { editTelegramTextMessage, sendTelegramMarkdownReply, sendTelegramTextReply, type TelegramJsonCall } from "../src/telegram/text.js";
 
 interface CapturedCall {
 	method: string;
@@ -58,6 +58,16 @@ async function assertSilentChunking(): Promise<void> {
 	}
 }
 
+async function assertReplyMarkupOnlyAttachedToLastChunk(): Promise<void> {
+	const calls: CapturedCall[] = [];
+	const replyMarkup = { inline_keyboard: [[{ text: "Pick", callback_data: "mp1:t:select:0" }]] };
+	const text = `${"a".repeat(MAX_MESSAGE_LENGTH)}${"b".repeat(12)}`;
+	await sendTelegramTextReply(captureCall(calls), 123, undefined, text, { replyMarkup });
+	assert.equal(calls.length, 2);
+	assert.equal(calls[0]?.body.reply_markup, undefined);
+	assert.deepEqual(calls[1]?.body.reply_markup, replyMarkup);
+}
+
 async function assertMarkdownFallbackPreservesSilentOption(): Promise<void> {
 	const calls: CapturedCall[] = [];
 	await sendTelegramMarkdownReply(captureCall(calls, new TelegramApiError("sendMessage", "Bad Request: can't parse entities", 400, undefined)), 123, 456, "*oops", { disableNotification: true });
@@ -69,6 +79,18 @@ async function assertMarkdownFallbackPreservesSilentOption(): Promise<void> {
 		{
 			method: "sendMessage",
 			body: { chat_id: 123, message_thread_id: 456, text: "*oops", disable_notification: true },
+		},
+	]);
+}
+
+async function assertEditTextMessageUsesInlineKeyboard(): Promise<void> {
+	const calls: CapturedCall[] = [];
+	const replyMarkup = { inline_keyboard: [[{ text: "More", callback_data: "mp1:t:providers:1" }]] };
+	await editTelegramTextMessage(captureCall(calls), 123, 99, "Pick", replyMarkup);
+	assert.deepEqual(calls, [
+		{
+			method: "editMessageText",
+			body: { chat_id: 123, message_id: 99, text: "Pick", reply_markup: replyMarkup },
 		},
 	]);
 }
@@ -86,6 +108,8 @@ async function assertMarkdownRetryAfterPropagates(): Promise<void> {
 await assertSilentTextReply();
 await assertNormalTextReplyDoesNotDisableNotifications();
 await assertSilentChunking();
+await assertReplyMarkupOnlyAttachedToLastChunk();
+await assertEditTextMessageUsesInlineKeyboard();
 await assertMarkdownFallbackPreservesSilentOption();
 await assertMarkdownRetryAfterPropagates();
 console.log("Telegram text reply checks passed");

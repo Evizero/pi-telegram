@@ -1,6 +1,6 @@
 # Telegram Bot API notes for `pi-telegram`
 
-Last reviewed: 2026-04-25 against the official Telegram Bot API docs.
+Last reviewed: 2026-04-27 against the official Telegram Bot API docs.
 
 This file captures the Bot API details that matter for this bridge so future
 changes do not require rereading the whole Telegram documentation.
@@ -21,6 +21,8 @@ Official sources used throughout:
 - `sendMessageDraft`: <https://core.telegram.org/bots/api#sendmessagedraft>
 - `sendChatAction`: <https://core.telegram.org/bots/api#sendchataction>
 - `editMessageText`: <https://core.telegram.org/bots/api#editmessagetext>
+- `InlineKeyboardMarkup` / `InlineKeyboardButton`: <https://core.telegram.org/bots/api#inlinekeyboardmarkup>, <https://core.telegram.org/bots/api#inlinekeyboardbutton>
+- `CallbackQuery` / `answerCallbackQuery`: <https://core.telegram.org/bots/api#callbackquery>, <https://core.telegram.org/bots/api#answercallbackquery>
 - `sendPhoto`: <https://core.telegram.org/bots/api#sendphoto>
 - `sendDocument`: <https://core.telegram.org/bots/api#senddocument>
 - `ForumTopic`: <https://core.telegram.org/bots/api#forumtopic>
@@ -106,7 +108,7 @@ Rules for this bridge:
 
 Current project policy:
 
-- We only request message-like updates needed by the bridge.
+- Request message-like updates plus `callback_query` because inline-keyboard command controls, such as the model picker, arrive as callback queries rather than messages.
 - We drop old backlog during non-pairing initialization, but not repeatedly.
 - Pairing mode should not skip updates because the first valid PIN message, or
   `/start <PIN>` fallback, must be delivered.
@@ -194,6 +196,40 @@ Bridge policy:
 - Compare the exact truncated preview text before editing so long streaming
   previews do not repeatedly send no-op edits after 4096 characters.
 - Preserve `retry_after`; do not treat rate limiting as a formatting failure.
+
+### Inline keyboards and callback queries
+
+Sources: [`InlineKeyboardMarkup`](https://core.telegram.org/bots/api#inlinekeyboardmarkup),
+[`InlineKeyboardButton`](https://core.telegram.org/bots/api#inlinekeyboardbutton),
+[`CallbackQuery`](https://core.telegram.org/bots/api#callbackquery),
+[`answerCallbackQuery`](https://core.telegram.org/bots/api#answercallbackquery),
+[`editMessageText`](https://core.telegram.org/bots/api#editmessagetext).
+
+Relevant Bot API facts:
+
+- `sendMessage` and `editMessageText` can carry `reply_markup` with an inline
+  keyboard.
+- `callback_data` on an inline keyboard button is limited to 1-64 bytes.
+- Button presses arrive as `callback_query` updates and contain the pressing
+  user, optional originating message, and optional data.
+- Telegram clients show progress after a callback button is pressed until the
+  bot calls `answerCallbackQuery`; even an empty acknowledgement is useful.
+
+Bridge policy:
+
+- Keep callback data compact. Store long or sensitive selection state in broker
+  state behind a short token instead of putting full provider/model lists in
+  Telegram callback data.
+- Authorize callback queries by paired user and allowed chat before treating a
+  button press as a session control.
+- Preserve route and topic context when editing callback-originated messages or
+  sending fallback replies.
+- For controls that mutate local session state, such as `/model`, act through
+  the target session IPC and preserve exact local identifiers like
+  `provider/model-id`; do not let Telegram display text become the authority.
+- Call `answerCallbackQuery` for handled, expired, malformed, or rejected picker
+  callbacks, but still propagate `retry_after` so polling offsets are not
+  advanced through a rate-limit window.
 
 ## Typing/activity indicators
 

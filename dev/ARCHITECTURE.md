@@ -62,11 +62,12 @@ The strongest drivers come directly from the intended purpose and requirements:
   `SyRS-activity-history-rendering`, `SyRS-final-preview-deduplication`,
   `SyRS-final-delivery-fifo-retry`, `SyRS-retry-aware-agent-finals`,
   `SyRS-final-text-before-error-metadata`);
-- Telegram update, webhook, retry, file, draft, media, and topic constraints are
-  part of the runtime contract, not optional polish
+- Telegram update, callback-query, webhook, retry, file, draft, media, and topic
+  constraints are part of the runtime contract, not optional polish
   (`StRS-api-constrained-maintenance`, `SyRS-webhook-before-polling`,
   `SyRS-telegram-retry-after`, `SyRS-telegram-text-method-contracts`,
-  `SyRS-inbound-file-privacy-limits`, `SyRS-outbound-photo-document-rules`);
+  `SyRS-interactive-model-picker`, `SyRS-inbound-file-privacy-limits`,
+  `SyRS-outbound-photo-document-rules`);
 - Telegram files and local artifacts cross a trust boundary and must remain
   bounded, private, and explicit (`StRS-attachment-exchange`,
   `SyRS-inbound-attachment-untrusted`, `SyRS-outbound-attachment-safety`,
@@ -370,13 +371,17 @@ and trust-boundary rules to the agent.
 ### Telegram surface
 
 The Telegram surface is a paired bot chat plus optional topic routing.
-It receives messages, commands, media groups, and files through polling.
-It sends text replies, activity previews, final answers, typing indicators,
-photos, documents, and topic-management calls through the Bot API.
+It receives messages, commands, callback queries, media groups, and files through
+polling.
+It sends text replies, inline-keyboard prompts, activity previews, final answers,
+typing indicators, photos, documents, and topic-management calls through the Bot
+API.
 
-Telegram commands are operator controls, not an independent application surface.
+Telegram commands and callback controls are operator controls, not an independent
+application surface.
 They exist to choose sessions, inspect status, steer work, queue follow-ups,
-stop runs, manage routing, and keep the bridge paired.
+stop runs, change the selected local model, manage routing, and keep the bridge
+paired.
 
 ### Local IPC surface
 
@@ -630,17 +635,24 @@ This scenario protects `SyRS-extension-owned-broker`,
 ### Telegram update to pi turn
 
 Polling fetches updates with an offset derived from durable broker state.
-The broker rejects unauthorized updates, handles commands first, batches albums
-when needed, prepares attachments, creates a durable turn, and dispatches it to
-the selected session's client socket.
+The broker rejects unauthorized updates, handles commands and callback-query
+controls first, batches albums when needed, prepares attachments, creates a
+durable turn for ordinary input, and dispatches it to the selected session's
+client socket.
 Delivery mode controls whether the client steers, queues follow-up work, or
 starts a normal turn.
 Consumed-turn IPC removes durable pending state only after pi has accepted the
 turn semantics.
 
+Interactive callback controls, such as the `/model` picker, are still routed
+session controls. They must preserve route context, authorize the paired user,
+act on the target local session through IPC, and acknowledge or reject the
+callback without turning the button press into an agent conversation message.
+
 This scenario protects `SyRS-deliver-telegram-turn`,
 `SyRS-durable-update-consumption`, `SyRS-media-group-batching`,
-`SyRS-busy-message-steers`, and `SyRS-follow-queues-next-turn`.
+`SyRS-busy-message-steers`, `SyRS-follow-queues-next-turn`, and
+`SyRS-interactive-model-picker`.
 
 ### Unsupported Telegram runtime reload
 
@@ -693,8 +705,8 @@ This scenario protects `SyRS-inbound-file-privacy-limits`,
 
 Route identity is the bridge between Telegram's chat/thread world and pi's
 session world.
-Every activity update, preview, final, upload, typing action, and command reply
-must preserve the intended route context.
+Every activity update, preview, final, upload, typing action, command reply, and
+interactive callback control must preserve the intended route context.
 Losing route identity is equivalent to losing session control.
 
 ### Logical session identity versus runtime instance identity

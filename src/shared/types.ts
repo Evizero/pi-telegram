@@ -116,10 +116,27 @@ export interface TelegramMessage {
 	sticker?: TelegramSticker;
 }
 
+export interface TelegramInlineKeyboardButton {
+	text: string;
+	callback_data?: string;
+}
+
+export interface InlineKeyboardMarkup {
+	inline_keyboard: TelegramInlineKeyboardButton[][];
+}
+
+export interface TelegramCallbackQuery {
+	id: string;
+	from: TelegramUser;
+	message?: TelegramMessage;
+	data?: string;
+}
+
 export interface TelegramUpdate {
 	update_id: number;
 	message?: TelegramMessage;
 	edited_message?: TelegramMessage;
+	callback_query?: TelegramCallbackQuery;
 }
 
 export interface TelegramGetFileResult {
@@ -265,6 +282,29 @@ export interface TelegramSelectorSelection {
 	updatedAtMs: number;
 }
 
+export interface TelegramModelPickerGroup {
+	provider: string;
+	label: string;
+	modelIndexes: number[];
+}
+
+export interface TelegramModelPickerState {
+	token: string;
+	sessionId: string;
+	routeId: string;
+	chatId: number | string;
+	messageThreadId?: number;
+	messageId?: number;
+	current?: string;
+	models: ModelSummary[];
+	groups: TelegramModelPickerGroup[];
+	completedText?: string;
+	selectedAtMs?: number;
+	createdAtMs: number;
+	updatedAtMs: number;
+	expiresAtMs: number;
+}
+
 export interface BrokerState {
 	schemaVersion: number;
 	lastProcessedUpdateId?: number;
@@ -277,6 +317,7 @@ export interface BrokerState {
 	pendingRouteCleanups?: Record<string, PendingRouteCleanup>;
 	assistantPreviewMessages?: Record<string, AssistantPreviewMessageRef>;
 	selectorSelections?: Record<string, TelegramSelectorSelection>;
+	modelPickers?: Record<string, TelegramModelPickerState>;
 	completedTurnIds?: string[];
 	createdAtMs: number;
 	updatedAtMs: number;
