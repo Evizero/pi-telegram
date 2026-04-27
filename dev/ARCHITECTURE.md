@@ -672,9 +672,13 @@ Until then, runtime reload remains a local pi action outside the Telegram bridge
 
 Pi event hooks collect thinking and tool activity and report it to the broker.
 The broker renders activity through debounced Telegram edits without erasing the
-ordered activity model.
+ordered activity model. Typing indicators are advisory rendering side effects;
+they must not block activity ingestion, assistant preview updates, or final
+handoff.
 Assistant text streams through `PreviewManager`, which chooses draft or message
-preview mode according to Telegram constraints.
+preview mode according to Telegram constraints. Chronology barriers may complete
+prior activity before showing assistant text, but those barriers must not depend
+on low-value typing delivery.
 On final response, the broker first persists an assistant-final ledger entry and
 then finalizes preview state into one visible final sequence. Long text is
 chunked, attachments are sent only from explicit pi queues, progress is persisted
@@ -770,7 +774,10 @@ Telegram file methods.
 Activity history is the model; Telegram messages are a lossy rendering of that
 model under API limits.
 The renderer may debounce, coalesce visible edits, or use typing indicators, but
-it must not become the only source of activity truth.
+it must not become the only source of activity truth. Typing indicators remain
+advisory and must not sit in the critical path for recording activity events,
+acknowledging activity IPC, or allowing assistant previews and finals to
+progress.
 
 ## Architectural decisions and rationale
 

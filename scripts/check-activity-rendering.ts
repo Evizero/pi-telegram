@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { ActivityRenderer, ActivityReporter, activityLineToHtml, thinkingActivityLine, toolActivityLine } from "../src/broker/activity.js";
+import { createTypingLoopController } from "../src/telegram/typing.js";
 
 function assertIncludes(text: string, expected: string): void {
 	assert.ok(text.includes(expected), `expected ${JSON.stringify(text)} to include ${JSON.stringify(expected)}`);
@@ -19,7 +20,7 @@ function assertToolFormatting(): void {
 	assert.equal(activityLineToHtml(toolActivityLine("read", { path: "src/a&b<c>.ts" })), "<b>📖 read <code>src/a&amp;b&lt;c&gt;.ts</code></b>");
 }
 
-async function buildRenderer(startTypingLoopFor: () => Promise<void> = async () => undefined) {
+async function buildRenderer(startTypingLoopFor: () => void | Promise<void> = () => undefined) {
 	const calls: Array<{ method: string; body: Record<string, unknown> }> = [];
 	let nextMessageId = 1;
 	const renderer = new ActivityRenderer(
@@ -170,21 +171,63 @@ async function assertReporterFlushPreventsAfterFinalActivityEdits(): Promise<voi
 	assert.equal(guarded.calls.at(-1)?.method, "final");
 }
 
-async function assertClosedTurnGuardSurvivesInFlightTypingAwait(): Promise<void> {
+async function assertActivityUpdateDoesNotWaitForTypingStartup(): Promise<void> {
 	let releaseTyping: (() => void) | undefined;
 	let typingStarted = false;
 	const { renderer, calls } = await buildRenderer(async () => {
 		typingStarted = true;
 		await new Promise<void>((resolve) => { releaseTyping = resolve; });
 	});
-	const lateUpdate = renderer.handleUpdate({ turnId: "turn-inflight-closed", chatId: 1, line: toolActivityLine("read", { path: "late.ts" }) });
+	await renderer.handleUpdate({ turnId: "turn-typing-blocked", chatId: 1, messageThreadId: 123, line: toolActivityLine("read", { path: "live.ts" }) });
+	await renderer.flush("turn-typing-blocked");
+	assert.equal(calls.at(-1)?.method, "sendMessage");
+	assertIncludes(String(calls.at(-1)?.body.text), "live.ts");
+	assert.equal(calls.at(-1)?.body.message_thread_id, 123);
+	assert.equal(calls.at(-1)?.body.disable_notification, true);
 	while (!typingStarted || !releaseTyping) await new Promise((resolve) => setTimeout(resolve, 0));
-	await renderer.complete("turn-inflight-closed");
-	calls.push({ method: "final", body: { text: "final response" } });
 	releaseTyping();
-	await lateUpdate;
-	await renderer.flush("turn-inflight-closed");
-	assert.equal(calls.at(-1)?.method, "final");
+}
+
+async function assertTypingLoopSkipsOverlappingSends(): Promise<void> {
+	const calls: Record<string, unknown>[] = [];
+	let releaseFirst: (() => void) | undefined;
+	let firstResolved = false;
+	const typing = createTypingLoopController(async (body) => {
+		calls.push(body);
+		if (calls.length === 1) {
+			await new Promise<void>((resolve) => { releaseFirst = resolve; });
+			firstResolved = true;
+		}
+	}, 5);
+	typing.start("turn-typing-overlap", 99, 123);
+	while (!releaseFirst) await new Promise((resolve) => setTimeout(resolve, 0));
+	await new Promise((resolve) => setTimeout(resolve, 20));
+	assert.equal(calls.length, 1);
+	assert.deepEqual(calls[0], { chat_id: 99, action: "typing", message_thread_id: 123 });
+	releaseFirst();
+	while (!firstResolved) await new Promise((resolve) => setTimeout(resolve, 0));
+	await new Promise((resolve) => setTimeout(resolve, 10));
+	assert.ok(calls.length >= 2, "expected another typing send after the pending send resolved");
+	typing.stop("turn-typing-overlap");
+	const callsAfterStop = calls.length;
+	await new Promise((resolve) => setTimeout(resolve, 15));
+	assert.equal(calls.length, callsAfterStop);
+}
+
+async function assertTypingLoopAbortStopsRetryDelayedSend(): Promise<void> {
+	let aborted = false;
+	const calls: Record<string, unknown>[] = [];
+	const typing = createTypingLoopController(async (body, signal) => {
+		calls.push(body);
+		signal?.addEventListener("abort", () => { aborted = true; }, { once: true });
+		await new Promise<void>(() => undefined);
+	}, 5);
+	typing.start("turn-typing-abort", 99);
+	while (calls.length === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+	typing.stop("turn-typing-abort");
+	assert.equal(aborted, true);
+	await new Promise((resolve) => setTimeout(resolve, 15));
+	assert.equal(calls.length, 1);
 }
 
 async function assertCompleteCorrectsInFlightStaleFlush(): Promise<void> {
@@ -242,7 +285,9 @@ await assertVisibleThinkingReplacesInterleavedWorking();
 await assertCompleteRemovesActiveWorkingBeforeFinalFlush();
 await assertActivitySegmentsPreserveTelegramChronology();
 await assertReporterFlushPreventsAfterFinalActivityEdits();
-await assertClosedTurnGuardSurvivesInFlightTypingAwait();
+await assertActivityUpdateDoesNotWaitForTypingStartup();
+await assertTypingLoopSkipsOverlappingSends();
+await assertTypingLoopAbortStopsRetryDelayedSend();
 await assertCompleteCorrectsInFlightStaleFlush();
 await assertBashCompletionMatchesLabelLessRow();
 console.log("Activity rendering checks passed");

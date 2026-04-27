@@ -31,6 +31,7 @@ import { sendTelegramMarkdownReply, sendTelegramTextReply, type SendTextReplyOpt
 import { createTelegramTurnForSession as buildTelegramTurnForSession, durableTelegramTurn } from "./telegram/turns.js";
 import { collectSessionRegistration as buildSessionRegistration } from "./client/session-registration.js";
 import { PreviewManager } from "./telegram/previews.js";
+import { createTypingLoopController } from "./telegram/typing.js";
 import { registerRuntimePiHooks } from "./pi/hooks.js";
 import { promptForTelegramConfig } from "./telegram/setup.js";
 import { pairingInstructions, telegramStatusText } from "./shared/ui-status.js";
@@ -93,7 +94,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	let setupInProgress = false;
 	let telegramStatusVisible = false;
 	const mediaGroups = new Map<string, TelegramMediaGroupState>();
-	const typingLoops = new Map<string, ReturnType<typeof setInterval> | undefined>();
+	const typingLoops = createTypingLoopController((body, signal) => callTelegram("sendChatAction", body, { signal }));
 	let activeTurnFinalizer: RetryAwareTelegramTurnFinalizer;
 	const assistantFinalHandoff = new ClientAssistantFinalHandoff({
 		getSessionId: () => sessionId,
@@ -592,8 +593,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		brokerPollAbort = undefined;
 		if (brokerHeartbeatTimer) clearInterval(brokerHeartbeatTimer);
 		brokerHeartbeatTimer = undefined;
-		for (const timer of typingLoops.values()) if (timer) clearInterval(timer);
-		typingLoops.clear();
+		typingLoops.stopAll();
 		activityRenderer.clearAllTimers();
 		for (const state of mediaGroups.values()) if (state.flushTimer) clearTimeout(state.flushTimer);
 		mediaGroups.clear();
@@ -843,25 +843,14 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	async function sendMarkdownReply(chatId: number | string, messageThreadId: number | undefined, text: string, options?: SendTextReplyOptions): Promise<number | undefined> {
 		return await sendTelegramMarkdownReply(callTelegram, chatId, messageThreadId, text, options);
 	}
-	async function startTypingLoopFor(turnId: string, chatId: number | string, messageThreadId?: number): Promise<void> {
-		if (typingLoops.has(turnId)) return;
-		typingLoops.set(turnId, undefined);
-		const sendTyping = async (): Promise<void> => {
-			const body: Record<string, unknown> = { chat_id: chatId, action: "typing" };
-			if (messageThreadId !== undefined) body.message_thread_id = messageThreadId;
-			await callTelegram("sendChatAction", body).catch(() => undefined);
-		};
-		await sendTyping();
-		if (!typingLoops.has(turnId)) return;
-		typingLoops.set(turnId, setInterval(() => void sendTyping(), 4000));
+	function startTypingLoopFor(turnId: string, chatId: number | string, messageThreadId?: number): void {
+		typingLoops.start(turnId, chatId, messageThreadId);
 	}
 	async function startTypingLoop(turn: PendingTelegramTurn): Promise<void> {
-		await startTypingLoopFor(turn.turnId, turn.chatId, turn.messageThreadId);
+		startTypingLoopFor(turn.turnId, turn.chatId, turn.messageThreadId);
 	}
 	function stopTypingLoop(turnId: string): void {
-		const timer = typingLoops.get(turnId);
-		if (timer) clearInterval(timer);
-		typingLoops.delete(turnId);
+		typingLoops.stop(turnId);
 	}
 	async function handleTurnStarted(payload: { turnId: string }): Promise<{ ok: true }> {
 		const pending = brokerState?.pendingTurns?.[payload.turnId];
@@ -875,7 +864,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		return preview.messageId;
 	}
 	async function handleAssistantMessageStart(payload: { turnId: string; chatId: number | string; messageThreadId?: number }): Promise<{ ok: true }> {
-		await startTypingLoopFor(payload.turnId, payload.chatId, payload.messageThreadId);
+		startTypingLoopFor(payload.turnId, payload.chatId, payload.messageThreadId);
 		await previewManager.messageStart(payload.turnId, payload.chatId, payload.messageThreadId, matchingDurablePreview(payload.turnId, payload.chatId, payload.messageThreadId));
 		return { ok: true };
 	}

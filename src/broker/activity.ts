@@ -188,7 +188,7 @@ export class ActivityRenderer {
 
 	constructor(
 		private readonly callTelegram: <TResponse>(method: string, body: Record<string, unknown>) => Promise<TResponse>,
-		private readonly startTypingLoopFor: (turnId: string, chatId: number | string, messageThreadId?: number) => Promise<void>,
+		private readonly startTypingLoopFor: (turnId: string, chatId: number | string, messageThreadId?: number) => void | Promise<void>,
 	) {}
 
 	clearAllTimers(): void {
@@ -284,8 +284,9 @@ export class ActivityRenderer {
 	async handleUpdate(payload: ActivityUpdatePayload): Promise<{ ok: true }> {
 		const activityId = payload.activityId ?? payload.turnId;
 		if (this.closedTurnIdSet.has(payload.turnId) || this.closedActivityIdSet.has(activityId)) return { ok: true };
-		await this.startTypingLoopFor(payload.turnId, payload.chatId, payload.messageThreadId);
-		if (this.closedTurnIdSet.has(payload.turnId) || this.closedActivityIdSet.has(activityId)) return { ok: true };
+		void Promise.resolve()
+			.then(() => this.startTypingLoopFor(payload.turnId, payload.chatId, payload.messageThreadId))
+			.catch(() => undefined);
 		let state = this.messages.get(activityId);
 		if (!state) {
 			state = { chatId: payload.chatId, messageThreadId: payload.messageThreadId, lines: [] };

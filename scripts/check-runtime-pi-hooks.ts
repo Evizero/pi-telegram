@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
+import { ActivityRenderer, ActivityReporter } from "../src/broker/activity.js";
 import { registerRuntimePiHooks, type RuntimePiHooksDeps } from "../src/pi/hooks.js";
 import type { ActiveTelegramTurn, PendingTelegramTurn, TelegramRoute } from "../src/shared/types.js";
 
@@ -19,6 +20,13 @@ function activeTurn(id = "turn-1"): ActiveTelegramTurn {
 		content: [],
 		historyText: "",
 	};
+}
+
+async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+	return await Promise.race([
+		promise,
+		new Promise<T>((_resolve, reject) => setTimeout(() => reject(new Error(`${label} timed out`)), 50)),
+	]);
 }
 
 function route(): TelegramRoute {
@@ -413,6 +421,43 @@ async function checkAwaitingFinalHandoffKeepsSegmentStateForSameActiveTurn(): Pr
 	assert.equal(ipcCalls.at(-1)?.payload.activityId, "turn-awaiting-final:activity:1");
 }
 
+async function checkAssistantPreviewDoesNotWaitForBlockedTypingStartup(): Promise<void> {
+	const { handlers, pi } = buildPiHarness();
+	const active = activeTurn("turn-preview-blocked-typing");
+	const ipcCalls: Array<{ type: string; payload: any }> = [];
+	const telegramCalls: Array<{ method: string; body: Record<string, unknown> }> = [];
+	const renderer = new ActivityRenderer(
+		async <TResponse>(method: string, body: Record<string, unknown>): Promise<TResponse> => {
+			telegramCalls.push({ method, body });
+			if (method === "sendMessage") return { message_id: 1 } as TResponse;
+			return {} as TResponse;
+		},
+		async () => { await new Promise<void>(() => undefined); },
+	);
+	const activityReporter = new ActivityReporter((payload) => renderer.handleUpdate(payload));
+	registerRuntimePiHooks(pi, baseDeps({
+		getActiveTelegramTurn: () => active,
+		activityReporter,
+		postIpc: async <TResponse>(_socketPath: string, type: string, payload: unknown) => {
+			ipcCalls.push({ type, payload });
+			if (type === "activity_complete") await renderer.completeActivity((payload as { turnId: string }).turnId, (payload as { activityId?: string }).activityId);
+			return undefined as TResponse;
+		},
+	}));
+
+	await (handlers.get("tool_call")?.[0]?.({ toolName: "read", input: { path: "before-preview.ts" } }) ?? Promise.resolve());
+	await withTimeout(handlers.get("message_update")?.[0]?.({
+		message: { role: "assistant", content: [{ type: "text", text: "Preview despite blocked typing" }] },
+		assistantMessageEvent: { type: "text_delta", delta: "Preview despite blocked typing" },
+	}) ?? Promise.resolve(), "assistant preview after blocked typing startup");
+
+	assert.deepEqual(ipcCalls.map((call) => call.type), ["activity_complete", "assistant_preview"]);
+	assert.equal(ipcCalls[1]?.payload.messageThreadId, 9);
+	assert.equal(telegramCalls.at(-1)?.method, "sendMessage");
+	assert.equal(telegramCalls.at(-1)?.body.disable_notification, true);
+	assert.equal(telegramCalls.at(-1)?.body.message_thread_id, 9);
+}
+
 async function checkTelegramAttachIsAtomicOnValidationFailure(): Promise<void> {
 	const tempDir = mkdtempSync(join(tmpdir(), "pi-telegram-hook-check-"));
 	try {
@@ -593,6 +638,7 @@ await checkAssistantTextWithoutPriorActivityDoesNotCompleteEmptySegment();
 await checkDeferredRetryContinuesAfterClosedActivitySegment();
 await checkActivityCompletionFailureDoesNotAdvanceSegmentOrPostPreview();
 await checkAwaitingFinalHandoffKeepsSegmentStateForSameActiveTurn();
+await checkAssistantPreviewDoesNotWaitForBlockedTypingStartup();
 await checkTelegramAttachIsAtomicOnValidationFailure();
 await checkSessionShutdownLetsRouteTeardownOwnQueueDrainingAndStillStopsBroker();
 await checkImageOnlyLocalInputStillMirrorsToTelegram();
