@@ -57,7 +57,7 @@ The strongest drivers come directly from the intended purpose and requirements:
   (`StRS-busy-turn-intent`, `SyRS-busy-message-steers`,
   `SyRS-follow-queues-next-turn`);
 - activity and final responses must stay intelligible, chronologically clear,
-  and non-duplicated even when Telegram previews, edits, chunks,
+  and non-duplicated even when legacy preview cleanup, Telegram edits, chunks,
   pi/provider auto-retry, and Telegram delivery retries are involved
   (`StRS-activity-final-feedback`, `SyRS-activity-history-rendering`,
   `SyRS-final-preview-deduplication`, `SyRS-final-delivery-fifo-retry`,
@@ -87,9 +87,9 @@ lifecycle handling.
 ### Local-first authority
 
 Telegram must not become the execution environment.
-It carries commands, messages, previews, and files, but shell execution,
-workspace mutation, model selection, credentials, and session state remain
-inside pi on the local computer.
+It carries commands, messages, activity/final updates, and files, but shell
+execution, workspace mutation, model selection, credentials, and session state
+remain inside pi on the local computer.
 This goal drives the pi-hook boundary, outbound attachment allowlisting, and the
 extension-owned broker design.
 
@@ -556,9 +556,10 @@ download limits, and private local file writes.
 `telegram/retry.ts` centralizes retry-after sleeping behavior around Telegram
 requests that can be safely retried.
 
-`telegram/previews.ts` owns streaming preview state, draft-vs-message preview
-selection, edit throttling, and stale preview cleanup. Durable final delivery may
-detach preview message state so the broker final ledger can finalize it with
+`telegram/previews.ts` is a migration/compatibility boundary for legacy or
+in-flight assistant preview state. The target normal path should not stream
+assistant text through it, but durable final delivery may still detach preview
+message state so the broker final ledger can finalize older turns with
 retry-safe progress tracking.
 
 `telegram/attachments.ts` owns outbound attachment method selection and fallback
@@ -676,24 +677,31 @@ If pi later exposes a safe direct reload API for extension contexts, Telegram
 reload can be reconsidered as a new feature with durable route reattachment.
 Until then, runtime reload remains a local pi action outside the Telegram bridge.
 
-### Activity, preview, and final response
+### Activity and final response
 
 Pi event hooks collect thinking and tool activity and report it to the broker.
 The broker renders activity through debounced Telegram edits without erasing the
 ordered activity model. Typing indicators are advisory rendering side effects;
-they must not block activity ingestion, assistant preview updates, or final
-handoff.
-Assistant text streams through `PreviewManager`, which chooses draft or message
-preview mode according to Telegram constraints. Chronology barriers may complete
-prior activity before showing assistant text, but those barriers must not depend
-on low-value typing delivery.
+they must not block activity ingestion, final handoff, or assistant-final
+delivery.
+Assistant response text is not a live Telegram streaming surface in the target
+architecture. Activity rendering remains the live supervision channel while the
+assistant is working; assistant text is delivered once through final delivery
+when pi reports the completed turn. This avoids provisional assistant-message
+notifications and preview replacement churn while preserving enough live
+progress visibility to decide whether to intervene.
 On final response, the broker first persists an assistant-final ledger entry,
-closes outstanding activity, detaches any streamed preview, performs preview
-cleanup when Telegram permits it, and then appends final assistant text as new
-Telegram messages. Long text is chunked, attachments are sent only from explicit
-pi queues, progress is
-persisted after visible delivery steps, and retryable failures keep final
-delivery pending without allowing newer finals to bypass the older one.
+closes outstanding activity, detaches or cleans up any existing preview state
+left by older runtimes or in-flight migration, and then appends final assistant
+text as new Telegram messages. Long text is chunked, attachments are sent only
+from explicit pi queues, progress is persisted after visible delivery steps, and
+retryable failures keep final delivery pending without allowing newer finals to
+bypass the older one.
+
+Migration note: current code still contains `PreviewManager` and an
+`assistant_preview` IPC handler for legacy or in-flight preview compatibility.
+Those paths should remain only for cleanup, compatibility, or explicit future
+opt-in behavior; they are not the normal assistant-text delivery path.
 
 This scenario protects `SyRS-activity-history-rendering`,
 `SyRS-final-preview-deduplication`, `SyRS-final-delivery-fifo-retry`,
@@ -790,8 +798,7 @@ model under API limits.
 The renderer may debounce, coalesce visible edits, or use typing indicators, but
 it must not become the only source of activity truth. Typing indicators remain
 advisory and must not sit in the critical path for recording activity events,
-acknowledging activity IPC, or allowing assistant previews and finals to
-progress.
+acknowledging activity IPC, or allowing assistant final delivery to progress.
 
 ## Architectural decisions and rationale
 
@@ -979,7 +986,7 @@ ownership.
   helpers.
 - `src/telegram/api.ts` — low-level Telegram Bot API calls and downloads.
 - `src/telegram/retry.ts` — retry-after wrapper.
-- `src/telegram/previews.ts` — streaming preview state and finalization.
+- `src/telegram/previews.ts` — legacy/in-flight preview state cleanup and finalization compatibility.
 - `src/telegram/attachments.ts` — outbound attachment sending.
 - `src/telegram/turns.ts` — Telegram turn construction and durable IDs.
 - `docs.md` — source-backed Telegram Bot API notes for maintainers and agents.

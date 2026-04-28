@@ -278,9 +278,9 @@ async function checkLocalInputDuringLiveRetryDoesNotFlushDeferredTurn(): Promise
 	assert.equal(active?.turnId, "retrying");
 }
 
-async function checkInterleavedAssistantTextStartsNewActivitySegment(): Promise<void> {
+async function checkAssistantTextDoesNotCloseActivityOrPostPreview(): Promise<void> {
 	const { handlers, pi } = buildPiHarness();
-	const active = activeTurn("turn-segment");
+	const active = activeTurn("turn-final-only");
 	const ipcCalls: Array<{ type: string; payload: any }> = [];
 	const activityReporter = {
 		post: (payload: any) => { ipcCalls.push({ type: "activity_update", payload }); },
@@ -297,21 +297,17 @@ async function checkInterleavedAssistantTextStartsNewActivitySegment(): Promise<
 
 	await (handlers.get("tool_call")?.[0]?.({ toolName: "read", input: { path: "before.ts" } }) ?? Promise.resolve());
 	await (handlers.get("message_update")?.[0]?.({
-		message: { role: "assistant", content: [{ type: "text", text: "Visible progress" }] },
-		assistantMessageEvent: { type: "text_delta", delta: "Visible progress" },
+		message: { role: "assistant", content: [{ type: "text", text: "Final-only text stream" }] },
+		assistantMessageEvent: { type: "text_delta", delta: "Final-only text stream" },
 	}) ?? Promise.resolve());
 	await (handlers.get("tool_call")?.[0]?.({ toolName: "bash", input: { command: "npm test" } }) ?? Promise.resolve());
 
-	assert.equal(ipcCalls[0]?.type, "activity_update");
+	assert.deepEqual(ipcCalls.map((call) => call.type), ["activity_update", "activity_update"]);
 	assert.equal(ipcCalls[0]?.payload.activityId, undefined);
-	assert.equal(ipcCalls[1]?.type, "activity_complete");
-	assert.deepEqual(ipcCalls[1]?.payload, { turnId: "turn-segment", activityId: undefined });
-	assert.equal(ipcCalls[2]?.type, "assistant_preview");
-	assert.equal(ipcCalls[3]?.type, "activity_update");
-	assert.equal(ipcCalls[3]?.payload.activityId, "turn-segment:activity:1");
+	assert.equal(ipcCalls[1]?.payload.activityId, undefined);
 }
 
-async function checkAssistantTextWithoutPriorActivityDoesNotCompleteEmptySegment(): Promise<void> {
+async function checkAssistantTextWithoutPriorActivityPostsNoPreview(): Promise<void> {
 	const { handlers, pi } = buildPiHarness();
 	const active = activeTurn("turn-text-first");
 	const ipcCalls: Array<{ type: string; payload: any }> = [];
@@ -328,10 +324,10 @@ async function checkAssistantTextWithoutPriorActivityDoesNotCompleteEmptySegment
 		assistantMessageEvent: { type: "text_start", contentIndex: 0 },
 	}) ?? Promise.resolve());
 
-	assert.deepEqual(ipcCalls.map((call) => call.type), ["assistant_preview"]);
+	assert.deepEqual(ipcCalls, []);
 }
 
-async function checkDeferredRetryContinuesAfterClosedActivitySegment(): Promise<void> {
+async function checkDeferredRetryContinuesActivityWithoutTextSegmentation(): Promise<void> {
 	const { handlers, pi } = buildPiHarness();
 	const active = activeTurn("turn-retry-segment");
 	const ipcCalls: Array<{ type: string; payload: any }> = [];
@@ -351,19 +347,19 @@ async function checkDeferredRetryContinuesAfterClosedActivitySegment(): Promise<
 
 	await (handlers.get("tool_call")?.[0]?.({ toolName: "read", input: { path: "before-retry.ts" } }) ?? Promise.resolve());
 	await (handlers.get("message_update")?.[0]?.({
-		message: { role: "assistant", content: [{ type: "text", text: "Visible before retry" }] },
-		assistantMessageEvent: { type: "text_delta", delta: "Visible before retry" },
+		message: { role: "assistant", content: [{ type: "text", text: "Text before retry" }] },
+		assistantMessageEvent: { type: "text_delta", delta: "Text before retry" },
 	}) ?? Promise.resolve());
 	await (handlers.get("agent_end")?.[0]?.({ messages: [{ role: "assistant", content: [], stopReason: "error", errorMessage: "fetch failed" }] }, { ui: { theme: {} } } as ExtensionContext) ?? Promise.resolve());
 	await (handlers.get("tool_call")?.[0]?.({ toolName: "bash", input: { command: "npm test" } }) ?? Promise.resolve());
 
 	assert.equal(ipcCalls.at(-1)?.type, "activity_update");
-	assert.equal(ipcCalls.at(-1)?.payload.activityId, "turn-retry-segment:activity:1");
+	assert.equal(ipcCalls.at(-1)?.payload.activityId, undefined);
 }
 
-async function checkActivityCompletionFailureDoesNotAdvanceSegmentOrPostPreview(): Promise<void> {
+async function checkAssistantTextDoesNotAttemptActivityCompletionOrPreview(): Promise<void> {
 	const { handlers, pi } = buildPiHarness();
-	const active = activeTurn("turn-complete-fails");
+	const active = activeTurn("turn-no-complete");
 	const ipcCalls: Array<{ type: string; payload: any }> = [];
 	const activityReporter = {
 		post: (payload: any) => { ipcCalls.push({ type: "activity_update", payload }); },
@@ -374,23 +370,24 @@ async function checkActivityCompletionFailureDoesNotAdvanceSegmentOrPostPreview(
 		activityReporter: activityReporter as never,
 		postIpc: async <TResponse>(_socketPath: string, type: string, payload: unknown) => {
 			ipcCalls.push({ type, payload });
-			if (type === "activity_complete") throw new Error("completion failed");
+			if (type === "activity_complete") throw new Error("assistant text should not complete activity");
+			if (type === "assistant_preview") throw new Error("assistant text should not stream a preview");
 			return undefined as TResponse;
 		},
 	}));
 
 	await (handlers.get("tool_call")?.[0]?.({ toolName: "read", input: { path: "before-failure.ts" } }) ?? Promise.resolve());
 	await (handlers.get("message_update")?.[0]?.({
-		message: { role: "assistant", content: [{ type: "text", text: "Hidden until completion succeeds" }] },
-		assistantMessageEvent: { type: "text_delta", delta: "Hidden until completion succeeds" },
+		message: { role: "assistant", content: [{ type: "text", text: "Held until final" }] },
+		assistantMessageEvent: { type: "text_delta", delta: "Held until final" },
 	}) ?? Promise.resolve());
-	await (handlers.get("tool_call")?.[0]?.({ toolName: "bash", input: { command: "still-base-segment" } }) ?? Promise.resolve());
+	await (handlers.get("tool_call")?.[0]?.({ toolName: "bash", input: { command: "same-activity-message" } }) ?? Promise.resolve());
 
-	assert.deepEqual(ipcCalls.map((call) => call.type), ["activity_update", "activity_complete", "activity_update"]);
+	assert.deepEqual(ipcCalls.map((call) => call.type), ["activity_update", "activity_update"]);
 	assert.equal(ipcCalls.at(-1)?.payload.activityId, undefined);
 }
 
-async function checkAwaitingFinalHandoffKeepsSegmentStateForSameActiveTurn(): Promise<void> {
+async function checkAwaitingFinalHandoffKeepsActivityStateForSameActiveTurn(): Promise<void> {
 	const { handlers, pi } = buildPiHarness();
 	let active: ActiveTelegramTurn | undefined = activeTurn("turn-awaiting-final");
 	const ipcCalls: Array<{ type: string; payload: any }> = [];
@@ -411,17 +408,17 @@ async function checkAwaitingFinalHandoffKeepsSegmentStateForSameActiveTurn(): Pr
 
 	await (handlers.get("tool_call")?.[0]?.({ toolName: "read", input: { path: "before-awaiting.ts" } }) ?? Promise.resolve());
 	await (handlers.get("message_update")?.[0]?.({
-		message: { role: "assistant", content: [{ type: "text", text: "Visible before awaiting handoff" }] },
-		assistantMessageEvent: { type: "text_delta", delta: "Visible before awaiting handoff" },
+		message: { role: "assistant", content: [{ type: "text", text: "Text before awaiting handoff" }] },
+		assistantMessageEvent: { type: "text_delta", delta: "Text before awaiting handoff" },
 	}) ?? Promise.resolve());
 	await (handlers.get("agent_end")?.[0]?.({ messages: [{ role: "assistant", content: [{ type: "text", text: "final" }], stopReason: "stop" }] }, { ui: { theme: {} } } as ExtensionContext) ?? Promise.resolve());
 	await (handlers.get("tool_call")?.[0]?.({ toolName: "bash", input: { command: "late-awaiting" } }) ?? Promise.resolve());
 
 	assert.equal(ipcCalls.at(-1)?.type, "activity_update");
-	assert.equal(ipcCalls.at(-1)?.payload.activityId, "turn-awaiting-final:activity:1");
+	assert.equal(ipcCalls.at(-1)?.payload.activityId, undefined);
 }
 
-async function checkAssistantPreviewDoesNotWaitForBlockedTypingStartup(): Promise<void> {
+async function checkAssistantTextDoesNotWaitForBlockedTypingStartup(): Promise<void> {
 	const { handlers, pi } = buildPiHarness();
 	const active = activeTurn("turn-preview-blocked-typing");
 	const ipcCalls: Array<{ type: string; payload: any }> = [];
@@ -447,15 +444,12 @@ async function checkAssistantPreviewDoesNotWaitForBlockedTypingStartup(): Promis
 
 	await (handlers.get("tool_call")?.[0]?.({ toolName: "read", input: { path: "before-preview.ts" } }) ?? Promise.resolve());
 	await withTimeout(handlers.get("message_update")?.[0]?.({
-		message: { role: "assistant", content: [{ type: "text", text: "Preview despite blocked typing" }] },
-		assistantMessageEvent: { type: "text_delta", delta: "Preview despite blocked typing" },
-	}) ?? Promise.resolve(), "assistant preview after blocked typing startup");
+		message: { role: "assistant", content: [{ type: "text", text: "No preview despite blocked typing" }] },
+		assistantMessageEvent: { type: "text_delta", delta: "No preview despite blocked typing" },
+	}) ?? Promise.resolve(), "assistant text update without preview after blocked typing startup");
 
-	assert.deepEqual(ipcCalls.map((call) => call.type), ["activity_complete", "assistant_preview"]);
-	assert.equal(ipcCalls[1]?.payload.messageThreadId, 9);
-	assert.equal(telegramCalls.at(-1)?.method, "sendMessage");
-	assert.equal(telegramCalls.at(-1)?.body.disable_notification, true);
-	assert.equal(telegramCalls.at(-1)?.body.message_thread_id, 9);
+	assert.deepEqual(ipcCalls, []);
+	assert.deepEqual(telegramCalls, []);
 }
 
 async function checkTelegramAttachIsAtomicOnValidationFailure(): Promise<void> {
@@ -633,12 +627,12 @@ async function checkImageOnlyLocalInputStillMirrorsToTelegram(): Promise<void> {
 await checkDeferredAgentEndClearsAbortCallback();
 await checkLocalInputFlushesDeferredWithoutStartingQueuedTelegramTurn();
 await checkLocalInputDuringLiveRetryDoesNotFlushDeferredTurn();
-await checkInterleavedAssistantTextStartsNewActivitySegment();
-await checkAssistantTextWithoutPriorActivityDoesNotCompleteEmptySegment();
-await checkDeferredRetryContinuesAfterClosedActivitySegment();
-await checkActivityCompletionFailureDoesNotAdvanceSegmentOrPostPreview();
-await checkAwaitingFinalHandoffKeepsSegmentStateForSameActiveTurn();
-await checkAssistantPreviewDoesNotWaitForBlockedTypingStartup();
+await checkAssistantTextDoesNotCloseActivityOrPostPreview();
+await checkAssistantTextWithoutPriorActivityPostsNoPreview();
+await checkDeferredRetryContinuesActivityWithoutTextSegmentation();
+await checkAssistantTextDoesNotAttemptActivityCompletionOrPreview();
+await checkAwaitingFinalHandoffKeepsActivityStateForSameActiveTurn();
+await checkAssistantTextDoesNotWaitForBlockedTypingStartup();
 await checkTelegramAttachIsAtomicOnValidationFailure();
 await checkSessionShutdownLetsRouteTeardownOwnQueueDrainingAndStillStopsBroker();
 await checkImageOnlyLocalInputStillMirrorsToTelegram();

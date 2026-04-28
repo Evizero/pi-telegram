@@ -8,7 +8,7 @@ import { MAX_ATTACHMENTS_PER_TURN, MAX_FILE_BYTES, STATE_PATH, SYSTEM_PROMPT_SUF
 import { thinkingActivityLine, toolActivityLine, type ActivityReporter } from "../broker/activity.js";
 import { isTelegramPrompt } from "../shared/format.js";
 import { isRetryableAssistantError } from "../shared/assistant-errors.js";
-import { extractAssistantText, getMessageText, getThinkingTitleFromEvent, isAssistantMessage } from "../shared/messages.js";
+import { extractAssistantText, getThinkingTitleFromEvent, isAssistantMessage } from "../shared/messages.js";
 import type { ActiveTelegramTurn, BrokerState, PendingTelegramTurn, QueuedAttachment, TelegramRoute } from "../shared/types.js";
 import { errorMessage, randomId, readJson } from "../shared/utils.js";
 
@@ -56,43 +56,9 @@ export interface RuntimePiHooksDeps {
 	clearMediaGroups: () => void;
 }
 
-interface ActivitySegmentState {
-	index: number;
-	activitySinceLastText: boolean;
-}
-
-function activityIdFor(turnId: string, state: ActivitySegmentState): string | undefined {
-	return state.index === 0 ? undefined : `${turnId}:activity:${state.index}`;
-}
-
 export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDeps): void {
-	const activitySegments = new Map<string, ActivitySegmentState>();
-	function activitySegmentFor(turnId: string): ActivitySegmentState {
-		let state = activitySegments.get(turnId);
-		if (!state) {
-			state = { index: 0, activitySinceLastText: false };
-			activitySegments.set(turnId, state);
-		}
-		return state;
-	}
 	function postActivity(turn: ActiveTelegramTurn, line: string): void {
-		const state = activitySegmentFor(turn.turnId);
-		state.activitySinceLastText = true;
-		deps.activityReporter.post({ turnId: turn.turnId, activityId: activityIdFor(turn.turnId, state), chatId: turn.chatId, messageThreadId: turn.messageThreadId, line });
-	}
-	async function finishActivityBeforeAssistantText(turn: ActiveTelegramTurn): Promise<boolean> {
-		const state = activitySegmentFor(turn.turnId);
-		if (!state.activitySinceLastText) return true;
-		const activityId = activityIdFor(turn.turnId, state);
-		await deps.activityReporter.flush();
-		try {
-			await deps.postIpc(deps.getConnectedBrokerSocketPath(), "activity_complete", { turnId: turn.turnId, activityId }, deps.getSessionId());
-		} catch {
-			return false;
-		}
-		state.index += 1;
-		state.activitySinceLastText = false;
-		return true;
+		deps.activityReporter.post({ turnId: turn.turnId, chatId: turn.chatId, messageThreadId: turn.messageThreadId, line });
 	}
 
 	pi.registerTool({
@@ -263,13 +229,11 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 		const activeTelegramTurn = deps.getActiveTelegramTurn();
 		if (!activeTelegramTurn || !isAssistantMessage(event.message)) return;
 		const streamEvent = event.assistantMessageEvent;
-		if ((streamEvent.type === "text_start" || streamEvent.type === "text_delta" || streamEvent.type === "text_end") && !(await finishActivityBeforeAssistantText(activeTelegramTurn))) return;
 		if (streamEvent.type === "thinking_start" || streamEvent.type === "thinking_delta") {
 			postActivity(activeTelegramTurn, thinkingActivityLine(false, getThinkingTitleFromEvent(streamEvent)));
 		} else if (streamEvent.type === "thinking_end") {
 			postActivity(activeTelegramTurn, thinkingActivityLine(true, getThinkingTitleFromEvent(streamEvent)));
 		}
-		await deps.postIpc(deps.getConnectedBrokerSocketPath(), "assistant_preview", { turnId: activeTelegramTurn.turnId, chatId: activeTelegramTurn.chatId, messageThreadId: activeTelegramTurn.messageThreadId, text: getMessageText(event.message) }, deps.getSessionId()).catch(() => undefined);
 	});
 
 	pi.on("tool_call", async (event) => {
@@ -307,7 +271,6 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 				deps.startNextTelegramTurn();
 			}
 		} finally {
-			if (turn && finalizationResult !== "deferred" && deps.getActiveTelegramTurn()?.turnId !== turn.turnId) activitySegments.delete(turn.turnId);
 			deps.setCurrentAbort(undefined);
 			deps.updateStatus(ctx);
 		}

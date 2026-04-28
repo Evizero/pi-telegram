@@ -2,7 +2,7 @@
   "meta": {
     "title": "pi-telegram",
     "version": "0.1.0",
-    "last_updated": "2026-04-26"
+    "last_updated": "2026-04-28"
   },
   "requirements": [
     {
@@ -370,7 +370,7 @@
       "origin": "derived",
       "label": "Keep passive updates non-alerting",
       "statement": "Remote pi operators shall be able to keep Telegram supervision views updated with passive activity updates and local-input echoes without receiving notification alerts for those passive messages.",
-      "rationale": "The operator may be working locally while Telegram is connected or may only need passive progress visibility. Alerting for local input echoes and routine activity updates creates notification noise without adding useful control value, while final answers and explicit command/error replies may still warrant normal notification behavior.",
+      "rationale": "The operator may be working locally while Telegram is connected or may only need passive progress visibility. Alerting for local input echoes and routine activity updates creates notification noise without adding useful control value, while final answers and explicit command/error replies may still warrant normal notification behavior. Assistant text streaming is no longer planned as a normal supervision surface.",
       "stakeholders": [
         "remote-pi-operator"
       ],
@@ -381,10 +381,12 @@
       },
       "status": "draft",
       "created": "2026-04-26",
-      "updated": "2026-04-26",
+      "updated": "2026-04-28",
       "sources": {
         "inbox": [
-          "silent-telegram-notifications-for"
+          "silent-telegram-notifications-for",
+          "telegram-final-notification-can",
+          "stop-streaming-assistant-text"
         ]
       }
     }

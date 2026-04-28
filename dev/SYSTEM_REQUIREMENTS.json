@@ -294,23 +294,25 @@
     {
       "id": "SyRS-final-preview-deduplication",
       "origin": "derived",
-      "label": "Send finals after previews",
-      "statement": "The system shall detach any streamed assistant preview before final delivery and send final assistant response text as new Telegram messages rather than editing an older preview message into the final response.",
+      "label": "Deliver assistant text at final",
+      "statement": "The system shall deliver assistant response text to Telegram only through final assistant responses, without streaming assistant text as provisional Telegram preview messages, while still detaching or cleaning up any existing preview message state before final delivery.",
       "traces_to": [
         "StRS-activity-final-feedback",
         "StRS-delivery-continuity"
       ],
-      "rationale": "Remote supervision depends on Telegram chronology as well as deduplication. Editing an earlier preview into the final answer can make the final appear before later Activity messages even when final delivery closes activity first; detaching the preview and appending fresh final messages keeps the visible result understandable while preserving duplicate-prevention goals. Preview cleanup should occur when Telegram permits it, but final answer text must not be delivered by reusing the preview message.",
-      "acceptance_criteria": "Tests show that when a visible preview exists, final delivery detaches it before sending final text with sendMessage; final content is not produced by editMessageText on the preview; missing/already-deleted previews still allow the final to be sent once; retry_after or ambiguous transport/server failures during preview cleanup keep the final pending without sending or bypassing FIFO ordering; permanent preview-cleanup failures still lead to final assistant text being appended with sendMessage rather than terminally losing the final or editing it into the preview; chunked final text and attachments are delivered once in order with route/thread context preserved.",
+      "rationale": "The remote operator still needs live progress and a non-duplicated final answer, but model responses are fast enough that streaming assistant text adds little value and creates notification/chronology churn. Activity rendering remains the live supervision channel; assistant text should appear once as the final answer. The cleanup clause preserves continuity for legacy or in-flight preview state during migration and broker turnover.",
+      "acceptance_criteria": "Tests show assistant text streaming events do not produce assistant_preview IPC or Telegram preview send/edit calls during ordinary turns; final assistant response text is delivered once through the durable final-delivery ledger with route/thread context preserved; any pre-existing durable or in-memory preview state for a turn is detached or cleaned before final delivery without editing that preview into the final; retry_after or ambiguous transport/server failures during final delivery keep the final pending without allowing newer finals to bypass it.",
       "verification": {
         "method": "test"
       },
       "status": "draft",
       "created": "2026-04-25",
-      "updated": "2026-04-27",
+      "updated": "2026-04-28",
       "sources": {
         "inbox": [
-          "final-telegram-message-can"
+          "final-telegram-message-can",
+          "telegram-final-notification-can",
+          "stop-streaming-assistant-text"
         ]
       }
     },
@@ -838,24 +840,26 @@
       "id": "SyRS-silent-passive-telegram-updates",
       "origin": "derived",
       "label": "Silence passive Telegram updates",
-      "statement": "The system shall set disabled notifications on Telegram sendMessage calls for broker activity-renderer status messages and mirrored local pi user input while preserving ordinary notification behavior for assistant previews, final answers, and explicit operator-facing command or error replies.",
+      "statement": "The system shall set disabled notifications on Telegram sendMessage calls for broker activity-renderer status messages and mirrored local pi user input while preserving ordinary notification behavior for final assistant responses and explicit operator-facing command or error replies.",
       "traces_to": [
         "StRS-nonalerting-passive-supervision",
         "StRS-activity-final-feedback",
         "StRS-remote-session-supervision",
         "StRS-api-constrained-maintenance"
       ],
-      "rationale": "Remote supervision should keep the Telegram view current without alerting the operator for passive broker activity rendering or echoes of local input they just typed on the computer. Telegram provides disable_notification on sendMessage, so this behavior can be checked at the bridge send boundary without changing route identity, assistant preview/final semantics, or command/error reply notification behavior.",
-      "acceptance_criteria": "Tests or inspection show all targeted broker activity-renderer sendMessage calls and local-user mirror sendMessage calls include disable_notification=true for every chunk and preserve message_thread_id, while assistant previews, final assistant replies, setup/command replies, explicit errors, attachment failure notices, and rate-limit handling are not made silent unless separately required.",
+      "rationale": "Remote supervision should keep Telegram current without alerting the operator for passive broker activity rendering or echoes of local input they just typed on the computer. Assistant text is no longer planned to stream as provisional Telegram preview messages, so final assistant responses remain the only normal assistant-text notification.",
+      "acceptance_criteria": "Tests or inspection show all targeted broker activity-renderer sendMessage calls and local-user mirror sendMessage calls include disable_notification=true for every chunk and preserve message_thread_id; assistant final replies, setup/command replies, explicit errors, attachment failure notices, and retry_after handling are not made silent unless separately required; no ordinary assistant preview sendMessage path remains to create extra notifications.",
       "verification": {
         "method": "test"
       },
       "status": "draft",
       "created": "2026-04-26",
-      "updated": "2026-04-26",
+      "updated": "2026-04-28",
       "sources": {
         "inbox": [
-          "silent-telegram-notifications-for"
+          "silent-telegram-notifications-for",
+          "telegram-final-notification-can",
+          "stop-streaming-assistant-text"
         ]
       }
     },

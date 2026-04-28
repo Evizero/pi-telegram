@@ -70,6 +70,7 @@ function fakePreview(): PreviewManager {
 
 function makeLedger(options?: {
 	state?: BrokerState;
+	previewManager?: PreviewManager;
 	callTelegram?: (method: string, body: Record<string, unknown>, options?: { signal?: AbortSignal }) => Promise<unknown>;
 	callTelegramMultipart?: (method: string, fields: Record<string, string>, fileField: string, filePath: string, fileName: string) => Promise<unknown>;
 }) {
@@ -84,7 +85,7 @@ function makeLedger(options?: {
 		persistBrokerState: async () => { persists += 1; },
 		activityComplete: async () => undefined,
 		stopTypingLoop: () => undefined,
-		previewManager: fakePreview(),
+		previewManager: options?.previewManager ?? fakePreview(),
 		callTelegram: async <TResponse>(method: string, body: Record<string, unknown>, requestOptions?: { signal?: AbortSignal }) => (options?.callTelegram ? await options.callTelegram(method, body, requestOptions) : { message_id: 1 }) as TResponse,
 		callTelegramMultipart: async <TResponse>(method: string, fields: Record<string, string>, fileField: string, filePath: string, fileName: string) => (options?.callTelegramMultipart ? await options.callTelegramMultipart(method, fields, fileField, filePath, fileName) : { message_id: 1 }) as TResponse,
 		isBrokerActive: () => true,
@@ -92,6 +93,35 @@ function makeLedger(options?: {
 		logTerminalFailure: (_turnId, reason) => { terminalFailures.push(reason); },
 	});
 	return { ledger, get state() { return state; }, get persists() { return persists; }, completed, terminalFailures };
+}
+
+async function checkOrdinaryFinalOnlyDeliveryDoesNotTouchPreviewState(): Promise<void> {
+	const calls: Array<{ method: string; text?: unknown; disableNotification?: unknown; messageThreadId?: unknown }> = [];
+	let previewCalls = 0;
+	const state = emptyState();
+	state.pendingAssistantFinals = {
+		ordinary: entry("ordinary", { text: "final only" }),
+	};
+	const env = makeLedger({
+		state,
+		previewManager: {
+			clear: async () => { previewCalls += 1; },
+			detachForFinal: async () => {
+				previewCalls += 1;
+				return undefined;
+			},
+		} as unknown as PreviewManager,
+		callTelegram: async (method, body) => {
+			calls.push({ method, text: body.text, disableNotification: body.disable_notification, messageThreadId: body.message_thread_id });
+			return { message_id: 41 } satisfies TelegramSentMessage;
+		},
+	});
+
+	await env.ledger.drainReady();
+
+	assert.equal(previewCalls, 0);
+	assert.deepEqual(calls, [{ method: "sendMessage", text: "final only", disableNotification: undefined, messageThreadId: 9 }]);
+	assert.deepEqual(env.state.completedTurnIds, ["ordinary"]);
 }
 
 async function checkAssistantFinalAcceptsWithoutLiveSessionOrRoute(): Promise<void> {
@@ -710,6 +740,7 @@ async function checkUnauthorizedTelegramFailureGoesTerminal(): Promise<void> {
 	assert.match(env.terminalFailures[0] ?? "", /unauthorized/i);
 }
 
+await checkOrdinaryFinalOnlyDeliveryDoesNotTouchPreviewState();
 await checkAssistantFinalAcceptsWithoutLiveSessionOrRoute();
 await checkDuplicateAssistantFinalHandoff();
 await checkChunkResumeSkipsSentChunks();

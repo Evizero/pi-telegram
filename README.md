@@ -147,11 +147,12 @@ To queue work for after the active run finishes, send:
 /follow run all tests
 ```
 
-## Streaming
+## Activity and final replies
 
-The extension streams assistant text previews back to Telegram while pi is generating.
+While pi is working, the extension sends activity updates so Telegram can show progress.
+Assistant response text is sent once, as the final reply, when the turn completes.
 
-It tries Telegram draft streaming first with `sendMessageDraft`. If that is not supported for your bot, it falls back to `sendMessage` plus `editMessageText`.
+Final replies are sent as normal Telegram messages and long replies are split below Telegram's message-size limit.
 
 ## Notes
 

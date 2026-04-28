@@ -36,9 +36,9 @@ Important boundary:
 6. When Telegram private-chat topics are available, each pi session must be represented by one Telegram topic named after the project/session.
 7. When private-chat topics are not available, the implementation must provide a documented fallback rather than silently misrouting messages.
 8. Telegram messages in a session topic must route to exactly one pi session.
-9. pi replies, previews, typing indicators, and attachments must be sent back to the same Telegram topic or fallback route.
+9. pi replies, activity updates, typing indicators, and attachments must be sent back to the same Telegram topic or fallback route.
 10. A Telegram user must be able to list active sessions, inspect status, stop an active run, compact a session, change the active model, and disconnect a session.
-11. The implementation must preserve current single-session capabilities: text prompts, images, files, albums, `stop`, `/status`, `/compact`, streaming previews, and `telegram_attach`.
+11. The implementation must preserve current single-session capabilities: text prompts, images, files, albums, `stop`, `/status`, `/compact`, activity updates, final replies, and `telegram_attach`.
 12. The implementation must avoid update loss across broker failover by committing Telegram offsets only after routing work has completed or been durably queued.
 
 ### 2.2 Non-Goals
@@ -70,7 +70,7 @@ Important boundary:
    - The per-pi-session side of the extension.
    - Registers its local pi session with the Broker Leader.
    - Receives routed Telegram turns from the Broker Leader and calls `pi.sendUserMessage` in its own process.
-   - Sends assistant streaming updates, final replies, errors, status, and attachment queue events back to the Broker Leader.
+   - Sends activity updates, final replies, errors, status, and attachment queue events back to the Broker Leader.
 
 4. **Leader Election Store**
    - A small filesystem-backed lease under `~/.pi/agent/telegram-broker/`.
@@ -775,18 +775,18 @@ When Session Client receives `deliver_turn`:
 
 The Session Client owns its local active turn and `telegram_attach` queue. The Broker owns Telegram send operations.
 
-### 7.7 Streaming Previews
+### 7.7 Activity and Final-Only Assistant Text
 
-Current behavior should be preserved but route-aware.
+Assistant text is delivered once, as final text, after pi completes the turn.
+Activity remains the live progress surface while the agent is working.
 
 Rules:
 
-- Session Client listens to pi `message_update` for assistant messages belonging to an active Telegram turn.
-- It sends `assistant_preview` IPC messages to Broker with `turn_id` and text.
-- Broker throttles sends per route using `telegram.preview_throttle_ms`.
-- Broker tries `sendMessageDraft` first unless marked unsupported.
-- If `sendMessageDraft` fails with unsupported method/permission, Broker falls back to `sendMessage` + `editMessageText`.
-- Preview state is keyed by `turn_id`, not global process state.
+- Session Client listens to pi `message_update` for thinking activity belonging to an active Telegram turn and reports it through activity IPC.
+- Session Client does not send assistant response text as `assistant_preview` IPC during ordinary turns.
+- Broker activity rendering may debounce Telegram sends/edits while preserving collected activity history.
+- Broker may retain preview cleanup support for legacy or in-flight preview state, but ordinary assistant text must not be rendered by creating or editing preview messages.
+- Final assistant text is sent through durable final delivery, not by editing an older preview message.
 
 ### 7.8 Final Replies and Attachments
 
@@ -794,10 +794,11 @@ On pi `agent_end` for a Telegram turn:
 
 1. Session Client extracts final assistant text and stop reason.
 2. Session Client sends `assistant_final` to Broker with text, stop reason, error message, and queued attachments.
-3. Broker finalizes any preview.
-4. Broker sends final text chunks if needed.
-5. Broker uploads queued attachments to the same route.
-6. Broker marks turn completed or failed.
+3. Broker completes outstanding activity and stops typing indicators.
+4. Broker detaches or cleans any legacy/in-flight preview state for the turn.
+5. Broker sends final text chunks if needed.
+6. Broker uploads queued attachments to the same route.
+7. Broker marks turn completed or failed.
 
 Attachment rules:
 
@@ -1008,8 +1009,10 @@ Client to Broker message types:
   - Response: possibly updated route and broker commands.
 - `turn_state_changed`
   - Payload: `turn_id`, old state, new state, optional error.
-- `assistant_preview`
-  - Payload: `turn_id`, text.
+- `assistant_message_start`
+  - Payload: `turn_id`, chat id, and optional thread id; starts route-scoped typing and rehydrates any legacy/in-flight preview reference without sending assistant text.
+- `assistant_preview_clear`
+  - Payload: `turn_id`, chat id, optional thread id, and cleanup options for legacy/in-flight preview state.
 - `assistant_final`
   - Payload: `turn_id`, text, stop reason, error message, queued attachments.
 - `model_list_result`
@@ -1082,8 +1085,8 @@ Required event hooks:
 - `model_select`: update Session Client model snapshot and notify Broker Leader through the next heartbeat.
 - `before_agent_start`: append Telegram system prompt guidance for Telegram-originated turns.
 - `agent_start`: mark Session Client busy.
-- `message_start`: initialize preview state for Telegram-originated assistant message.
-- `message_update`: send preview IPC event.
+- `message_start`: start route-scoped typing for Telegram-originated assistant message.
+- `message_update`: report thinking activity; do not stream assistant text previews.
 - `agent_end`: send final IPC event and maybe process queued turns.
 
 Model handling:
@@ -1485,10 +1488,10 @@ function on_agent_start(ctx):
   if active_turn exists:
     report_turn_state(active_turn.turn_id, "active")
 
-function on_message_update(message):
-  if active_turn exists and message is assistant:
-    text = extract_text(message)
-    ipc_send_assistant_preview(active_turn.turn_id, text)
+function on_message_update(message_event):
+  if active_turn exists and message_event is assistant thinking activity:
+    ipc_send_activity_update(active_turn.turn_id, format_activity(message_event))
+  # assistant response text is intentionally held until on_agent_end final delivery
 
 function on_agent_end(event):
   if active_turn absent:
@@ -1529,7 +1532,7 @@ function on_agent_end(event):
 - `getMe` detects `has_topics_enabled` and records it.
 - `createForumTopic` stores returned `message_thread_id`.
 - Topic names are truncated to 128 characters with a stable suffix.
-- `sendMessageDraft` failure falls back to message edit preview.
+- Assistant text streaming does not create Telegram preview send/edit calls during ordinary turns.
 - Long final replies are split at or below `4096` characters.
 - Media groups are debounced by chat/thread/media group key.
 - Telegram attachments are downloaded to sanitized paths.
