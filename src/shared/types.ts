@@ -371,6 +371,33 @@ export interface TelegramModelPickerState {
 	expiresAtMs: number;
 }
 
+export type GitRepositoryAction = "status" | "diffstat";
+
+export interface TelegramGitControlState {
+	token: string;
+	sessionId: string;
+	routeId: string;
+	chatId: number | string;
+	messageThreadId?: number;
+	messageId?: number;
+	selectorSelectionUpdatedAtMs?: number;
+	selectorSelectionExpiresAtMs?: number;
+	completedText?: string;
+	completedAction?: GitRepositoryAction;
+	resultDeliveredAtMs?: number;
+	createdAtMs: number;
+	updatedAtMs: number;
+	expiresAtMs: number;
+}
+
+export interface ClientGitRepositoryQueryRequest {
+	action: GitRepositoryAction;
+}
+
+export interface ClientGitRepositoryQueryResult {
+	text: string;
+}
+
 export interface BrokerState {
 	schemaVersion: number;
 	lastProcessedUpdateId?: number;
@@ -384,6 +411,7 @@ export interface BrokerState {
 	assistantPreviewMessages?: Record<string, AssistantPreviewMessageRef>;
 	selectorSelections?: Record<string, TelegramSelectorSelection>;
 	modelPickers?: Record<string, TelegramModelPickerState>;
+	gitControls?: Record<string, TelegramGitControlState>;
 	queuedTurnControls?: Record<string, QueuedTurnControlState>;
 	/** Earliest broker-wide retry time for deferred queued-control status-message cleanup edits. */
 	queuedTurnControlCleanupRetryAtMs?: number;

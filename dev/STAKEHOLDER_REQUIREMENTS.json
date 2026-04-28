@@ -393,6 +393,29 @@
           "stop-streaming-assistant-text"
         ]
       }
+    },
+    {
+      "id": "StRS-telegram-repo-state",
+      "origin": "derived",
+      "label": "Inspect repo state without turns",
+      "statement": "Remote pi operators shall be able to inspect concise repository state for a selected local session from Telegram without causing an agent turn.",
+      "rationale": "The operator wants a lightweight mobile way to check the working tree while supervising local pi sessions, especially when they only need situational awareness and do not want to send text into the agent.",
+      "stakeholders": [
+        "remote-pi-operator"
+      ],
+      "priority": 2,
+      "validation": {
+        "method": "review",
+        "criteria": "Review the Telegram command workflow to confirm the operator can request a compact repository status or diffstat for the selected session and that doing so does not enqueue, steer, or start a pi agent turn."
+      },
+      "status": "draft",
+      "created": "2026-04-28",
+      "updated": "2026-04-28",
+      "sources": {
+        "inbox": [
+          "telegram-git-status-command"
+        ]
+      }
     }
   ]
 }

@@ -1,9 +1,10 @@
 import { MODEL_LIST_TTL_MS, SESSION_LIST_OFFLINE_GRACE_MS } from "../shared/config.js";
 import { routeId } from "../shared/format.js";
-import type { BrokerState, CancelQueuedTurnResult, ClientDeliverTurnResult, ConvertQueuedTurnToSteerResult, InlineKeyboardMarkup, ModelSummary, PendingTelegramTurn, QueuedTurnControlState, SessionRegistration, TelegramCallbackQuery, TelegramMessage, TelegramModelPickerState, TelegramRoute } from "../shared/types.js";
+import type { BrokerState, CancelQueuedTurnResult, ClientDeliverTurnResult, ClientGitRepositoryQueryResult, ConvertQueuedTurnToSteerResult, GitRepositoryAction, InlineKeyboardMarkup, ModelSummary, PendingTelegramTurn, QueuedTurnControlState, SessionRegistration, TelegramCallbackQuery, TelegramGitControlState, TelegramMessage, TelegramModelPickerState, TelegramRoute } from "../shared/types.js";
 import { errorMessage, now, randomId } from "../shared/utils.js";
 import { getTelegramRetryAfterMs } from "../telegram/api.js";
 import { answerTelegramCallbackQuery, editTelegramTextMessage } from "../telegram/text.js";
+import { createGitControlState, isGitControlCallbackData, parseGitControlCallback, renderGitControlMenu } from "./git-controls.js";
 import { createModelPickerState, exactModelSelector, isModelPickerCallbackData, parseModelPickerCallback, renderInitialModelPicker, renderModelPicker, renderProviderPicker } from "./model-picker.js";
 import { callbackMatchesQueuedTurnControl, DEFAULT_QUEUED_CONTROL_EDIT_RETRY_MS, isQueuedTurnControlCallbackData, isTransientQueuedControlEditError, markExpiredControlVisible, markMissingPendingControlHandled, markQueuedTurnControlExpired, parseQueuedTurnControlCallback, pruneQueuedTurnControls, queuedControlBelongsToRoute, queuedControlNeedsVisibleFinalization, QUEUED_CONTROL_TEXT, queuedTurnControlCallbackData, QUEUED_TURN_CONTROL_TTL_MS, setQueuedControlTerminal, type QueuedTurnControlAction } from "./queued-controls.js";
 
@@ -63,6 +64,7 @@ export class TelegramCommandRouter {
 
 	async dispatchCallback(query: TelegramCallbackQuery): Promise<boolean> {
 		if (isQueuedTurnControlCallbackData(query.data)) return await this.dispatchQueuedTurnControlCallback(query);
+		if (isGitControlCallbackData(query.data)) return await this.dispatchGitControlCallback(query);
 		if (!isModelPickerCallbackData(query.data)) return false;
 		const brokerState = this.deps.getBrokerState();
 		if (!brokerState) return true;
@@ -119,7 +121,7 @@ export class TelegramCommandRouter {
 		const lower = rawText.toLowerCase();
 		const command = telegramCommandName(rawText);
 		await this.retryQueuedTurnControlFinalizations();
-		if (this.pruneSelectorSelections(brokerState) || this.pruneModelPickers(brokerState) || pruneQueuedTurnControls(brokerState)) await this.deps.persistBrokerState();
+		if (this.pruneSelectorSelections(brokerState) || this.pruneModelPickers(brokerState) || this.pruneGitControls(brokerState) || pruneQueuedTurnControls(brokerState)) await this.deps.persistBrokerState();
 		const route = this.routeForMessage(firstMessage);
 		if (command === "/sessions") {
 			await this.sendSessions(firstMessage.chat.id, firstMessage.message_thread_id);
@@ -134,7 +136,7 @@ export class TelegramCommandRouter {
 			return;
 		}
 		if ((command === "/help" || command === "/start") && !route) {
-			await this.deps.sendTextReply(firstMessage.chat.id, firstMessage.message_thread_id, "Commands: /sessions, /use <number>, /status, /model, /compact, /follow, /steer, /stop, /disconnect, /broker.");
+			await this.deps.sendTextReply(firstMessage.chat.id, firstMessage.message_thread_id, "Commands: /sessions, /use <number>, /status, /git, /model, /compact, /follow, /steer, /stop, /disconnect, /broker.");
 			return;
 		}
 		if (!route) {
@@ -194,6 +196,15 @@ export class TelegramCommandRouter {
 			}
 			return;
 		}
+		if (command === "/git") {
+			try {
+				await this.handleGitCommand(route);
+			} catch (error) {
+				if (getTelegramRetryAfterMs(error) !== undefined) throw error;
+				await this.trySendTextReply(route.chatId, route.messageThreadId, `Failed to open Git tools: ${errorMessage(error)}`);
+			}
+			return;
+		}
 		if (command === "/disconnect") {
 			await this.deps.sendTextReply(route.chatId, route.messageThreadId, "Disconnected this pi session from Telegram. Deleting this topic...").catch(() => undefined);
 			await this.deps.postIpc(session.clientSocketPath, "shutdown_client_route", {}, session.sessionId).catch(() => undefined);
@@ -201,7 +212,7 @@ export class TelegramCommandRouter {
 			return;
 		}
 		if (command === "/help" || command === "/start") {
-			await this.deps.sendTextReply(route.chatId, route.messageThreadId, "Send a message to queue follow-up work when this pi session is busy. Use /steer <message> for urgent active-turn steering or /follow <message> for explicit follow-up. Commands: /status, /model, /compact, /follow, /steer, /stop, /disconnect, /sessions.");
+			await this.deps.sendTextReply(route.chatId, route.messageThreadId, "Send a message to queue follow-up work when this pi session is busy. Use /steer <message> for urgent active-turn steering or /follow <message> for explicit follow-up. Commands: /status, /git, /model, /compact, /follow, /steer, /stop, /disconnect, /sessions.");
 			return;
 		}
 		let turnMessages = messages;
@@ -248,6 +259,63 @@ export class TelegramCommandRouter {
 				if (getTelegramRetryAfterMs(error) !== undefined) throw error;
 			}
 		}
+	}
+
+	private async dispatchGitControlCallback(query: TelegramCallbackQuery): Promise<boolean> {
+		const brokerState = this.deps.getBrokerState();
+		if (!brokerState) return true;
+		const callback = parseGitControlCallback(query.data);
+		if (!callback) {
+			await this.tryAnswerCallback(query.id, "This Git button is invalid.", true);
+			return true;
+		}
+		const control = brokerState.gitControls?.[callback.token];
+		if (!control) {
+			await this.tryAnswerCallback(query.id, "Git menu expired. Send /git again.", true);
+			await this.tryEditCallbackMessage(query, "Git menu expired. Send /git again.");
+			return true;
+		}
+		if (!this.callbackMatchesGitControl(query, control) || !this.gitControlRouteStillValid(brokerState, control)) {
+			await this.tryAnswerCallback(query.id, "This Git menu no longer matches the active session. Send /git again.", true);
+			return true;
+		}
+		if (control.expiresAtMs < now()) {
+			delete brokerState.gitControls![callback.token];
+			await this.deps.persistBrokerState();
+			await this.tryAnswerCallback(query.id, "Git menu expired. Send /git again.", true);
+			await this.tryEditCallbackMessage(query, "Git menu expired. Send /git again.");
+			return true;
+		}
+		const session = brokerState.sessions[control.sessionId];
+		if (!session || session.status === "offline") {
+			delete brokerState.gitControls?.[callback.token];
+			await this.deps.persistBrokerState();
+			await this.tryAnswerCallback(query.id, "That pi session is offline. Send /sessions to pick another.", true);
+			await this.tryEditCallbackMessage(query, "That pi session is offline. Send /sessions to pick another.");
+			return true;
+		}
+		if (control.completedText) {
+			if (control.completedAction && control.completedAction !== callback.action) {
+				await this.tryAnswerCallback(query.id, "Git menu already handled. Send /git again.", true);
+				return true;
+			}
+			return await this.finishGitControlCallback(query, control, callback.action);
+		}
+		control.updatedAtMs = now();
+		await this.deps.persistBrokerState();
+		let result: ClientGitRepositoryQueryResult;
+		try {
+			result = await this.queryGitRepository(session, callback.action);
+		} catch (error) {
+			await this.tryAnswerCallback(query.id, "Failed to query Git state.", true);
+			await this.trySendTextReply(control.chatId, control.messageThreadId, `Failed to query Git state: ${errorMessage(error)}`);
+			return true;
+		}
+		control.completedText = result.text;
+		control.completedAction = callback.action;
+		control.updatedAtMs = now();
+		await this.deps.persistBrokerState();
+		return await this.finishGitControlCallback(query, control, callback.action);
 	}
 
 	private async dispatchQueuedTurnControlCallback(query: TelegramCallbackQuery): Promise<boolean> {
@@ -592,6 +660,59 @@ export class TelegramCommandRouter {
 		return true;
 	}
 
+	private callbackMatchesGitControl(query: TelegramCallbackQuery, control: TelegramGitControlState): boolean {
+		const message = query.message;
+		if (!message) return false;
+		if (String(message.chat.id) !== String(control.chatId)) return false;
+		if (message.message_thread_id !== control.messageThreadId) return false;
+		if (control.messageId !== undefined && message.message_id !== control.messageId) return false;
+		return true;
+	}
+
+	private gitControlRouteStillValid(brokerState: BrokerState, control: TelegramGitControlState): boolean {
+		const session = brokerState.sessions[control.sessionId];
+		if (!session || session.status === "offline") return false;
+		const route = Object.values(brokerState.routes).find((candidate) => candidate.sessionId === control.sessionId && candidate.routeId === control.routeId && String(candidate.chatId) === String(control.chatId) && candidate.messageThreadId === control.messageThreadId);
+		if (!route) return false;
+		if (route.routeMode !== "single_chat_selector") return true;
+		const selection = brokerState.selectorSelections?.[String(control.chatId)];
+		return Boolean(selection && selection.sessionId === control.sessionId && selection.expiresAtMs > now() && selection.updatedAtMs === control.selectorSelectionUpdatedAtMs && selection.expiresAtMs === control.selectorSelectionExpiresAtMs);
+	}
+
+	private async editGitControlMessage(query: TelegramCallbackQuery, control: TelegramGitControlState, text: string, replyMarkup?: InlineKeyboardMarkup): Promise<void> {
+		const messageId = query.message?.message_id ?? control.messageId;
+		if (messageId === undefined) {
+			await this.deps.sendTextReply(control.chatId, control.messageThreadId, text, replyMarkup ? { replyMarkup } : undefined);
+			return;
+		}
+		await editTelegramTextMessage(this.deps.callTelegram, control.chatId, messageId, text, replyMarkup);
+	}
+
+	private async tryEditOrSendGitResult(query: TelegramCallbackQuery, control: TelegramGitControlState, text: string): Promise<void> {
+		try {
+			await this.editGitControlMessage(query, control, text);
+		} catch (error) {
+			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
+			await this.deps.sendTextReply(control.chatId, control.messageThreadId, text).catch((sendError) => {
+				if (getTelegramRetryAfterMs(sendError) !== undefined) throw sendError;
+			});
+		}
+	}
+
+	private async finishGitControlCallback(query: TelegramCallbackQuery, control: TelegramGitControlState, action: GitRepositoryAction): Promise<boolean> {
+		if (!control.resultDeliveredAtMs) {
+			await this.tryEditOrSendGitResult(query, control, control.completedText!);
+			control.resultDeliveredAtMs = now();
+			control.updatedAtMs = now();
+			await this.deps.persistBrokerState();
+		}
+		await this.tryAnswerCallback(query.id, action === "status" ? "Git status ready." : "Git diffstat ready.");
+		const brokerState = this.deps.getBrokerState();
+		if (brokerState?.gitControls?.[control.token]) delete brokerState.gitControls[control.token];
+		await this.deps.persistBrokerState();
+		return true;
+	}
+
 	private async selectModelFromPicker(query: TelegramCallbackQuery, picker: TelegramModelPickerState, modelIndex: number): Promise<void> {
 		const brokerState = this.deps.getBrokerState();
 		const session = brokerState?.sessions[picker.sessionId];
@@ -692,6 +813,16 @@ export class TelegramCommandRouter {
 		});
 	}
 
+	private async queryGitRepository(session: SessionRegistration, action: GitRepositoryAction): Promise<ClientGitRepositoryQueryResult> {
+		try {
+			return await this.deps.postIpc<ClientGitRepositoryQueryResult>(session.clientSocketPath, "query_git_repository", { action }, session.sessionId);
+		} catch (error) {
+			session.status = "offline";
+			await this.deps.persistBrokerState();
+			throw error;
+		}
+	}
+
 	private async queryModels(session: SessionRegistration, payload: { filter?: string }): Promise<{ current?: string; models: ModelSummary[] }> {
 		try {
 			return await this.deps.postIpc<{ current?: string; models: ModelSummary[] }>(session.clientSocketPath, "query_models", payload, session.sessionId);
@@ -721,6 +852,16 @@ export class TelegramCommandRouter {
 		for (const [token, picker] of Object.entries(brokerState.modelPickers ?? {})) {
 			if (brokerState.sessions[picker.sessionId] && (picker.expiresAtMs > now() || (picker.completedText && this.completedPickerStillRetryable(picker)))) continue;
 			delete brokerState.modelPickers![token];
+			changed = true;
+		}
+		return changed;
+	}
+
+	private pruneGitControls(brokerState: BrokerState): boolean {
+		let changed = false;
+		for (const [token, control] of Object.entries(brokerState.gitControls ?? {})) {
+			if (brokerState.sessions[control.sessionId] && control.expiresAtMs > now()) continue;
+			delete brokerState.gitControls![token];
 			changed = true;
 		}
 		return changed;
@@ -792,6 +933,25 @@ export class TelegramCommandRouter {
 		brokerState.routes[`${id}:${session.sessionId}`].updatedAtMs = now();
 		await this.deps.persistBrokerState();
 		await this.deps.sendTextReply(message.chat.id, message.message_thread_id, `Selected ${session.topicName} for 30 minutes.`);
+	}
+
+	private async handleGitCommand(route: TelegramRoute): Promise<void> {
+		const brokerState = this.deps.getBrokerState();
+		const control = createGitControlState(route);
+		if (route.routeMode === "single_chat_selector") {
+			const selection = brokerState?.selectorSelections?.[String(route.chatId)];
+			control.selectorSelectionUpdatedAtMs = selection?.updatedAtMs;
+			control.selectorSelectionExpiresAtMs = selection?.expiresAtMs;
+		}
+		const rendered = renderGitControlMenu(control);
+		const messageId = await this.deps.sendTextReply(route.chatId, route.messageThreadId, rendered.text, { replyMarkup: rendered.replyMarkup });
+		control.messageId = messageId;
+		if (brokerState) {
+			brokerState.gitControls ??= {};
+			brokerState.gitControls[control.token] = control;
+			this.pruneGitControls(brokerState);
+			await this.deps.persistBrokerState();
+		}
 	}
 
 	private async handleModelCommand(route: TelegramRoute, session: SessionRegistration, text: string): Promise<void> {

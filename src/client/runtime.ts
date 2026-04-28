@@ -1,9 +1,10 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { QUEUED_CONTROL_TEXT } from "../shared/queued-control-text.js";
-import type { ActiveTelegramTurn, AssistantFinalPayload, BrokerLease, CancelQueuedTurnRequest, CancelQueuedTurnResult, ConvertQueuedTurnToSteerRequest, ConvertQueuedTurnToSteerResult, ClientDeliverTurnResult, ModelSummary, PendingTelegramTurn, TelegramRoute } from "../shared/types.js";
+import type { ActiveTelegramTurn, AssistantFinalPayload, BrokerLease, CancelQueuedTurnRequest, CancelQueuedTurnResult, ClientGitRepositoryQueryRequest, ClientGitRepositoryQueryResult, ConvertQueuedTurnToSteerRequest, ConvertQueuedTurnToSteerResult, ClientDeliverTurnResult, ModelSummary, PendingTelegramTurn, TelegramRoute } from "../shared/types.js";
 import { errorMessage, randomId } from "../shared/utils.js";
 import { clientAbortTelegramTurn } from "./abort-turn.js";
 import { clientCompactSession } from "./compact.js";
+import { clientQueryGitRepository as buildClientQueryGitRepository } from "./git-status.js";
 import { clientQueryModels as buildClientQueryModels, clientSetModel as setClientModel, clientStatusText as buildClientStatusText } from "./info.js";
 import { clientDeliverTelegramTurn } from "./turn-delivery.js";
 
@@ -159,6 +160,10 @@ export class ClientRuntime {
 
 	queryModels(filter?: string): { current?: string; models: ModelSummary[] } {
 		return buildClientQueryModels(this.deps.getLatestCtx(), filter);
+	}
+
+	queryGitRepository(request: ClientGitRepositoryQueryRequest): Promise<ClientGitRepositoryQueryResult> {
+		return buildClientQueryGitRepository(this.deps.getLatestCtx(), request);
 	}
 
 	setModel(selector: string, exact?: boolean): Promise<{ text: string }> {

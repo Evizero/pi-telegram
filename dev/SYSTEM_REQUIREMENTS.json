@@ -1104,6 +1104,54 @@
           "remove-stale-queued-follow"
         ]
       }
+    },
+    {
+      "id": "SyRS-telegram-git-menu",
+      "origin": "derived",
+      "label": "Show /git action menu",
+      "statement": "The system shall respond to an authorized /git command for the selected session by sending an inline Telegram menu with Status and Diffstat actions without creating a pi user turn.",
+      "traces_to": [
+        "StRS-telegram-repo-state",
+        "StRS-remote-session-supervision",
+        "StRS-paired-user-control"
+      ],
+      "rationale": "The requested interaction starts with /git as a command surface, not message text for the agent, and the paired operator should choose a read-only repository subcommand from buttons.",
+      "acceptance_criteria": "Command-routing tests show /git requires a selected online session, sends a route/thread-preserving inline menu with Status and Diffstat buttons for authorized input, and does not call the turn-creation or pi user-message path.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-28",
+      "updated": "2026-04-28",
+      "sources": {
+        "inbox": [
+          "telegram-git-status-command"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-local-git-inspection",
+      "origin": "derived",
+      "label": "Inspect local Git read-only",
+      "statement": "The system shall execute Status and Diffstat Git inspections for the selected session inside that session's local workspace using read-only bounded commands and return compact Telegram text.",
+      "traces_to": [
+        "StRS-telegram-repo-state",
+        "StRS-local-first-authority",
+        "StRS-api-constrained-maintenance"
+      ],
+      "rationale": "Repository state belongs to the local session workspace; the broker may run from another project, so Git inspection must be session-mediated and must not expose general shell authority through Telegram.",
+      "acceptance_criteria": "Tests show Status and Diffstat callbacks authorize the route/session, call a client IPC query rather than an agent turn, run non-shell read-only Git commands from ctx.cwd with timeout/output limits, format clean, dirty, non-git, and command-failure cases compactly for Telegram, preserve message_thread_id, and do not include patch contents or execute arbitrary user-provided command strings.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-28",
+      "updated": "2026-04-28",
+      "sources": {
+        "inbox": [
+          "telegram-git-status-command"
+        ]
+      }
     }
   ]
 }

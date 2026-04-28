@@ -4,7 +4,7 @@ import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { BROKER_DIR, BROKER_HEARTBEAT_MS, CLIENT_HEARTBEAT_MS, DISCONNECT_REQUESTS_DIR, LOCK_DIR, LOCK_PATH, SESSION_REPLACEMENT_HANDOFFS_DIR, STATE_PATH, TEMP_DIR } from "./shared/config.js";
-import type { ActiveTelegramTurn, BrokerLease, BrokerState, CancelQueuedTurnRequest, CancelQueuedTurnResult, ClientDeliverTurnResult, ConvertQueuedTurnToSteerRequest, ConvertQueuedTurnToSteerResult, IpcEnvelope, ModelSummary, PendingTelegramTurn, AssistantFinalPayload, SessionRegistration, TelegramConfig, TelegramMediaGroupState, TelegramMessage, TelegramRoute } from "./shared/types.js";
+import type { ActiveTelegramTurn, BrokerLease, BrokerState, CancelQueuedTurnRequest, CancelQueuedTurnResult, ClientDeliverTurnResult, ClientGitRepositoryQueryRequest, ClientGitRepositoryQueryResult, ConvertQueuedTurnToSteerRequest, ConvertQueuedTurnToSteerResult, IpcEnvelope, ModelSummary, PendingTelegramTurn, AssistantFinalPayload, SessionRegistration, TelegramConfig, TelegramMediaGroupState, TelegramMessage, TelegramRoute } from "./shared/types.js";
 import { configureBrokerScope, readConfig, writeConfig } from "./shared/config.js";
 import { ActivityRenderer, ActivityReporter, type ActivityUpdatePayload } from "./broker/activity.js";
 import { isRouteScopedDisconnectRequest, processDisconnectRequestsInBroker, type PendingDisconnectRequest } from "./broker/disconnect-requests.js";
@@ -1025,6 +1025,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		if (envelope.type === "query_status") return { text: await clientStatusText() };
 		if (envelope.type === "compact_session") return clientCompact();
 		if (envelope.type === "query_models") return clientQueryModels((envelope.payload as { filter?: string }).filter);
+		if (envelope.type === "query_git_repository") return await clientQueryGitRepository(envelope.payload as ClientGitRepositoryQueryRequest);
 		if (envelope.type === "set_model") {
 			const payload = envelope.payload as { selector: string; exact?: boolean };
 			return await clientSetModel(payload.selector, payload.exact);
@@ -1073,6 +1074,9 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	}
 	function clientQueryModels(filter?: string): { current?: string; models: ModelSummary[] } {
 		return clientRuntime.queryModels(filter);
+	}
+	function clientQueryGitRepository(request: ClientGitRepositoryQueryRequest): Promise<ClientGitRepositoryQueryResult> {
+		return clientRuntime.queryGitRepository(request);
 	}
 	function clientSetModel(selector: string, exact?: boolean): Promise<{ text: string }> {
 		return clientRuntime.setModel(selector, exact);
