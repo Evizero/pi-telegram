@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { ActivityRenderer, ActivityReporter, activityLineToHtml, thinkingActivityLine, toolActivityLine } from "../src/broker/activity.js";
+import { ACTIVITY_THROTTLE_MS } from "../src/shared/config.js";
 import { createTypingLoopController } from "../src/telegram/typing.js";
 
 function assertIncludes(text: string, expected: string): void {
@@ -8,6 +9,14 @@ function assertIncludes(text: string, expected: string): void {
 
 function assertNotIncludes(text: string, unexpected: string): void {
 	assert.ok(!text.includes(unexpected), `expected ${JSON.stringify(text)} not to include ${JSON.stringify(unexpected)}`);
+}
+
+async function waitFor(condition: () => boolean, timeoutMs = 1000): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while (!condition()) {
+		if (Date.now() > deadline) throw new Error("timed out waiting for condition");
+		await new Promise((resolve) => setTimeout(resolve, 5));
+	}
 }
 
 function assertToolFormatting(): void {
@@ -230,6 +239,86 @@ async function assertTypingLoopAbortStopsRetryDelayedSend(): Promise<void> {
 	assert.equal(calls.length, 1);
 }
 
+async function assertOverlappingTimerFlushSchedulesFollowUpFlush(): Promise<void> {
+	const calls: Array<{ method: string; body: Record<string, unknown> }> = [];
+	let nextMessageId = 1;
+	let releaseFirstSend: (() => void) | undefined;
+	const renderer = new ActivityRenderer(
+		async <TResponse>(method: string, body: Record<string, unknown>): Promise<TResponse> => {
+			calls.push({ method, body });
+			if (method === "sendMessage" && calls.filter((entry) => entry.method === "sendMessage").length === 1) {
+				await new Promise<void>((resolve) => { releaseFirstSend = resolve; });
+			}
+			if (method === "sendMessage") return { message_id: nextMessageId++ } as TResponse;
+			return {} as TResponse;
+		},
+		async () => undefined,
+	);
+	await renderer.handleUpdate({ turnId: "turn-overlap", chatId: 1, line: toolActivityLine("read", { path: "one.ts" }) });
+	await waitFor(() => calls.length > 0, ACTIVITY_THROTTLE_MS + 250);
+	await waitFor(() => Boolean(releaseFirstSend));
+	await renderer.handleUpdate({ turnId: "turn-overlap", chatId: 1, line: toolActivityLine("read", { path: "two.ts" }) });
+	await new Promise((resolve) => setTimeout(resolve, ACTIVITY_THROTTLE_MS + 50));
+	releaseFirstSend?.();
+	await waitFor(() => calls.some((entry) => entry.method === "editMessageText"), 1000);
+	const firstText = String(calls.find((entry) => entry.method === "sendMessage")?.body.text);
+	const followUpText = String(calls.find((entry) => entry.method === "editMessageText")?.body.text);
+	assertIncludes(firstText, "one.ts");
+	assertNotIncludes(firstText, "two.ts");
+	assertIncludes(followUpText, "one.ts");
+	assertIncludes(followUpText, "two.ts");
+}
+
+async function assertCompleteWaitsForQueuedFollowUpWithoutSpawningAnother(): Promise<void> {
+	const calls: Array<{ method: string; body: Record<string, unknown> }> = [];
+	let nextMessageId = 1;
+	let releaseFirstSend: (() => void) | undefined;
+	const renderer = new ActivityRenderer(
+		async <TResponse>(method: string, body: Record<string, unknown>): Promise<TResponse> => {
+			calls.push({ method, body });
+			if (method === "sendMessage" && calls.filter((entry) => entry.method === "sendMessage").length === 1) {
+				await new Promise<void>((resolve) => { releaseFirstSend = resolve; });
+			}
+			if (method === "sendMessage") return { message_id: nextMessageId++ } as TResponse;
+			return {} as TResponse;
+		},
+		async () => undefined,
+	);
+	await renderer.handleUpdate({ turnId: "turn-overlap-complete", chatId: 1, line: toolActivityLine("read", { path: "one.ts" }) });
+	await waitFor(() => Boolean(releaseFirstSend), ACTIVITY_THROTTLE_MS + 250);
+	await renderer.handleUpdate({ turnId: "turn-overlap-complete", chatId: 1, line: toolActivityLine("read", { path: "two.ts" }) });
+	await new Promise((resolve) => setTimeout(resolve, ACTIVITY_THROTTLE_MS + 50));
+	const completed = renderer.complete("turn-overlap-complete");
+	releaseFirstSend?.();
+	await completed;
+	await new Promise((resolve) => setTimeout(resolve, 20));
+	assert.deepEqual(calls.map((entry) => entry.method), ["sendMessage", "editMessageText"]);
+	const completedText = String(calls.at(-1)?.body.text);
+	assertIncludes(completedText, "one.ts");
+	assertIncludes(completedText, "two.ts");
+	assertNotIncludes(completedText, "<b>📖 read <code>one.ts</code></b>");
+	assertNotIncludes(completedText, "<b>📖 read <code>two.ts</code></b>");
+}
+
+async function assertCompleteStopsIfStateIsClearedDuringInFlightFlush(): Promise<void> {
+	let releaseFirstSend: (() => void) | undefined;
+	let completeResolved = false;
+	const renderer = new ActivityRenderer(
+		async <TResponse>(method: string): Promise<TResponse> => {
+			if (method === "sendMessage") await new Promise<void>((resolve) => { releaseFirstSend = resolve; });
+			return { message_id: 1 } as TResponse;
+		},
+		async () => undefined,
+	);
+	await renderer.handleUpdate({ turnId: "turn-clear-during-complete", chatId: 1, line: toolActivityLine("read", { path: "one.ts" }) });
+	await waitFor(() => Boolean(releaseFirstSend), ACTIVITY_THROTTLE_MS + 250);
+	const completed = renderer.complete("turn-clear-during-complete").then(() => { completeResolved = true; });
+	renderer.clearAllTimers();
+	releaseFirstSend?.();
+	await waitFor(() => completeResolved, 1000);
+	await completed;
+}
+
 async function assertCompleteCorrectsInFlightStaleFlush(): Promise<void> {
 	const calls: Array<{ method: string; body: Record<string, unknown> }> = [];
 	let nextMessageId = 1;
@@ -288,6 +377,9 @@ await assertReporterFlushPreventsAfterFinalActivityEdits();
 await assertActivityUpdateDoesNotWaitForTypingStartup();
 await assertTypingLoopSkipsOverlappingSends();
 await assertTypingLoopAbortStopsRetryDelayedSend();
+await assertOverlappingTimerFlushSchedulesFollowUpFlush();
+await assertCompleteWaitsForQueuedFollowUpWithoutSpawningAnother();
+await assertCompleteStopsIfStateIsClearedDuringInFlightFlush();
 await assertCompleteCorrectsInFlightStaleFlush();
 await assertBashCompletionMatchesLabelLessRow();
 console.log("Activity rendering checks passed");

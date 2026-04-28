@@ -17,6 +17,7 @@ interface ActivityMessageState {
 	messageId?: number;
 	lines: string[];
 	flushTimer?: ReturnType<typeof setTimeout>;
+	renderPending: boolean;
 }
 
 function compactValue(value: unknown): string {
@@ -203,14 +204,17 @@ export class ActivityRenderer {
 	}
 
 	async flush(activityId: string): Promise<void> {
-		const existing = this.flushes.get(activityId);
-		if (existing) return existing;
 		const state = this.messages.get(activityId);
 		if (!state) return;
 		if (state.flushTimer) clearTimeout(state.flushTimer);
 		state.flushTimer = undefined;
+		const existing = this.flushes.get(activityId);
+		if (existing) return existing;
+		state.renderPending = false;
 		const flush = this.doFlush(state).finally(() => {
 			if (this.flushes.get(activityId) === flush) this.flushes.delete(activityId);
+			if (!state.renderPending || this.messages.get(activityId) !== state) return;
+			void this.flush(activityId);
 		});
 		this.flushes.set(activityId, flush);
 		return flush;
@@ -230,10 +234,18 @@ export class ActivityRenderer {
 			removeActiveWorkingLines(state);
 			completeActiveThinking(state);
 			completeActiveToolLines(state);
+			state.renderPending = true;
 		}
-		const existingFlush = this.flushes.get(activityId);
-		if (existingFlush) await existingFlush;
-		await this.flush(activityId);
+		while (true) {
+			if (state && this.messages.get(activityId) !== state) break;
+			const existingFlush = this.flushes.get(activityId);
+			if (existingFlush) {
+				await existingFlush;
+				continue;
+			}
+			if (!state?.renderPending) break;
+			await this.flush(activityId);
+		}
 		const finalState = this.messages.get(activityId);
 		if (finalState?.flushTimer) clearTimeout(finalState.flushTimer);
 		this.messages.delete(activityId);
@@ -289,7 +301,7 @@ export class ActivityRenderer {
 			.catch(() => undefined);
 		let state = this.messages.get(activityId);
 		if (!state) {
-			state = { chatId: payload.chatId, messageThreadId: payload.messageThreadId, lines: [] };
+			state = { chatId: payload.chatId, messageThreadId: payload.messageThreadId, lines: [], renderPending: false };
 			this.messages.set(activityId, state);
 			const turnActivityIds = this.activityIdsByTurnId.get(payload.turnId) ?? new Set<string>();
 			turnActivityIds.add(activityId);
@@ -306,6 +318,7 @@ export class ActivityRenderer {
 				removeActiveWorkingLines(state);
 				completeActiveThinking(state);
 			}
+			state.renderPending = true;
 			this.scheduleFlush(activityId);
 			return { ok: true };
 		}
@@ -316,6 +329,7 @@ export class ActivityRenderer {
 			} else if (!completeActiveThinking(state, lineToStore) && !replaceActiveWorkingWith(state, lineToStore) && state.lines.at(-1) !== normalizedPayload) {
 				state.lines.push(normalizedPayload);
 			}
+			state.renderPending = true;
 			this.scheduleFlush(activityId);
 			return { ok: true };
 		}
@@ -340,6 +354,7 @@ export class ActivityRenderer {
 		} else if (state.lines.at(-1) !== payload.line) {
 			state.lines.push(payload.line);
 		}
+		state.renderPending = true;
 		this.scheduleFlush(activityId);
 		return { ok: true };
 	}
