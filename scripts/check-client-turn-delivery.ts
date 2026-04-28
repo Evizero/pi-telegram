@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 
+import { ClientRuntime } from "../src/client/runtime.js";
 import { clientDeliverTelegramTurn } from "../src/client/turn-delivery.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { ActiveTelegramTurn, AssistantFinalPayload, PendingTelegramTurn } from "../src/shared/types.js";
+import type { ActiveTelegramTurn, AssistantFinalPayload, PendingTelegramTurn, TelegramRoute } from "../src/shared/types.js";
 
 function turn(id: string, deliveryMode?: PendingTelegramTurn["deliveryMode"]): PendingTelegramTurn {
 	return {
@@ -30,7 +31,7 @@ function idleCtx(): ExtensionContext {
 	return { isIdle: () => true } as unknown as ExtensionContext;
 }
 
-async function checkBusyOrdinaryTurnSteersAndIsConsumed(): Promise<void> {
+async function checkBusyOrdinaryTurnQueuesWithSteerControl(): Promise<void> {
 	const queued: PendingTelegramTurn[] = [];
 	const sent: Array<{ content: PendingTelegramTurn["content"]; deliverAs?: string }> = [];
 	const consumed: string[] = [];
@@ -49,12 +50,42 @@ async function checkBusyOrdinaryTurnSteersAndIsConsumed(): Promise<void> {
 		acknowledgeConsumedTurn: async (turnId) => { consumed.push(turnId); },
 		ensureCurrentTurnMirroredToTelegram: (_ctx, historyText) => { mirrored.push(historyText); },
 		sendUserMessage: (content, options) => { sent.push({ content, deliverAs: options?.deliverAs }); },
+		startNextTelegramTurn: () => { throw new Error("busy ordinary message should not start next turn"); },
+	});
+
+	assert.equal(result.disposition, "queued");
+	assert.equal(result.queuedControl?.canSteer, true);
+	assert.deepEqual(queued.map((candidate) => candidate.turnId), ["plain"]);
+	assert.deepEqual(consumed, []);
+	assert.equal(sent.length, 0);
+	assert.deepEqual(mirrored, []);
+}
+
+async function checkBusyExplicitSteerIsConsumed(): Promise<void> {
+	const queued: PendingTelegramTurn[] = [];
+	const sent: Array<{ content: PendingTelegramTurn["content"]; deliverAs?: string }> = [];
+	const consumed: string[] = [];
+	const mirrored: string[] = [];
+	const result = await clientDeliverTelegramTurn({
+		turn: turn("steer", "steer"),
+		completedTurnIds: new Set(),
+		queuedTelegramTurns: queued,
+		getActiveTelegramTurn: () => activeTurn(),
+		getCtx: busyCtx,
+		isManualCompactionInProgress: () => false,
+		hasDeferredCompactionTurn: () => false,
+		enqueueDeferredCompactionTurn: () => false,
+		findPendingFinal: () => undefined,
+		sendAssistantFinalToBroker: async () => true,
+		acknowledgeConsumedTurn: async (turnId) => { consumed.push(turnId); },
+		ensureCurrentTurnMirroredToTelegram: (_ctx, historyText) => { mirrored.push(historyText); },
+		sendUserMessage: (content, options) => { sent.push({ content, deliverAs: options?.deliverAs }); },
 		startNextTelegramTurn: () => { throw new Error("busy steer should not start next turn"); },
 	});
 
-	assert.deepEqual(result, { accepted: true });
+	assert.equal(result.disposition, "steered");
 	assert.equal(queued.length, 0);
-	assert.deepEqual(consumed, ["plain"]);
+	assert.deepEqual(consumed, ["steer"]);
 	assert.equal(sent.length, 1);
 	assert.equal(sent[0]?.deliverAs, "steer");
 	assert.equal(mirrored.length, 1);
@@ -239,6 +270,62 @@ async function checkDeferredCompactionDuplicateIsIgnored(): Promise<void> {
 	assert.equal(starts, 0);
 }
 
+async function checkQueuedTurnConversionRemovesBeforeSteering(): Promise<void> {
+	const queued = [turn("convert-me")];
+	const completed = new Set<string>();
+	const sent: Array<{ text: string; deliverAs?: string }> = [];
+	const consumed: string[] = [];
+	const runtime = new ClientRuntime({
+		pi: {
+			sendUserMessage: (content: PendingTelegramTurn["content"], options?: { deliverAs: "steer" }) => {
+				const text = content.find((item) => item.type === "text");
+				assert.equal(text?.type, "text");
+				sent.push({ text: text.text, deliverAs: options?.deliverAs });
+			},
+		} as never,
+		completedTurnIds: completed,
+		getSessionId: () => "session-1",
+		getLatestCtx: busyCtx,
+		getConnectedRoute: () => undefined,
+		isRoutableRoute: (_route: TelegramRoute | undefined): _route is TelegramRoute => false,
+		getActiveTelegramTurn: () => activeTurn("active"),
+		setActiveTelegramTurn: () => undefined,
+		getQueuedTelegramTurns: () => queued,
+		getCurrentAbort: () => undefined,
+		setCurrentAbort: () => undefined,
+		getManualCompactionQueue: () => ({
+			isActive: () => false,
+			hasDeferredTurn: () => false,
+			enqueueDeferredTurn: () => false,
+			peekPendingRemainder: () => [],
+			clearPendingRemainder: () => [],
+			removeDeferredTurn: () => undefined,
+			cancelDeferredStart: () => undefined,
+			start: () => undefined,
+			finish: () => undefined,
+		}),
+		activeTurnFinalizer: {
+			hasDeferredTurn: () => false,
+			releaseDeferredTurn: async () => undefined,
+			restoreDeferredPayload: () => undefined,
+		},
+		findPendingFinal: () => undefined,
+		sendAssistantFinalToBroker: async () => true,
+		acknowledgeConsumedTurn: async (turnId) => { consumed.push(turnId); completed.add(turnId); },
+		ensureCurrentTurnMirroredToTelegram: () => undefined,
+		startNextTelegramTurn: () => undefined,
+		readLease: async () => undefined,
+		updateStatus: () => undefined,
+	});
+
+	const result = await runtime.convertQueuedTurnToSteer({ turnId: "convert-me", targetActiveTurnId: "active" });
+	assert.equal(result.status, "converted");
+	assert.deepEqual(queued, []);
+	assert.deepEqual(sent, [{ text: "message convert-me", deliverAs: "steer" }]);
+	assert.deepEqual(consumed, ["convert-me"]);
+	assert.equal((await runtime.convertQueuedTurnToSteer({ turnId: "convert-me", targetActiveTurnId: "active" })).status, "already_handled");
+}
+
 async function checkCompactionBoundaryMessagesJoinDeferredRemainder(): Promise<void> {
 	const queued: PendingTelegramTurn[] = [];
 	const appended: PendingTelegramTurn[] = [];
@@ -266,7 +353,8 @@ async function checkCompactionBoundaryMessagesJoinDeferredRemainder(): Promise<v
 	assert.deepEqual(appended.map((candidate) => candidate.turnId), ["boundary-plain"]);
 }
 
-await checkBusyOrdinaryTurnSteersAndIsConsumed();
+await checkBusyOrdinaryTurnQueuesWithSteerControl();
+await checkBusyExplicitSteerIsConsumed();
 await checkBusyFollowUpQueuesWithoutSteering();
 await checkIdleTurnQueuesAndStartsNext();
 await checkCompletedTurnResendsPendingFinal();
@@ -274,5 +362,6 @@ await checkManualCompactionQueuesOrdinaryMessagesWithoutSteering();
 await checkManualCompactionQueuesFollowUpWithoutStartingTurn();
 await checkActiveTurnPreventsImmediateRestartWhileCtxStillIdle();
 await checkDeferredCompactionDuplicateIsIgnored();
+await checkQueuedTurnConversionRemovesBeforeSteering();
 await checkCompactionBoundaryMessagesJoinDeferredRemainder();
 console.log("Client turn delivery checks passed");

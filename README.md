@@ -40,6 +40,7 @@ status - Show selected session status
 model - Show or change the selected session model
 compact - Compact the selected session context
 follow - Queue a follow-up for after the active run
+steer - Steer the active run with an urgent correction
 stop - Stop the active run
 disconnect - Disconnect the selected pi session
 broker - Show Telegram broker status
@@ -139,12 +140,14 @@ That aborts the active pi turn.
 
 ### Steer and queue follow-ups
 
-If you send a normal Telegram message while pi is busy, it is delivered as steering for the active run.
+If you send a normal Telegram message while pi is busy, it is queued as follow-up work by default.
+Telegram shows a `Steer now` button for eligible queued follow-ups so you can convert one into active-turn steering without retyping it.
 
-To queue work for after the active run finishes, send:
+You can also be explicit:
 
 ```text
 /follow run all tests
+/steer use this correction now
 ```
 
 ## Activity and final replies

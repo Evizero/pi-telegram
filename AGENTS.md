@@ -48,9 +48,11 @@ Consult `docs.md` before changing Bot API integration. In particular:
 
 ## Runtime correctness invariants
 
-- Plain Telegram messages sent while a pi session is busy should steer the
-  active turn.
+- Plain Telegram messages sent while a pi session is busy should queue as
+  follow-up work by default.
 - `/follow <message>` should queue follow-up work, not steer.
+- `/steer <message>` and authorized queued-turn controls should steer explicit
+  active-turn corrections when still valid.
 - `/telegram-connect` during a busy turn should start mirroring current activity
   and the final response to Telegram.
 - Preserve activity history; debounce only Telegram edit/send operations.

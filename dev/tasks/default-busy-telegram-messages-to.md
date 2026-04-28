@@ -1,15 +1,15 @@
 ---
 title: "Default busy Telegram messages to follow-up with steer controls"
-status: "ready"
+status: "done"
 priority: 1
 created: "2026-04-28"
 updated: "2026-04-28"
 author: "Christof Stocker"
-assignee: ""
+assignee: "pi-agent"
 labels: []
 traces_to: ["SyRS-busy-message-default-followup", "SyRS-queued-followup-steer-control", "SyRS-follow-queues-next-turn", "SyRS-defer-telegram-during-compaction", "SyRS-durable-update-consumption", "SyRS-telegram-retry-after"]
 source_inbox: "default-telegram-busy-messages"
-branch: ""
+branch: "task/default-busy-telegram-messages-to"
 ---
 ## Objective
 
@@ -72,3 +72,5 @@ Run targeted scripts through `npm run check`, with added cases for default follo
 
 ## Decisions
 
+- 2026-04-28: Implemented the first UI slice with a separate silent queued-status message carrying a route-scoped Steer now button, leaving activity-bubble integration out of scope as planned.
+- 2026-04-28: Client conversion removes the queued turn before sending it as steer; broker controls persist converting/converted/expired state so duplicate callbacks and broker failover around conversion do not duplicate delivery.

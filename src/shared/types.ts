@@ -180,6 +180,42 @@ export interface PendingTelegramTurn {
 
 export type ActiveTelegramTurn = PendingTelegramTurn;
 
+export interface QueuedTurnControlState {
+	token: string;
+	turnId: string;
+	sessionId: string;
+	routeId?: string;
+	chatId: number | string;
+	messageThreadId?: number;
+	statusMessageId?: number;
+	targetActiveTurnId?: string;
+	completedText?: string;
+	status: "offered" | "converting" | "converted" | "expired";
+	createdAtMs: number;
+	updatedAtMs: number;
+	expiresAtMs: number;
+}
+
+export interface ClientDeliverTurnResult {
+	accepted: true;
+	disposition: "duplicate" | "completed" | "queued" | "started" | "steered";
+	queuedControl?: {
+		canSteer: boolean;
+		targetActiveTurnId?: string;
+	};
+}
+
+export interface ConvertQueuedTurnToSteerRequest {
+	turnId: string;
+	targetActiveTurnId?: string;
+}
+
+export interface ConvertQueuedTurnToSteerResult {
+	status: "converted" | "already_handled" | "not_found" | "stale";
+	text: string;
+	turnId: string;
+}
+
 export interface AssistantFinalPayload {
 	turn: PendingTelegramTurn;
 	text?: string;
@@ -328,6 +364,7 @@ export interface BrokerState {
 	assistantPreviewMessages?: Record<string, AssistantPreviewMessageRef>;
 	selectorSelections?: Record<string, TelegramSelectorSelection>;
 	modelPickers?: Record<string, TelegramModelPickerState>;
+	queuedTurnControls?: Record<string, QueuedTurnControlState>;
 	completedTurnIds?: string[];
 	createdAtMs: number;
 	updatedAtMs: number;

@@ -54,7 +54,7 @@ async function checkFinishStartsFirstDeferredTurnAndDrainsRemainder(): Promise<v
 	queue.drainDeferredIntoActiveTurn();
 	assert.deepEqual(sent, [
 		{ text: "first", deliverAs: undefined },
-		{ text: "second", deliverAs: "steer" },
+		{ text: "second", deliverAs: "followUp" },
 		{ text: "third", deliverAs: "followUp" },
 	]);
 	assert.deepEqual(consumed, ["second", "third"]);

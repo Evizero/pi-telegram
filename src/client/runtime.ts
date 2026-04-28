@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { ActiveTelegramTurn, AssistantFinalPayload, BrokerLease, ModelSummary, PendingTelegramTurn, TelegramRoute } from "../shared/types.js";
+import type { ActiveTelegramTurn, AssistantFinalPayload, BrokerLease, ConvertQueuedTurnToSteerRequest, ConvertQueuedTurnToSteerResult, ClientDeliverTurnResult, ModelSummary, PendingTelegramTurn, TelegramRoute } from "../shared/types.js";
 import { errorMessage, randomId } from "../shared/utils.js";
 import { clientAbortTelegramTurn } from "./abort-turn.js";
 import { clientCompactSession } from "./compact.js";
@@ -24,6 +24,7 @@ export interface ClientRuntimeDeps {
 		enqueueDeferredTurn(turn: PendingTelegramTurn): boolean;
 		peekPendingRemainder(): PendingTelegramTurn[];
 		clearPendingRemainder(): PendingTelegramTurn[];
+		removeDeferredTurn(turnId: string): PendingTelegramTurn | undefined;
 		cancelDeferredStart(): void;
 		start(): void;
 		finish(): void;
@@ -53,7 +54,7 @@ export class ClientRuntime {
 		}
 	}
 
-	deliverTurn(turn: PendingTelegramTurn): Promise<{ accepted: true }> {
+	deliverTurn(turn: PendingTelegramTurn): Promise<ClientDeliverTurnResult> {
 		return clientDeliverTelegramTurn({
 			turn,
 			completedTurnIds: this.deps.completedTurnIds,
@@ -70,6 +71,27 @@ export class ClientRuntime {
 			sendUserMessage: (content, options) => { void this.deps.pi.sendUserMessage(content, options); },
 			startNextTelegramTurn: this.deps.startNextTelegramTurn,
 		});
+	}
+
+	async convertQueuedTurnToSteer(request: ConvertQueuedTurnToSteerRequest): Promise<ConvertQueuedTurnToSteerResult> {
+		if (this.deps.completedTurnIds.has(request.turnId)) return { status: "already_handled", text: "This queued follow-up was already handled.", turnId: request.turnId };
+		const activeTurn = this.deps.getActiveTelegramTurn();
+		const ctx = this.deps.getLatestCtx();
+		if (!activeTurn || !ctx || ctx.isIdle()) return { status: "stale", text: "There is no active turn to steer anymore.", turnId: request.turnId };
+		if (request.targetActiveTurnId && activeTurn.turnId !== request.targetActiveTurnId) return { status: "stale", text: "That queued follow-up no longer targets the active turn.", turnId: request.turnId };
+		const queuedTurns = this.deps.getQueuedTelegramTurns();
+		const queuedIndex = queuedTurns.findIndex((turn) => turn.turnId === request.turnId);
+		const removed = queuedIndex >= 0 ? queuedTurns.splice(queuedIndex, 1)[0] : this.deps.getManualCompactionQueue().removeDeferredTurn(request.turnId);
+		if (!removed) return { status: "not_found", text: "That queued follow-up is no longer waiting.", turnId: request.turnId };
+		try {
+			void this.deps.pi.sendUserMessage(removed.content, { deliverAs: "steer" });
+		} catch (error) {
+			if (queuedIndex >= 0) queuedTurns.splice(queuedIndex, 0, removed);
+			else this.deps.getManualCompactionQueue().enqueueDeferredTurn(removed);
+			throw error;
+		}
+		await this.deps.acknowledgeConsumedTurn(removed.turnId);
+		return { status: "converted", text: "Steered queued follow-up into the active turn.", turnId: removed.turnId };
 	}
 
 	abortTurn(): Promise<{ text: string; clearedTurnIds: string[] }> {

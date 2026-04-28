@@ -61,7 +61,7 @@ function message(text: string, messageId = Math.floor(Math.random() * 1000)): Te
 	};
 }
 
-async function checkCommandRoutingPreservesCompactStopFollowAndPlainTurns(): Promise<void> {
+async function checkCommandRoutingPreservesCompactStopFollowSteerAndPlainTurns(): Promise<void> {
 	const brokerState = state();
 	const ipcCalls: IpcCall[] = [];
 	const sentReplies: string[] = [];
@@ -71,17 +71,21 @@ async function checkCommandRoutingPreservesCompactStopFollowAndPlainTurns(): Pro
 	await router.dispatch([message("/compact")]);
 	await router.dispatch([message("/stop")]);
 	await router.dispatch([message("/follow after this")]);
-	await router.dispatch([message("steer now")]);
+	await router.dispatch([message("/steer steer now")]);
+	await router.dispatch([message("plain follow-up by default")]);
 
-	assert.deepEqual(ipcCalls.map((call) => call.type), ["compact_session", "abort_turn", "deliver_turn", "deliver_turn"]);
+	assert.deepEqual(ipcCalls.map((call) => call.type), ["compact_session", "abort_turn", "deliver_turn", "deliver_turn", "deliver_turn"]);
 	assert.deepEqual(sentReplies, ["Compaction started.", "Aborted current turn."]);
 	const followTurn = ipcCalls[2]!.payload as PendingTelegramTurn;
-	const plainTurn = ipcCalls[3]!.payload as PendingTelegramTurn;
+	const steerTurn = ipcCalls[3]!.payload as PendingTelegramTurn;
+	const plainTurn = ipcCalls[4]!.payload as PendingTelegramTurn;
 	assert.equal(followTurn.deliveryMode, "followUp");
 	assert.equal(followTurn.content[0]?.type, "text");
 	assert.equal(followTurn.historyText, "after this");
+	assert.equal(steerTurn.deliveryMode, "steer");
+	assert.equal(steerTurn.historyText, "steer now");
 	assert.equal(plainTurn.deliveryMode, undefined);
-	assert.equal(plainTurn.historyText, "steer now");
+	assert.equal(plainTurn.historyText, "plain follow-up by default");
 	assert.equal(ipcCalls.every((call) => call.target === "session-1"), true);
 }
 
@@ -92,7 +96,8 @@ function createRouter(
 	telegramCalls: TelegramCall[],
 	nextTurnCounter = () => 1,
 	callTelegramOverride?: <TResponse>(method: string, body: Record<string, unknown>) => Promise<TResponse>,
-	sendTextOverride?: (chatId: number | string, threadId: number | undefined, text: string, options?: { replyMarkup?: unknown }) => Promise<number | undefined>,
+	sendTextOverride?: (chatId: number | string, threadId: number | undefined, text: string, options?: { disableNotification?: boolean; replyMarkup?: unknown }) => Promise<number | undefined>,
+	postIpcOverride?: <TResponse>(socketPath: string, type: string, payload: unknown, targetSessionId?: string) => Promise<TResponse>,
 ): TelegramCommandRouter {
 	return new TelegramCommandRouter({
 		getBrokerState: () => brokerState,
@@ -118,7 +123,7 @@ function createRouter(
 			telegramCalls.push({ method, body });
 			return { ok: true } as TResponse;
 		}),
-		postIpc: async <TResponse>(_socketPath: string, type: string, payload: unknown, targetSessionId?: string) => {
+		postIpc: postIpcOverride ?? (async <TResponse>(_socketPath: string, type: string, payload: unknown, targetSessionId?: string) => {
 			ipcCalls.push({ type, payload, target: targetSessionId });
 			if (type === "compact_session") return { text: "Compaction started." } as TResponse;
 			if (type === "abort_turn") return { text: "Aborted current turn.", clearedTurnIds: ["active"] } as TResponse;
@@ -133,7 +138,7 @@ function createRouter(
 			} as TResponse;
 			if (type === "set_model") return { text: `Model changed to ${(payload as { selector: string }).selector}` } as TResponse;
 			throw new Error(`unexpected IPC type ${type}`);
-		},
+		}),
 		stopTypingLoop: () => undefined,
 		unregisterSession: async () => undefined,
 		brokerInfo: () => "broker",
@@ -147,6 +152,205 @@ function callbackQuery(data: string): TelegramCallbackQuery {
 		message: message("/model", 99),
 		data,
 	};
+}
+
+async function checkQueuedStatusRetryAfterRetriesWithoutRedeliveryDuplicate(): Promise<void> {
+	const brokerState = state();
+	const ipcCalls: IpcCall[] = [];
+	const sentReplies: string[] = [];
+	const telegramCalls: TelegramCall[] = [];
+	let failQueuedStatus = true;
+	const sendText = async (_chatId: number | string, _threadId: number | undefined, text: string, options?: { disableNotification?: boolean; replyMarkup?: unknown }): Promise<number | undefined> => {
+		sentReplies.push(text);
+		if (text === "Queued as follow-up." && failQueuedStatus) {
+			failQueuedStatus = false;
+			throw new TelegramApiError("sendMessage", "Too Many Requests", 429, 2);
+		}
+		if (options?.replyMarkup) telegramCalls.push({ method: "sendMessageReplyMarkup", body: { reply_markup: options.replyMarkup } });
+		return 99;
+	};
+	const router = createRouter(brokerState, ipcCalls, sentReplies, telegramCalls, () => 1, undefined, sendText, async <TResponse>(_socketPath: string, type: string, payload: unknown, targetSessionId?: string) => {
+		ipcCalls.push({ type, payload, target: targetSessionId });
+		if (type === "deliver_turn") return { accepted: true, disposition: "queued", queuedControl: { canSteer: true, targetActiveTurnId: "active-1" } } as TResponse;
+		throw new Error(`unexpected IPC type ${type}`);
+	});
+
+	await assert.rejects(() => router.dispatch([message("queue retry", 44)]), /Too Many Requests/);
+	await router.dispatch([message("queue retry", 44)]);
+
+	assert.equal(ipcCalls.filter((call) => call.type === "deliver_turn").length, 1);
+	assert.equal(sentReplies.filter((text) => text === "Queued as follow-up.").length, 2);
+	assert.equal(telegramCalls.filter((call) => call.method === "sendMessageReplyMarkup").length, 1);
+	assert.equal(Object.values(brokerState.queuedTurnControls ?? {})[0]?.statusMessageId, 99);
+}
+
+async function checkQueuedFollowUpSteerControlConvertsOnce(): Promise<void> {
+	const brokerState = state();
+	const ipcCalls: IpcCall[] = [];
+	const sentReplies: string[] = [];
+	const telegramCalls: TelegramCall[] = [];
+	let turnCounter = 0;
+	const postIpc = async <TResponse>(_socketPath: string, type: string, payload: unknown, targetSessionId?: string): Promise<TResponse> => {
+		ipcCalls.push({ type, payload, target: targetSessionId });
+		if (type === "deliver_turn") return { accepted: true, disposition: "queued", queuedControl: { canSteer: true, targetActiveTurnId: "active-1" } } as TResponse;
+		if (type === "convert_queued_turn_to_steer") return { status: "converted", text: "Steered queued follow-up into the active turn.", turnId: (payload as { turnId: string }).turnId } as TResponse;
+		throw new Error(`unexpected IPC type ${type}`);
+	};
+	const router = createRouter(brokerState, ipcCalls, sentReplies, telegramCalls, () => ++turnCounter, undefined, undefined, postIpc);
+
+	await router.dispatch([message("queue this", 41)]);
+
+	const turn = ipcCalls.find((call) => call.type === "deliver_turn")!.payload as PendingTelegramTurn;
+	assert.equal(brokerState.pendingTurns?.[turn.turnId]?.turn.turnId, turn.turnId);
+	assert.equal(sentReplies.at(-1), "Queued as follow-up.");
+	const statusKeyboard = telegramCalls.find((call) => call.method === "sendMessageReplyMarkup")!.body.reply_markup as { inline_keyboard: Array<Array<{ callback_data: string }>> };
+	const callbackData = statusKeyboard.inline_keyboard[0]![0]!.callback_data;
+	const control = Object.values(brokerState.queuedTurnControls ?? {})[0]!;
+	assert.equal(control.turnId, turn.turnId);
+	assert.equal(control.targetActiveTurnId, "active-1");
+
+	await router.dispatchCallback(callbackQuery(callbackData));
+	await router.dispatchCallback(callbackQuery(callbackData));
+
+	assert.equal(ipcCalls.filter((call) => call.type === "convert_queued_turn_to_steer").length, 1);
+	assert.equal(brokerState.pendingTurns?.[turn.turnId], undefined);
+	assert.equal(brokerState.completedTurnIds?.includes(turn.turnId), true);
+	assert.equal(Object.values(brokerState.queuedTurnControls ?? {})[0]?.status, "converted");
+	assert.equal(telegramCalls.some((call) => call.method === "editMessageText" && call.body.text === "Steered queued follow-up into the active turn."), true);
+	assert.equal(telegramCalls.filter((call) => call.method === "answerCallbackQuery").length, 2);
+}
+
+async function checkConvertedSteerControlEditRetryAfterIsRetried(): Promise<void> {
+	const brokerState = state();
+	const ipcCalls: IpcCall[] = [];
+	const sentReplies: string[] = [];
+	const telegramCalls: TelegramCall[] = [];
+	let failConvertedEdit = true;
+	const callTelegram = async <TResponse>(method: string, body: Record<string, unknown>): Promise<TResponse> => {
+		telegramCalls.push({ method, body });
+		if (method === "editMessageText" && body.text === "Steered queued follow-up into the active turn." && failConvertedEdit) {
+			failConvertedEdit = false;
+			throw new TelegramApiError("editMessageText", "Too Many Requests", 429, 2);
+		}
+		return { ok: true } as TResponse;
+	};
+	const router = createRouter(brokerState, ipcCalls, sentReplies, telegramCalls, () => 1, callTelegram, undefined, async <TResponse>(_socketPath: string, type: string, payload: unknown, targetSessionId?: string) => {
+		ipcCalls.push({ type, payload, target: targetSessionId });
+		if (type === "deliver_turn") return { accepted: true, disposition: "queued", queuedControl: { canSteer: true, targetActiveTurnId: "active-1" } } as TResponse;
+		if (type === "convert_queued_turn_to_steer") return { status: "converted", text: "Steered queued follow-up into the active turn.", turnId: (payload as { turnId: string }).turnId } as TResponse;
+		throw new Error(`unexpected IPC type ${type}`);
+	});
+
+	await router.dispatch([message("queue edit retry", 43)]);
+	const statusKeyboard = telegramCalls.find((call) => call.method === "sendMessageReplyMarkup")!.body.reply_markup as { inline_keyboard: Array<Array<{ callback_data: string }>> };
+	const callbackData = statusKeyboard.inline_keyboard[0]![0]!.callback_data;
+
+	await assert.rejects(() => router.dispatchCallback(callbackQuery(callbackData)), /Too Many Requests/);
+	await router.dispatchCallback(callbackQuery(callbackData));
+
+	assert.equal(ipcCalls.filter((call) => call.type === "convert_queued_turn_to_steer").length, 1);
+	assert.equal(telegramCalls.filter((call) => call.method === "editMessageText" && call.body.text === "Steered queued follow-up into the active turn.").length, 2);
+	assert.equal(Object.values(brokerState.queuedTurnControls ?? {})[0]?.status, "converted");
+}
+
+async function checkQueuedSteerCallbackRejectsOfflineAndWrongRoute(): Promise<void> {
+	const brokerState = state();
+	const ipcCalls: IpcCall[] = [];
+	const sentReplies: string[] = [];
+	const telegramCalls: TelegramCall[] = [];
+	const router = createRouter(brokerState, ipcCalls, sentReplies, telegramCalls, () => 1, undefined, undefined, async <TResponse>(_socketPath: string, type: string, payload: unknown, targetSessionId?: string) => {
+		ipcCalls.push({ type, payload, target: targetSessionId });
+		if (type === "deliver_turn") return { accepted: true, disposition: "queued", queuedControl: { canSteer: true, targetActiveTurnId: "active-1" } } as TResponse;
+		if (type === "convert_queued_turn_to_steer") return { status: "converted", text: "should not happen", turnId: (payload as { turnId: string }).turnId } as TResponse;
+		throw new Error(`unexpected IPC type ${type}`);
+	});
+
+	await router.dispatch([message("queue wrong route", 45)]);
+	const callbackData = (telegramCalls.find((call) => call.method === "sendMessageReplyMarkup")!.body.reply_markup as { inline_keyboard: Array<Array<{ callback_data: string }>> }).inline_keyboard[0]![0]!.callback_data;
+
+	await router.dispatchCallback({ ...callbackQuery(callbackData), message: message("button moved", 100) });
+	const route = brokerState.routes["123:9"]!;
+	delete brokerState.routes["123:9"];
+	await router.dispatchCallback(callbackQuery(callbackData));
+	brokerState.routes["123:9"] = route;
+	brokerState.sessions["session-1"]!.status = "offline";
+	await router.dispatchCallback(callbackQuery(callbackData));
+
+	assert.equal(ipcCalls.filter((call) => call.type === "convert_queued_turn_to_steer").length, 0);
+	assert.equal(telegramCalls.filter((call) => call.method === "answerCallbackQuery" && call.body.show_alert === true).length, 3);
+}
+
+async function checkConvertingSteerControlRecoversAcrossBrokerFailover(): Promise<void> {
+	const brokerState = state();
+	const ipcCalls: IpcCall[] = [];
+	const sentReplies: string[] = [];
+	const telegramCalls: TelegramCall[] = [];
+	const router = createRouter(brokerState, ipcCalls, sentReplies, telegramCalls, () => 1, undefined, undefined, async <TResponse>(_socketPath: string, type: string, payload: unknown, targetSessionId?: string) => {
+		ipcCalls.push({ type, payload, target: targetSessionId });
+		if (type === "deliver_turn") return { accepted: true, disposition: "queued", queuedControl: { canSteer: true, targetActiveTurnId: "active-1" } } as TResponse;
+		if (type === "convert_queued_turn_to_steer") return { status: "converted", text: "Recovered conversion.", turnId: (payload as { turnId: string }).turnId } as TResponse;
+		throw new Error(`unexpected IPC type ${type}`);
+	});
+
+	await router.dispatch([message("queue converting", 46)]);
+	const callbackData = (telegramCalls.find((call) => call.method === "sendMessageReplyMarkup")!.body.reply_markup as { inline_keyboard: Array<Array<{ callback_data: string }>> }).inline_keyboard[0]![0]!.callback_data;
+	const control = Object.values(brokerState.queuedTurnControls ?? {})[0]!;
+	control.status = "converting";
+	control.updatedAtMs = Date.now() - 1000;
+
+	await router.dispatchCallback(callbackQuery(callbackData));
+
+	assert.equal(ipcCalls.filter((call) => call.type === "convert_queued_turn_to_steer").length, 1);
+	assert.equal(control.status, "converted");
+	assert.equal(brokerState.pendingTurns?.[control.turnId], undefined);
+	assert.equal(brokerState.completedTurnIds?.includes(control.turnId), true);
+}
+
+async function checkConvertingSteerControlWithMissingPendingCompletesIdempotently(): Promise<void> {
+	const brokerState = state();
+	const ipcCalls: IpcCall[] = [];
+	const sentReplies: string[] = [];
+	const telegramCalls: TelegramCall[] = [];
+	const router = createRouter(brokerState, ipcCalls, sentReplies, telegramCalls, () => 1, undefined, undefined, async <TResponse>(_socketPath: string, type: string, payload: unknown, targetSessionId?: string) => {
+		ipcCalls.push({ type, payload, target: targetSessionId });
+		if (type === "deliver_turn") return { accepted: true, disposition: "queued", queuedControl: { canSteer: true, targetActiveTurnId: "active-1" } } as TResponse;
+		throw new Error(`unexpected IPC type ${type}`);
+	});
+
+	await router.dispatch([message("queue consumed converting", 47)]);
+	const callbackData = (telegramCalls.find((call) => call.method === "sendMessageReplyMarkup")!.body.reply_markup as { inline_keyboard: Array<Array<{ callback_data: string }>> }).inline_keyboard[0]![0]!.callback_data;
+	const control = Object.values(brokerState.queuedTurnControls ?? {})[0]!;
+	control.status = "converting";
+	delete brokerState.pendingTurns?.[control.turnId];
+
+	await router.dispatchCallback(callbackQuery(callbackData));
+
+	assert.equal(ipcCalls.filter((call) => call.type === "convert_queued_turn_to_steer").length, 0);
+	assert.equal(control.status, "converted");
+	assert.equal(telegramCalls.some((call) => call.method === "answerCallbackQuery" && call.body.text === "Queued follow-up already handled."), true);
+}
+
+async function checkStaleQueuedFollowUpControlDoesNotConvert(): Promise<void> {
+	const brokerState = state();
+	const ipcCalls: IpcCall[] = [];
+	const sentReplies: string[] = [];
+	const telegramCalls: TelegramCall[] = [];
+	const router = createRouter(brokerState, ipcCalls, sentReplies, telegramCalls, () => 1, undefined, undefined, async <TResponse>(_socketPath: string, type: string, payload: unknown, targetSessionId?: string) => {
+		ipcCalls.push({ type, payload, target: targetSessionId });
+		if (type === "deliver_turn") return { accepted: true, disposition: "queued", queuedControl: { canSteer: true, targetActiveTurnId: "active-1" } } as TResponse;
+		throw new Error(`unexpected IPC type ${type}`);
+	});
+
+	await router.dispatch([message("queue stale", 42)]);
+	const turn = ipcCalls.find((call) => call.type === "deliver_turn")!.payload as PendingTelegramTurn;
+	delete brokerState.pendingTurns?.[turn.turnId];
+	const statusKeyboard = telegramCalls.find((call) => call.method === "sendMessageReplyMarkup")!.body.reply_markup as { inline_keyboard: Array<Array<{ callback_data: string }>> };
+
+	await router.dispatchCallback(callbackQuery(statusKeyboard.inline_keyboard[0]![0]!.callback_data));
+
+	assert.equal(ipcCalls.filter((call) => call.type === "convert_queued_turn_to_steer").length, 0);
+	assert.equal(Object.values(brokerState.queuedTurnControls ?? {})[0]?.status, "expired");
+	assert.equal(telegramCalls.some((call) => call.method === "answerCallbackQuery" && call.body.show_alert === true), true);
 }
 
 async function checkBareModelUsesTwoStageInlinePickerAndExactSelection(): Promise<void> {
@@ -304,7 +508,14 @@ async function checkBareModelAlsoKeepsNumberCompatibility(): Promise<void> {
 	assert.deepEqual(setModelCall.payload, { selector: "openai-codex-3/gpt-5.5", exact: true });
 }
 
-await checkCommandRoutingPreservesCompactStopFollowAndPlainTurns();
+await checkCommandRoutingPreservesCompactStopFollowSteerAndPlainTurns();
+await checkQueuedStatusRetryAfterRetriesWithoutRedeliveryDuplicate();
+await checkQueuedFollowUpSteerControlConvertsOnce();
+await checkConvertedSteerControlEditRetryAfterIsRetried();
+await checkQueuedSteerCallbackRejectsOfflineAndWrongRoute();
+await checkConvertingSteerControlRecoversAcrossBrokerFailover();
+await checkConvertingSteerControlWithMissingPendingCompletesIdempotently();
+await checkStaleQueuedFollowUpControlDoesNotConvert();
 await checkBareModelUsesTwoStageInlinePickerAndExactSelection();
 await checkModelListNumberCompatibilityRemains();
 await checkProviderCallbackUiFailuresAreNonCritical();

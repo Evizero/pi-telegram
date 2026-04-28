@@ -62,6 +62,13 @@ export class ManualCompactionTurnQueue {
 		return pending;
 	}
 
+	removeDeferredTurn(turnId: string): PendingTelegramTurn | undefined {
+		const index = this.pendingRemainder.findIndex((turn) => turn.turnId === turnId);
+		if (index < 0) return undefined;
+		const [turn] = this.pendingRemainder.splice(index, 1);
+		return turn;
+	}
+
 	drainDeferredIntoActiveTurn(): void {
 		if (!this.awaitingAgentStart) return;
 		this.awaitingAgentStart = false;
@@ -69,7 +76,7 @@ export class ManualCompactionTurnQueue {
 		const pending = [...this.pendingRemainder];
 		this.pendingRemainder = [];
 		for (const turn of pending) {
-			this.deps.sendUserMessage(turn.content, { deliverAs: turn.deliveryMode === "followUp" ? "followUp" : "steer" });
+			this.deps.sendUserMessage(turn.content, { deliverAs: turn.deliveryMode === "steer" ? "steer" : "followUp" });
 			this.deps.acknowledgeConsumedTurn(turn.turnId);
 		}
 	}
