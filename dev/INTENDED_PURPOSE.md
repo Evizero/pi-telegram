@@ -74,8 +74,8 @@ The product needs to support these capabilities because they serve remote sessio
 - list, select, and route among multiple active sessions;
 - mirror current activity when Telegram connects mid-turn;
 - deliver ordinary Telegram messages into pi as user input;
-- treat ordinary messages sent during a busy turn as steering for that turn;
-- treat explicit follow-up messages as queued work after the active turn;
+- treat ordinary messages sent during busy work as queued follow-up work by default;
+- let the operator explicitly steer active work through commands or Telegram controls when needed;
 - stop active work from Telegram;
 - stream useful previews and deliver final assistant responses without duplicates;
 - move inbound Telegram files into private local storage and expose them to pi as attachments;

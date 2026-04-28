@@ -205,37 +205,42 @@
     {
       "id": "SyRS-busy-message-steers",
       "origin": "derived",
-      "label": "Steer active turn by default",
-      "statement": "The system shall deliver an ordinary authorized Telegram message sent while the selected pi session is busy as steering for the active turn.",
+      "label": "Deprecated steer default",
+      "statement": "Deprecated: ordinary authorized Telegram messages sent while the selected pi session is busy previously steered the active turn by default.",
       "traces_to": [
         "StRS-busy-turn-intent",
         "StRS-mid-turn-control"
       ],
-      "rationale": "When the user speaks during an active run, the default remote-control intent is usually to correct or guide the current work.",
-      "acceptance_criteria": "A busy-session test demonstrates that an ordinary Telegram message is sent to pi with steering delivery semantics and is not persisted for later duplicate retry as a normal queued turn.",
+      "rationale": "The project owner revised the desired busy-message default on 2026-04-28: ordinary busy messages should normally become follow-up work, with explicit controls for steering when needed.",
+      "acceptance_criteria": "No new implementation work should trace to this deprecated behavior; replacement behavior is specified by SyRS-busy-message-default-followup and SyRS-queued-followup-steer-control.",
       "verification": {
         "method": "test"
       },
-      "status": "draft",
+      "status": "deprecated",
       "created": "2026-04-25",
-      "updated": "2026-04-25"
+      "updated": "2026-04-28",
+      "sources": {
+        "inbox": [
+          "default-telegram-busy-messages"
+        ]
+      }
     },
     {
       "id": "SyRS-follow-queues-next-turn",
       "origin": "derived",
-      "label": "Queue explicit follow-up",
-      "statement": "The system shall deliver an authorized /follow message as follow-up work queued after the active turn instead of steering the active turn.",
+      "label": "Keep /follow queued",
+      "statement": "The system shall continue to accept an authorized /follow message as explicit follow-up work queued after active or queued Telegram work.",
       "traces_to": [
         "StRS-busy-turn-intent"
       ],
-      "rationale": "The operator needs an explicit way to distinguish next-step work from active-turn steering.",
-      "acceptance_criteria": "A busy-session test demonstrates that /follow text is delivered with follow-up semantics, runs after the active turn, and is not mixed into current-turn steering.",
+      "rationale": "Even after ordinary busy messages default to follow-up, /follow remains a clear compatibility and accessibility command for users who prefer explicit queued-work syntax.",
+      "acceptance_criteria": "A command-routing test demonstrates that /follow text is delivered with follow-up semantics and remains queued behind existing active or queued Telegram work.",
       "verification": {
         "method": "test"
       },
       "status": "draft",
       "created": "2026-04-25",
-      "updated": "2026-04-25"
+      "updated": "2026-04-28"
     },
     {
       "id": "SyRS-stop-active-turn",
@@ -739,13 +744,13 @@
         "StRS-local-first-authority"
       ],
       "rationale": "Native pi treats /compact as a control command that interrupts an active turn and compacts; Telegram control should preserve the same remote-session expectation instead of rejecting busy sessions.",
-      "acceptance_criteria": "A focused test shows that /compact sent to a busy selected session invokes pi manual compaction, interrupts the active turn through that path, and produces the normal compaction completion or failure reply rather than the busy-session rejection, while ordinary busy Telegram messages still steer and /follow still queues.",
+      "acceptance_criteria": "A focused test shows that /compact sent to a busy selected session invokes pi manual compaction, interrupts the active turn through that path, and produces the normal compaction completion or failure reply rather than the busy-session rejection, while busy-time Telegram message routing continues to follow the current default-follow-up and explicit-steer requirements.",
       "verification": {
         "method": "test"
       },
       "status": "draft",
       "created": "2026-04-25",
-      "updated": "2026-04-25",
+      "updated": "2026-04-28",
       "sources": {
         "inbox": [
           "telegram-compact-should-match"
@@ -837,20 +842,20 @@
       "id": "SyRS-defer-telegram-during-compaction",
       "origin": "derived",
       "label": "Defer Telegram during compaction",
-      "statement": "The system shall defer ordinary authorized Telegram messages and authorized /follow work received while the selected pi session is running manual compaction started by an authorized Telegram /compact command, shall not start a concurrent pi turn until that compaction ends, and shall resume that deferred input afterward with the first deferred input item starting the next turn, later deferred ordinary messages steering that turn, and later deferred /follow work remaining queued behind it.",
+      "statement": "The system shall defer authorized Telegram input received while the selected pi session is running manual compaction started by an authorized Telegram /compact command, shall not start a concurrent pi turn until that compaction ends, and shall resume deferred input afterward in original order using each input's explicit or default delivery semantics.",
       "traces_to": [
         "StRS-mid-turn-control",
         "StRS-busy-turn-intent",
         "StRS-local-first-authority"
       ],
-      "rationale": "Native pi queues user input while manual compaction is running and flushes it only after compaction ends. Telegram supervision must preserve that same local-session control model instead of starting a second turn while pi is still compacting.",
-      "acceptance_criteria": "A focused regression shows that while Telegram-started manual compaction is running, ordinary Telegram messages and explicit /follow work are held instead of starting a turn; once compaction finishes, the first deferred input item, including a lone deferred /follow, starts the next turn, later deferred ordinary messages steer that turn, later deferred /follow work stays queued behind it, and no concurrent turn starts before compaction ends.",
+      "rationale": "Native pi queues user input while manual compaction is running and flushes it only after compaction ends. Telegram supervision must preserve that local-session control model while respecting the revised default-follow-up behavior for ordinary messages.",
+      "acceptance_criteria": "A focused regression shows that while Telegram-started manual compaction is running, Telegram input is held instead of starting a turn; once compaction finishes, the first deferred item starts the next turn, later default follow-up items stay queued behind it unless explicitly converted to steering, explicit steer items steer when still valid, and no concurrent turn starts before compaction ends.",
       "verification": {
         "method": "test"
       },
       "status": "draft",
       "created": "2026-04-25",
-      "updated": "2026-04-25",
+      "updated": "2026-04-28",
       "sources": {
         "inbox": [
           "telegram-starts-new-turn"
@@ -1001,6 +1006,54 @@
       "sources": {
         "inbox": [
           "support-slash-new-without"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-busy-message-default-followup",
+      "origin": "derived",
+      "label": "Default busy messages to follow-up",
+      "statement": "The system shall deliver an ordinary authorized Telegram message received while the selected pi session already has active or queued work as follow-up work queued after the active turn by default.",
+      "traces_to": [
+        "StRS-busy-turn-intent",
+        "StRS-remote-session-supervision"
+      ],
+      "rationale": "The operator's common mobile behavior is to add next-step context while supervising active work; default queuing preserves that intent without requiring /follow for ordinary notes.",
+      "acceptance_criteria": "Focused delivery and command-routing tests demonstrate that ordinary busy Telegram messages are queued with follow-up semantics, do not steer unless explicitly converted or sent through an explicit steer path, and idle ordinary messages still start normally.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-28",
+      "updated": "2026-04-28",
+      "sources": {
+        "inbox": [
+          "default-telegram-busy-messages"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-queued-followup-steer-control",
+      "origin": "derived",
+      "label": "Convert queued follow-up to steer",
+      "statement": "The system shall let the paired Telegram user convert a still-queued Telegram follow-up turn for the selected route into active-turn steering through an authorized, route-scoped, idempotent Telegram control.",
+      "traces_to": [
+        "StRS-busy-turn-intent",
+        "StRS-mid-turn-control",
+        "StRS-delivery-continuity",
+        "StRS-paired-user-control"
+      ],
+      "rationale": "Default follow-up would make urgent corrections slower unless the operator has a safe low-friction way to steer a specific queued message without retyping it.",
+      "acceptance_criteria": "Focused callback tests demonstrate that a queued follow-up can be converted once to steering for the intended active turn, duplicate or stale callbacks do not duplicate delivery, and callback handling preserves authorization, route context, pending-turn consumption, and retry-after behavior.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-28",
+      "updated": "2026-04-28",
+      "sources": {
+        "inbox": [
+          "default-telegram-busy-messages"
         ]
       }
     }

@@ -98,11 +98,11 @@
       "priority": 1,
       "validation": {
         "method": "review",
-        "criteria": "Review the documented Telegram command behavior to confirm ordinary busy-turn messages and explicit follow-up messages have distinct, stakeholder-understandable outcomes."
+        "criteria": "Review the documented Telegram command behavior to confirm ordinary messages sent while a selected session is busy default to queued follow-up work, and that explicit steer controls let the operator redirect a still-queued follow-up into the active turn without ambiguity."
       },
       "status": "draft",
       "created": "2026-04-25",
-      "updated": "2026-04-25",
+      "updated": "2026-04-28",
       "sources": {
         "refs": [
           "dev/INTENDED_PURPOSE.md#essential-capabilities"

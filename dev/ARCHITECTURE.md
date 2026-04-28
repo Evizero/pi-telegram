@@ -54,9 +54,9 @@ The strongest drivers come directly from the intended purpose and requirements:
   (`StRS-multi-session-supervision`, `SyRS-register-session-route`,
   `SyRS-session-replacement-route-continuity`,
   `SyRS-list-and-select-sessions`, `SyRS-topic-routes-per-session`);
-- busy-turn control must distinguish steering from follow-up work
-  (`StRS-busy-turn-intent`, `SyRS-busy-message-steers`,
-  `SyRS-follow-queues-next-turn`);
+- busy-turn control must default ordinary mobile input to follow-up work while preserving explicit steering for urgent intervention
+  (`StRS-busy-turn-intent`, `SyRS-busy-message-default-followup`,
+  `SyRS-queued-followup-steer-control`, `SyRS-follow-queues-next-turn`);
 - activity and final responses must stay intelligible, chronologically clear,
   and non-duplicated even when legacy preview cleanup, Telegram edits, chunks,
   pi/provider auto-retry, and Telegram delivery retries are involved
@@ -164,12 +164,16 @@ state must survive long enough for the next heartbeat or broker attempt.
 
 The selected pi session is busy and the paired user sends a normal Telegram
 message.
-The broker converts it into a pending turn for the selected route and the client
-delivers it with steering semantics.
-If the user sends `/follow ...` instead, the same transport delivers follow-up
-work queued after the active turn.
-The important property is intent preservation: normal busy messages affect the
-current run, while explicit follow-up messages do not.
+The broker converts it into a pending turn for the selected route, and the
+client queues it as follow-up work by default rather than steering immediately.
+If the user sends `/steer ...` or activates an authorized steer control for a
+still-queued follow-up, the same transport explicitly delivers steering for the
+active turn.
+`/follow ...` remains a compatibility and accessibility path for explicit
+queued follow-up work.
+The important property is intent preservation: ordinary mobile notes wait their
+turn, while urgent intervention is still one explicit action away and targets a
+specific route/turn.
 
 ### Telegram rate limit during final delivery
 
@@ -352,8 +356,8 @@ with related code when they explain the same behavior.
 - Retryable pi/provider errors are not stable assistant finals while pi may
   auto-retry the same active Telegram turn; the bridge must defer Telegram
   finalization until retry success or a clear terminal failure.
-- Busy ordinary messages steer; explicit follow-up messages queue after the
-  active turn.
+- Busy ordinary messages queue as follow-up by default; explicit steering
+  commands or controls target the active turn.
 - Activity collection preserves history; Telegram rendering may debounce but may
   not erase collected event meaning.
 - Final delivery detaches streamed preview messages before appending final
@@ -438,11 +442,12 @@ implicit parallel polling.
 ### Broker state
 
 `BrokerState` stores recent Telegram update IDs, last processed update ID,
-session registrations, routes, pending media groups, pending turns, visible
-assistant preview message references, pending assistant-final deliveries,
-completed turn IDs, and timestamps.
+session registrations, routes, pending media groups, pending turns, queued-turn
+control records, visible assistant preview message references, pending
+assistant-final deliveries, completed turn IDs, and timestamps.
 It is the durable handoff record for polling safety, bounded route continuity,
-broker turnover, pending work retry, cleanup retry, and dedupe.
+broker turnover, pending work retry, queued follow-up steer controls, cleanup
+retry, and dedupe.
 
 Architecture contract and current implementation: selector-mode session
 selections created by `/use` are route-continuity state persisted in
@@ -475,6 +480,14 @@ context.
 content, history text, and delivery mode.
 It is currently persisted under `BrokerState.pendingTurns` so broker retry and
 turn consumption have a durable handoff point.
+Queued-turn control records are broker-owned state that map compact Telegram
+callback tokens to a specific queued turn, route, session, target active turn,
+visible status message, status, and expiry. They are not execution authority by
+themselves: callback handling must ask the client to atomically remove a still-
+queued turn before steering it, then consume the pending turn through the same
+durable turn lifecycle used by normal delivery. Stale visible buttons may remain
+in Telegram, but they must resolve through this durable state and fail closed
+when the turn has started, expired, converted, or disappeared.
 
 Assistant final payloads pair a pending turn with final text, stop/error state,
 and queued outbound attachments.
@@ -681,8 +694,8 @@ callback without turning the button press into an agent conversation message.
 
 This scenario protects `SyRS-deliver-telegram-turn`,
 `SyRS-durable-update-consumption`, `SyRS-media-group-batching`,
-`SyRS-busy-message-steers`, `SyRS-follow-queues-next-turn`, and
-`SyRS-interactive-model-picker`.
+`SyRS-busy-message-default-followup`, `SyRS-queued-followup-steer-control`,
+`SyRS-follow-queues-next-turn`, and `SyRS-interactive-model-picker`.
 
 ### Unsupported Telegram runtime reload
 
@@ -782,9 +795,9 @@ direct reload API for extension contexts.
 
 ### Durable versus ephemeral state
 
-Lease files, broker state, pending turns, pending media groups, cleanup intents,
-and reconnect-grace metadata are durable coordination state that survives
-ordinary runtime churn.
+Lease files, broker state, pending turns, queued-turn controls, pending media
+groups, cleanup intents, and reconnect-grace metadata are durable coordination
+state that survives ordinary runtime churn.
 Routes are durable only as active or reconnectable Telegram views; they should be
 removed when the connection lifecycle ends and any required topic cleanup has
 reached a retry-safe outcome.
