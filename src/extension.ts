@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { BROKER_DIR, BROKER_HEARTBEAT_MS, CLIENT_HEARTBEAT_MS, DISCONNECT_REQUESTS_DIR, LOCK_DIR, LOCK_PATH, STATE_PATH, TEMP_DIR } from "./shared/config.js";
+import { BROKER_DIR, BROKER_HEARTBEAT_MS, CLIENT_HEARTBEAT_MS, DISCONNECT_REQUESTS_DIR, LOCK_DIR, LOCK_PATH, SESSION_REPLACEMENT_HANDOFFS_DIR, STATE_PATH, TEMP_DIR } from "./shared/config.js";
 import type { ActiveTelegramTurn, BrokerLease, BrokerState, IpcEnvelope, ModelSummary, PendingTelegramTurn, AssistantFinalPayload, SessionRegistration, TelegramConfig, TelegramMediaGroupState, TelegramMessage, TelegramRoute } from "./shared/types.js";
 import { configureBrokerScope, readConfig, writeConfig } from "./shared/config.js";
 import { ActivityRenderer, ActivityReporter, type ActivityUpdatePayload } from "./broker/activity.js";
@@ -14,6 +14,7 @@ import { honorExplicitDisconnectRequestInBroker, unregisterSessionFromBroker, ma
 import { BrokerSessionRegistrationCoordinator, isStaleSessionConnectionError } from "./broker/session-registration.js";
 import { createRuntimeUpdateHandlers } from "./broker/updates.js";
 import { resolveAllowedAttachmentPath as resolveSafeAttachmentPath } from "./client/attachment-path.js";
+import { consumeSessionReplacementHandoffInBroker, hasMatchingSessionReplacementHandoff, isSessionReplacementReason, writeSessionReplacementHandoff, type SessionReplacementContext } from "./client/session-replacement.js";
 import { connectTelegramClient } from "./client/connection.js";
 import { ClientRuntime } from "./client/runtime.js";
 import { ClientAssistantFinalHandoff } from "./client/final-handoff.js";
@@ -54,6 +55,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	let clientHeartbeatTimer: ReturnType<typeof setInterval> | undefined;
 	let clientConnectionNonce = randomId("conn");
 	let clientConnectionStartedAtMs = now();
+	let sessionReplacementContext: SessionReplacementContext | undefined;
 	let clientReconnectInFlight = false;
 	let clientSocketPath = join(BROKER_DIR, `client-${ownerId}.sock`);
 	let activeClientSocketPath: string | undefined;
@@ -189,6 +191,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		retryPendingTurns: () => { void retryPendingTurns(); },
 		kickAssistantFinalLedger: () => assistantFinalLedger.kick(),
 		createTelegramTurnForSession: (messages, sessionIdForTurn) => buildTelegramTurnForSession(messages, sessionIdForTurn, downloadTelegramFile),
+		consumeReplacementHandoff: (state, registration) => consumeSessionReplacementHandoffInBroker({ dir: SESSION_REPLACEMENT_HANDOFFS_DIR, brokerState: state, registration }),
 		staleStandDownGraceMs: CLIENT_HEARTBEAT_MS * 2 + 500,
 	});
 	let updateHandlers!: ReturnType<typeof createRuntimeUpdateHandlers>;
@@ -452,6 +455,22 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			clearRequest: clearDisconnectRequest,
 		});
 	}
+	async function prepareSessionReplacementHandoff(event: { reason: "new" | "resume" | "fork"; targetSessionFile?: string }, ctx: ExtensionContext): Promise<boolean> {
+		const route = connectedRoute;
+		if (!route) return false;
+		await ensurePrivateDir(SESSION_REPLACEMENT_HANDOFFS_DIR);
+		await writeSessionReplacementHandoff({
+			dir: SESSION_REPLACEMENT_HANDOFFS_DIR,
+			reason: event.reason,
+			oldSessionId: sessionId,
+			oldSessionFile: ctx.sessionManager.getSessionFile(),
+			targetSessionFile: event.targetSessionFile,
+			route,
+			connectionNonce: clientConnectionNonce,
+			connectionStartedAtMs: clientConnectionStartedAtMs,
+		});
+		return true;
+	}
 	async function disconnectSessionRoute(mode: "explicit" | "shutdown" = "explicit"): Promise<void> {
 		const hadConnectedRoute = connectedRoute;
 		const request = makeDisconnectRequest(sessionId, mode === "explicit" ? hadConnectedRoute : undefined);
@@ -512,6 +531,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			activeTelegramTurn,
 			queuedTelegramTurns,
 			manualCompactionInProgress: manualCompactionQueue.isActive(),
+			replacement: sessionReplacementContext,
 		});
 	}
 	async function readLease(): Promise<BrokerLease | undefined> { return await readJson<BrokerLease>(LOCK_PATH); }
@@ -1069,6 +1089,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		unregisterSession,
 		markSessionOffline,
 		disconnectSessionRoute,
+		prepareSessionReplacementHandoff,
 		stopClientServer,
 		shutdownClientRoute,
 		stopBroker,
@@ -1082,14 +1103,22 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		onRetryMessageStart: () => activeTurnFinalizer.onRetryMessageStart(),
 		startNextTelegramTurn,
 		drainDeferredCompactionTurns: () => manualCompactionQueue.drainDeferredIntoActiveTurn(),
-		onSessionStart: async (ctx) => {
+		onSessionStart: async (ctx, event) => {
 			setLatestContext(ctx);
 			config = await readConfig();
 			applyBrokerScope();
 			await ensurePrivateDir(BROKER_DIR);
 			await ensurePrivateDir(DISCONNECT_REQUESTS_DIR);
+			await ensurePrivateDir(SESSION_REPLACEMENT_HANDOFFS_DIR);
 			await ensurePrivateDir(assistantFinalHandoff.pendingFinalsDir());
 			await ensurePrivateDir(TEMP_DIR);
+			const replacementContext = isSessionReplacementReason(event.reason)
+				? { reason: event.reason, previousSessionFile: event.previousSessionFile, sessionFile: ctx.sessionManager.getSessionFile() }
+				: undefined;
+			sessionReplacementContext = replacementContext;
+			if (replacementContext && config.botToken && await hasMatchingSessionReplacementHandoff({ dir: SESSION_REPLACEMENT_HANDOFFS_DIR, context: replacementContext })) {
+				await connectTelegram(ctx, false);
+			}
 		},
 		clearMediaGroups: () => {
 			for (const state of mediaGroups.values()) if (state.flushTimer) clearTimeout(state.flushTimer);

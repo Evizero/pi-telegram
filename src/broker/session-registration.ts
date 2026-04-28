@@ -18,6 +18,7 @@ export interface BrokerSessionRegistrationDeps {
 	retryPendingTurns: () => void;
 	kickAssistantFinalLedger: () => void;
 	createTelegramTurnForSession: (messages: TelegramMessage[], sessionIdForTurn: string) => Promise<PendingTelegramTurn>;
+	consumeReplacementHandoff?: (brokerState: BrokerState, registration: SessionRegistration) => Promise<boolean>;
 	staleStandDownGraceMs: number;
 }
 
@@ -42,6 +43,7 @@ export class BrokerSessionRegistrationCoordinator {
 		let previous = brokerState.sessions[registration.sessionId];
 		if (previous && isStaleSessionConnection(previous, registration)) throw new Error("stale_session_connection");
 		await this.deps.honorPendingDisconnectRequest(registration.sessionId);
+		await this.deps.consumeReplacementHandoff?.(brokerState, registration);
 		previous = brokerState.sessions[registration.sessionId];
 		if (previous && isStaleSessionConnection(previous, registration)) throw new Error("stale_session_connection");
 		const replacement = previous

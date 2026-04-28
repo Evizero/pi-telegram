@@ -243,6 +243,12 @@ export interface TelegramMediaGroupState {
 	flushTimer?: ReturnType<typeof setTimeout>;
 }
 
+export interface SessionReplacementRegistrationContext {
+	reason: "new" | "resume" | "fork";
+	previousSessionFile?: string;
+	sessionFile?: string;
+}
+
 export interface SessionRegistration {
 	sessionId: string;
 	ownerId: string;
@@ -265,6 +271,7 @@ export interface SessionRegistration {
 	staleStandDownRequestedAtMs?: number;
 	clientSocketPath: string;
 	topicName: string;
+	replacement?: SessionReplacementRegistrationContext;
 }
 
 export interface TelegramRoute {

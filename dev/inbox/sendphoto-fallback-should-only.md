@@ -3,8 +3,8 @@ title: "sendPhoto fallback should only handle photo contract failures"
 type: "bug"
 created: "2026-04-25"
 author: "telegram-voice"
-status: "open"
-planned_as: []
+status: "planned"
+planned_as: ["restrict-sendphoto-fallback-to-photo"]
 ---
 Source: Telegram voice note transcribed as: “Read the inbox item skill and create inbox items accordingly.”
 

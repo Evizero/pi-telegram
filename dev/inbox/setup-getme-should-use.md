@@ -3,8 +3,8 @@ title: "Setup getMe should use retry-aware Telegram API path"
 type: "bug"
 created: "2026-04-25"
 author: "telegram-voice"
-status: "open"
-planned_as: []
+status: "planned"
+planned_as: ["validate-setup-getme-through-retry"]
 ---
 Source: Telegram voice note transcribed as: “Read the inbox item skill and create inbox items accordingly.”
 

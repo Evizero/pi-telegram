@@ -39,6 +39,7 @@ export interface RuntimePiHooksDeps {
 	unregisterSession: (sessionId: string) => Promise<unknown>;
 	markSessionOffline: (sessionId: string) => Promise<unknown>;
 	disconnectSessionRoute: (mode?: "explicit" | "shutdown") => Promise<void>;
+	prepareSessionReplacementHandoff: (event: { reason: "new" | "resume" | "fork"; targetSessionFile?: string }, ctx: ExtensionContext) => Promise<boolean>;
 	stopClientServer: () => Promise<void>;
 	shutdownClientRoute: () => Promise<void> | void;
 	stopBroker: () => Promise<void>;
@@ -52,7 +53,7 @@ export interface RuntimePiHooksDeps {
 	onRetryMessageStart: () => void;
 	startNextTelegramTurn: () => void;
 	drainDeferredCompactionTurns: () => void;
-	onSessionStart: (ctx: ExtensionContext, reason: "startup" | "reload" | "new" | "resume" | "fork") => Promise<void>;
+	onSessionStart: (ctx: ExtensionContext, event: { reason: "startup" | "reload" | "new" | "resume" | "fork"; previousSessionFile?: string }) => Promise<void>;
 	clearMediaGroups: () => void;
 }
 
@@ -159,7 +160,7 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 
 	pi.on("session_start", async (event, ctx) => {
 		deps.setLatestCtx(ctx);
-		await deps.onSessionStart(ctx, event.reason);
+		await deps.onSessionStart(ctx, event);
 	});
 
 	pi.on("input", async (event) => {
@@ -194,10 +195,21 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 		return { action: "continue" };
 	});
 
-	pi.on("session_shutdown", async () => {
+	pi.on("session_shutdown", async (event, ctx) => {
 		deps.clearMediaGroups();
 		try {
-			await deps.disconnectSessionRoute("shutdown");
+			if (event.reason === "new" || event.reason === "resume" || event.reason === "fork") {
+				const handoffPrepared = await deps.prepareSessionReplacementHandoff({ reason: event.reason, targetSessionFile: event.targetSessionFile }, ctx);
+				if (handoffPrepared) {
+					try {
+						await deps.shutdownClientRoute();
+					} finally {
+						await deps.stopClientServer();
+					}
+				} else await deps.disconnectSessionRoute("shutdown");
+			} else {
+				await deps.disconnectSessionRoute("shutdown");
+			}
 		} finally {
 			await deps.stopBroker();
 		}

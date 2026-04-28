@@ -3,8 +3,8 @@ title: "Write token-bearing JSON with private permissions from creation"
 type: "bug"
 created: "2026-04-25"
 author: "telegram-voice"
-status: "open"
-planned_as: []
+status: "planned"
+planned_as: ["create-token-json-with-private"]
 ---
 Source: Telegram voice note transcribed as: “Read the inbox item skill and create inbox items accordingly.”
 

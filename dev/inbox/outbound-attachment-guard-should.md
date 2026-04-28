@@ -3,8 +3,8 @@ title: "Outbound attachment guard should block cloud credentials"
 type: "bug"
 created: "2026-04-25"
 author: "telegram-voice"
-status: "open"
-planned_as: []
+status: "planned"
+planned_as: ["expand-outbound-attachment-secret-path"]
 ---
 Source: Telegram voice note transcribed as: “Read the inbox item skill and create inbox items accordingly.”
 

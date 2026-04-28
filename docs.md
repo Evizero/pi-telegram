@@ -407,8 +407,9 @@ Important constraints:
 Bridge policy:
 
 - Delete topics/routes when a connected pi session explicitly disconnects,
-  emits normal session shutdown, or remains unreachable after the bounded
-  automatic reconnect grace period.
+  reaches terminal shutdown that is not continued by a successful replacement
+  handoff, or remains unreachable after the bounded automatic reconnect grace
+  period.
 - Do not delete a route during a still-retryable reconnect window for transient
   network, IPC, or broker-turnover failures.
 - Delete private-chat bot topics as well as supergroup topics when removing a

@@ -3,8 +3,8 @@ title: "Support slash-new without losing Telegram connection"
 type: "request"
 created: "2026-04-27"
 author: "Christof Salis"
-status: "open"
-planned_as: []
+status: "planned"
+planned_as: ["preserve-telegram-connection-across"]
 ---
 Voice-note transcript (2026-04-27): "Can you investigate, is there a way we could support a slash new command without losing connection?"
 

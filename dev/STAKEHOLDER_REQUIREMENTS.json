@@ -343,22 +343,23 @@
       "id": "StRS-connection-scoped-telegram-view",
       "origin": "imposed",
       "label": "Clean connection-scoped views",
-      "statement": "Remote pi operators shall be able to treat Telegram topics and routes as temporary connection-scoped views that are cleaned up when a pi session disconnects, closes, dies, or fails to reconnect automatically.",
-      "rationale": "The project owner clarified that Telegram is a temporary interface into a local pi session, not the durable session history store; native pi history remains on the machine and can be resumed locally before creating a new Telegram view.",
+      "statement": "Remote pi operators shall be able to treat Telegram topics and routes as temporary connection-scoped views that are cleaned up when a pi session explicitly disconnects, terminally closes without a successful replacement handoff, dies, or fails to reconnect automatically.",
+      "rationale": "The project owner clarified that Telegram is a temporary interface into local pi work, not the durable session history store. A terminal disconnect or close should remove the Telegram view, while user-initiated pi session replacement can continue the same remote supervision relationship when the replacement starts successfully.",
       "stakeholders": [
         "remote-pi-operator"
       ],
       "priority": 1,
       "validation": {
         "method": "review",
-        "criteria": "Review the session lifecycle design and behavior to confirm Telegram topics/routes disappear after explicit disconnect, process close, crash/death, or expired automatic reconnect grace, while native pi /resume can continue local work and create a new Telegram topic later."
+        "criteria": "Review the session lifecycle design and behavior to confirm Telegram topics/routes disappear after explicit disconnect, terminal process close, crash/death, or expired automatic reconnect grace, while successful user-initiated replacement can preserve Telegram reachability for the replacement session without making topics durable session history."
       },
       "status": "draft",
       "created": "2026-04-25",
-      "updated": "2026-04-25",
+      "updated": "2026-04-28",
       "sources": {
         "inbox": [
-          "telegram-topics-not-cleaned"
+          "telegram-topics-not-cleaned",
+          "support-slash-new-without"
         ],
         "references": [
           "telegram-views-are-connection-scoped"

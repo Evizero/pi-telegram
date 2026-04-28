@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { topicNameFor } from "../shared/format.js";
-import type { ActiveTelegramTurn, PendingTelegramTurn, SessionRegistration } from "../shared/types.js";
+import type { ActiveTelegramTurn, PendingTelegramTurn, SessionRegistration, SessionReplacementRegistrationContext } from "../shared/types.js";
 import { execGit, now } from "../shared/utils.js";
 
 export async function collectSessionRegistration(options: {
@@ -18,8 +18,9 @@ export async function collectSessionRegistration(options: {
 	activeTelegramTurn?: ActiveTelegramTurn;
 	queuedTelegramTurns: PendingTelegramTurn[];
 	manualCompactionInProgress?: boolean;
+	replacement?: SessionReplacementRegistrationContext;
 }): Promise<SessionRegistration> {
-	const { ctx, sessionId, ownerId, startedAtMs, connectionStartedAtMs, connectionNonce, clientSocketPath, piSessionName, activeTelegramTurn, queuedTelegramTurns, manualCompactionInProgress } = options;
+	const { ctx, sessionId, ownerId, startedAtMs, connectionStartedAtMs, connectionNonce, clientSocketPath, piSessionName, activeTelegramTurn, queuedTelegramTurns, manualCompactionInProgress, replacement } = options;
 	const gitRoot = await execGit(ctx.cwd, ["rev-parse", "--show-toplevel"]);
 	const gitBranch = await execGit(ctx.cwd, ["branch", "--show-current"]);
 	const gitHead = await execGit(ctx.cwd, ["rev-parse", "--short", "HEAD"]);
@@ -45,6 +46,7 @@ export async function collectSessionRegistration(options: {
 		connectionNonce,
 		clientSocketPath,
 		topicName: "",
+		replacement,
 	};
 	return { ...base, topicName: topicNameFor(base) };
 }

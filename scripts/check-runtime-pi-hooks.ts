@@ -89,6 +89,7 @@ function baseDeps(overrides: Partial<RuntimePiHooksDeps> = {}): RuntimePiHooksDe
 		unregisterSession: async () => undefined,
 		markSessionOffline: async () => undefined,
 		disconnectSessionRoute: async () => undefined,
+		prepareSessionReplacementHandoff: async () => false,
 		stopClientServer: async () => undefined,
 		shutdownClientRoute: () => undefined,
 		stopBroker: async () => undefined,
@@ -139,6 +140,7 @@ async function checkDeferredAgentEndClearsAbortCallback(): Promise<void> {
 		unregisterSession: async () => undefined,
 		markSessionOffline: async () => undefined,
 		disconnectSessionRoute: async () => undefined,
+		prepareSessionReplacementHandoff: async () => false,
 		stopClientServer: async () => undefined,
 		shutdownClientRoute: () => undefined,
 		stopBroker: async () => undefined,
@@ -201,6 +203,7 @@ async function checkLocalInputFlushesDeferredWithoutStartingQueuedTelegramTurn()
 		unregisterSession: async () => undefined,
 		markSessionOffline: async () => undefined,
 		disconnectSessionRoute: async () => undefined,
+		prepareSessionReplacementHandoff: async () => false,
 		stopClientServer: async () => undefined,
 		shutdownClientRoute: () => undefined,
 		stopBroker: async () => undefined,
@@ -257,6 +260,7 @@ async function checkLocalInputDuringLiveRetryDoesNotFlushDeferredTurn(): Promise
 		unregisterSession: async () => undefined,
 		markSessionOffline: async () => undefined,
 		disconnectSessionRoute: async () => undefined,
+		prepareSessionReplacementHandoff: async () => false,
 		stopClientServer: async () => undefined,
 		shutdownClientRoute: () => undefined,
 		stopBroker: async () => undefined,
@@ -486,6 +490,7 @@ async function checkTelegramAttachIsAtomicOnValidationFailure(): Promise<void> {
 			unregisterSession: async () => undefined,
 			markSessionOffline: async () => undefined,
 			disconnectSessionRoute: async () => undefined,
+			prepareSessionReplacementHandoff: async () => false,
 			stopClientServer: async () => undefined,
 			shutdownClientRoute: () => undefined,
 			stopBroker: async () => undefined,
@@ -546,6 +551,7 @@ async function checkSessionShutdownLetsRouteTeardownOwnQueueDrainingAndStillStop
 			disconnectCalls += 1;
 			throw new Error("disconnect failed");
 		},
+		prepareSessionReplacementHandoff: async () => false,
 		stopClientServer: async () => undefined,
 		shutdownClientRoute: () => undefined,
 		stopBroker: async () => { stopBrokerCalls += 1; },
@@ -567,6 +573,67 @@ async function checkSessionShutdownLetsRouteTeardownOwnQueueDrainingAndStillStop
 	assert.equal(disconnectCalls, 1);
 	assert.equal(stopBrokerCalls, 1);
 	assert.equal(setQueuedCalls, 0);
+}
+
+async function checkReplacementShutdownUsesHandoffInsteadOfRouteCleanup(): Promise<void> {
+	const { handlers, pi } = buildPiHarness();
+	let disconnectCalls = 0;
+	let handoffCalls = 0;
+	let shutdownClientCalls = 0;
+	let stopClientCalls = 0;
+	let stopBrokerCalls = 0;
+	registerRuntimePiHooks(pi, baseDeps({
+		disconnectSessionRoute: async () => { disconnectCalls += 1; },
+		prepareSessionReplacementHandoff: async (event) => {
+			handoffCalls += 1;
+			assert.deepEqual(event, { reason: "new", targetSessionFile: "/tmp/new-session.jsonl" });
+			return true;
+		},
+		shutdownClientRoute: async () => { shutdownClientCalls += 1; },
+		stopClientServer: async () => { stopClientCalls += 1; },
+		stopBroker: async () => { stopBrokerCalls += 1; },
+	}));
+
+	await (handlers.get("session_shutdown")?.[0]?.({ reason: "new", targetSessionFile: "/tmp/new-session.jsonl" }, { ui: { theme: {} } } as ExtensionContext) ?? Promise.resolve());
+	assert.equal(handoffCalls, 1);
+	assert.equal(shutdownClientCalls, 1);
+	assert.equal(stopClientCalls, 1);
+	assert.equal(disconnectCalls, 0);
+	assert.equal(stopBrokerCalls, 1);
+}
+
+async function checkReplacementShutdownStopsClientWhenRouteShutdownFails(): Promise<void> {
+	const { handlers, pi } = buildPiHarness();
+	let stopClientCalls = 0;
+	let stopBrokerCalls = 0;
+	registerRuntimePiHooks(pi, baseDeps({
+		prepareSessionReplacementHandoff: async () => true,
+		shutdownClientRoute: async () => { throw new Error("route shutdown failed"); },
+		stopClientServer: async () => { stopClientCalls += 1; },
+		stopBroker: async () => { stopBrokerCalls += 1; },
+	}));
+
+	await assert.rejects(() => handlers.get("session_shutdown")?.[0]?.({ reason: "resume" }, { ui: { theme: {} } } as ExtensionContext) as Promise<unknown>, /route shutdown failed/);
+	assert.equal(stopClientCalls, 1);
+	assert.equal(stopBrokerCalls, 1);
+}
+
+async function checkReplacementShutdownFallsBackWhenNoHandoff(): Promise<void> {
+	const { handlers, pi } = buildPiHarness();
+	let disconnectCalls = 0;
+	let shutdownClientCalls = 0;
+	registerRuntimePiHooks(pi, baseDeps({
+		disconnectSessionRoute: async (mode) => {
+			disconnectCalls += 1;
+			assert.equal(mode, "shutdown");
+		},
+		prepareSessionReplacementHandoff: async () => false,
+		shutdownClientRoute: async () => { shutdownClientCalls += 1; },
+	}));
+
+	await (handlers.get("session_shutdown")?.[0]?.({ reason: "fork" }, { ui: { theme: {} } } as ExtensionContext) ?? Promise.resolve());
+	assert.equal(disconnectCalls, 1);
+	assert.equal(shutdownClientCalls, 0);
 }
 
 async function checkImageOnlyLocalInputStillMirrorsToTelegram(): Promise<void> {
@@ -603,6 +670,7 @@ async function checkImageOnlyLocalInputStillMirrorsToTelegram(): Promise<void> {
 		unregisterSession: async () => undefined,
 		markSessionOffline: async () => undefined,
 		disconnectSessionRoute: async () => undefined,
+		prepareSessionReplacementHandoff: async () => false,
 		stopClientServer: async () => undefined,
 		shutdownClientRoute: () => undefined,
 		stopBroker: async () => undefined,
@@ -635,5 +703,8 @@ await checkAwaitingFinalHandoffKeepsActivityStateForSameActiveTurn();
 await checkAssistantTextDoesNotWaitForBlockedTypingStartup();
 await checkTelegramAttachIsAtomicOnValidationFailure();
 await checkSessionShutdownLetsRouteTeardownOwnQueueDrainingAndStillStopsBroker();
+await checkReplacementShutdownUsesHandoffInsteadOfRouteCleanup();
+await checkReplacementShutdownStopsClientWhenRouteShutdownFails();
+await checkReplacementShutdownFallsBackWhenNoHandoff();
 await checkImageOnlyLocalInputStillMirrorsToTelegram();
 console.log("Runtime pi hook checks passed");

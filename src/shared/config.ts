@@ -1,9 +1,8 @@
-import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
 import type { TelegramConfig } from "./types.js";
-import { readJson, writeJson } from "./utils.js";
+import { ensurePrivateDir, readJson, writeJson } from "./utils.js";
 
 export const CONFIG_PATH = join(homedir(), ".pi", "agent", "telegram.json");
 const BASE_BROKER_DIR = join(homedir(), ".pi", "agent", "telegram-broker");
@@ -14,6 +13,7 @@ export let LOCK_PATH = join(LOCK_DIR, "lock.json");
 export let STATE_PATH = join(BROKER_DIR, "state.json");
 export let TOKEN_PATH = join(BROKER_DIR, "broker-token");
 export let DISCONNECT_REQUESTS_DIR = join(BROKER_DIR, "disconnect-requests");
+export let SESSION_REPLACEMENT_HANDOFFS_DIR = join(BROKER_DIR, "session-replacement-handoffs");
 
 function applyBrokerDir(baseBrokerDir: string, botId?: number): void {
 	BROKER_DIR = botId === undefined ? baseBrokerDir : join(baseBrokerDir, `bot-${botId}`);
@@ -23,6 +23,7 @@ function applyBrokerDir(baseBrokerDir: string, botId?: number): void {
 	STATE_PATH = join(BROKER_DIR, "state.json");
 	TOKEN_PATH = join(BROKER_DIR, "broker-token");
 	DISCONNECT_REQUESTS_DIR = join(BROKER_DIR, "disconnect-requests");
+	SESSION_REPLACEMENT_HANDOFFS_DIR = join(BROKER_DIR, "session-replacement-handoffs");
 }
 
 export function configureBrokerScope(botId?: number): void {
@@ -47,6 +48,7 @@ export const BROKER_LEASE_MS = 10_000;
 export const BROKER_HEARTBEAT_MS = 2_000;
 export const CLIENT_HEARTBEAT_MS = 3_000;
 export const SESSION_OFFLINE_MS = 15_000;
+export const SESSION_REPLACEMENT_HANDOFF_TTL_MS = SESSION_OFFLINE_MS;
 export const SESSION_LIST_OFFLINE_GRACE_MS = 5 * 60 * 1000;
 export const MODEL_LIST_TTL_MS = 30 * 60 * 1000;
 export const TELEGRAM_TEMP_SESSION_ORPHAN_TTL_MS = 24 * 60 * 60 * 1000;
@@ -89,7 +91,7 @@ export async function readConfig(): Promise<TelegramConfig> {
 }
 
 export async function writeConfig(config: TelegramConfig): Promise<void> {
-	await mkdir(join(homedir(), ".pi", "agent"), { recursive: true });
+	await ensurePrivateDir(join(homedir(), ".pi", "agent"));
 	await writeJson(CONFIG_PATH, {
 		version: 2,
 		bot_token: config.botToken,

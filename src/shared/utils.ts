@@ -30,7 +30,7 @@ export async function readJson<T>(path: string): Promise<T | undefined> {
 export async function writeJson(path: string, value: unknown): Promise<void> {
 	await mkdir(dirname(path), { recursive: true });
 	const tempPath = `${path}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-	await writeFile(tempPath, JSON.stringify(value, null, "\t") + "\n", "utf8");
+	await writeFile(tempPath, JSON.stringify(value, null, "\t") + "\n", { encoding: "utf8", mode: 0o600, flag: "wx" });
 	await chmod(tempPath, 0o600).catch(() => undefined);
 	await rename(tempPath, path);
 }

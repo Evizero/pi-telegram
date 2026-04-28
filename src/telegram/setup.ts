@@ -1,9 +1,11 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { randomInt } from "node:crypto";
 
-import type { TelegramApiResponse, TelegramConfig, TelegramUser } from "../shared/types.js";
-import { hashSecret, now } from "../shared/utils.js";
+import type { TelegramConfig, TelegramUser } from "../shared/types.js";
+import { errorMessage, hashSecret, now } from "../shared/utils.js";
 import { formatPairingPin, PAIRING_PIN_TTL_MS } from "../shared/pairing.js";
+import { callTelegram, TelegramApiError } from "./api.js";
+import { withTelegramRetry } from "./retry.js";
 
 export interface TelegramConfigPromptOptions {
 	setupInProgress: boolean;
@@ -30,16 +32,17 @@ export async function promptForTelegramConfig(ctx: ExtensionContext, config: Tel
 			allowedUserId: undefined,
 			allowedChatId: undefined,
 		};
-		const response = await fetch(`https://api.telegram.org/bot${nextConfig.botToken}/getMe`);
-		const data = (await response.json()) as TelegramApiResponse<TelegramUser>;
-		if (!data.ok || !data.result) {
-			ctx.ui.notify(data.description || "Invalid Telegram bot token", "error");
+		let bot: TelegramUser;
+		try {
+			bot = await withTelegramRetry((signal) => callTelegram<TelegramUser>(nextConfig.botToken, "getMe", {}, { signal }));
+		} catch (error) {
+			ctx.ui.notify(error instanceof TelegramApiError ? (error.description || "Invalid Telegram bot token") : errorMessage(error), "error");
 			return false;
 		}
-		nextConfig.botId = data.result.id;
-		nextConfig.botUsername = data.result.username;
+		nextConfig.botId = bot.id;
+		nextConfig.botUsername = bot.username;
 		options.configureBrokerScope(nextConfig.botId);
-		nextConfig.topicsEnabled = data.result.has_topics_enabled;
+		nextConfig.topicsEnabled = bot.has_topics_enabled;
 		const pairingPin = formatPairingPin(randomInt(10_000));
 		const pairingStartedAtMs = now();
 		nextConfig.pairingCodeHash = hashSecret(pairingPin);

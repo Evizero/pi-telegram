@@ -49,10 +49,11 @@ The strongest drivers come directly from the intended purpose and requirements:
 - one paired Telegram user controls the bridge, and unauthorized updates must
   fail closed (`StRS-paired-user-control`, `SyRS-pair-one-user`,
   `SyRS-reject-unauthorized-telegram`);
-- multiple local sessions may be connected at once, so session identity and
-  routing must be explicit (`StRS-multi-session-supervision`,
-  `SyRS-register-session-route`, `SyRS-list-and-select-sessions`,
-  `SyRS-topic-routes-per-session`);
+- multiple local sessions may be connected at once, so session identity,
+  replacement continuity, and routing must be explicit
+  (`StRS-multi-session-supervision`, `SyRS-register-session-route`,
+  `SyRS-session-replacement-route-continuity`,
+  `SyRS-list-and-select-sessions`, `SyRS-topic-routes-per-session`);
 - busy-turn control must distinguish steering from follow-up work
   (`StRS-busy-turn-intent`, `SyRS-busy-message-steers`,
   `SyRS-follow-queues-next-turn`);
@@ -113,10 +114,12 @@ chunk-aware preview finalization, and serialized persistence/flush paths.
 
 Telegram topics and routes are temporary views into connected local pi sessions,
 not the durable session history.
-The architecture should preserve routes only while the session remains connected
-or plausibly recoverable through a bounded automatic reconnect path; explicit
-disconnect, normal process close, crash/death after reconnect grace, and
-successful cleanup should end the Telegram view without deleting local pi history.
+The architecture should preserve routes while the session remains connected,
+while it is plausibly recoverable through a bounded automatic reconnect path, or
+while a user-initiated pi session replacement is handing Telegram reachability to
+the replacement session. Explicit disconnect, terminal process close,
+crash/death after reconnect grace, and successful cleanup should end the
+Telegram view without deleting local pi history.
 
 Current-state clarification: pending turns, media groups, visible preview
 message references, and assistant-final payloads are persisted in `BrokerState`
@@ -638,8 +641,26 @@ Registration creates or reuses routes under a per-session lock so concurrent
 heartbeat and registration do not create duplicate topics.
 
 This scenario protects `SyRS-extension-owned-broker`,
-`SyRS-register-session-route`, `SyRS-list-and-select-sessions`, and
-`SyRS-topic-routes-per-session`.
+`SyRS-register-session-route`, `SyRS-session-replacement-route-continuity`,
+`SyRS-list-and-select-sessions`, and `SyRS-topic-routes-per-session`.
+
+### Session replacement handoff
+
+A connected local pi session is replaced through native `/new`, `/resume`, or
+`/fork`.
+The old extension runtime receives a replacement shutdown reason, records a
+bounded handoff instead of treating the route as finally disconnected, and tears
+down only the runtime-local resources that cannot survive rebinding.
+The replacement runtime receives `session_start` with the replacement reason and
+consumes that handoff to reconnect or retarget Telegram reachability for the new
+logical session.
+If replacement does not complete, or if the user explicitly disconnects or the
+process exits normally, existing route cleanup and reconnect-grace rules still
+own the Telegram view.
+
+This scenario protects `SyRS-session-replacement-route-continuity`,
+`SyRS-cleanup-route-on-close`, and
+`SyRS-cleanup-route-after-reconnect-grace`.
 
 ### Telegram update to pi turn
 
@@ -740,19 +761,24 @@ merely to the current extension runtime instance.
 Ordinary extension/runtime churn tears down in-memory closures, IPC sockets, and
 broker/client process state, but it should not by itself create a duplicate
 Telegram route while the reconnect window is still active.
-After explicit disconnect, normal shutdown, or reconnect-grace expiry, the old
+After explicit disconnect, terminal shutdown, or reconnect-grace expiry, the old
 Telegram route is no longer the session's identity; a later native `/resume` plus
 Telegram connect may create a new route/topic over the resumed local history.
+For user-initiated session replacement, the route may instead be carried forward
+through a bounded handoff to the replacement runtime so `/new`, `/resume`, or
+`/fork` continues supervision rather than ending it.
 
 Runtime instance identifiers are appropriate for ephemeral concerns such as IPC
 socket filenames, owner IDs, leases, and heartbeat liveness.
 Logical session identifiers are appropriate for broker registration, bounded
-route reuse, and selector choices.
+route reuse, replacement handoff, and selector choices.
 Current implementation keeps those identities separate so offline-and-reconnect
-can reuse route state, but it currently preserves routes too long after session
-close/death; cleanup after the reconnect grace is the target lifecycle.
-Telegram-triggered runtime reload and reload reattachment are intentionally
-unsupported until pi exposes a safe direct reload API for extension contexts.
+can reuse route state. Session replacement handoff is a planned extension of the
+same boundary: replacement should continue Telegram reachability only when the
+replacement runtime starts successfully, while terminal close/death still cleans
+up after the appropriate lifecycle boundary. Telegram-triggered runtime reload
+and reload reattachment are intentionally unsupported until pi exposes a safe
+direct reload API for extension contexts.
 
 ### Durable versus ephemeral state
 

@@ -524,7 +524,7 @@ The implementation must migrate existing `telegram.json` without deleting it. On
   - Behavior: when true, `telegram_attach` may send any regular file readable by the pi process.
 
 - `security.sensitive_path_denylist` (array of strings)
-  - Default: `[".env", ".env.*", ".ssh/**", ".aws/**", "id_rsa", "id_ed25519"]`.
+  - Default: `[".env", ".env.*", ".ssh/**", ".aws/**", ".azure/**", ".config/gcloud/**", ".kube/**", "id_rsa", "id_ed25519", "application_default_credentials.json"]`.
   - Validation: glob-like patterns matched against basename and normalized path.
   - Reload: dynamic.
 
@@ -1081,7 +1081,7 @@ Required tool:
 Required event hooks:
 
 - `session_start`: load config, initialize status, capture initial model catalog from `ctx.modelRegistry.getAvailable()` and current `ctx.model`.
-- `session_shutdown`: unregister, stop client endpoint, stop broker if leader.
+- `session_shutdown`: unregister terminal shutdowns, record bounded handoff for successful replacement flows, stop client endpoint, stop broker if leader.
 - `model_select`: update Session Client model snapshot and notify Broker Leader through the next heartbeat.
 - `before_agent_start`: append Telegram system prompt guidance for Telegram-originated turns.
 - `agent_start`: mark Session Client busy.
@@ -1323,7 +1323,7 @@ Invariant 9: `telegram_attach` must enforce attachment roots, sensitive path den
 - Reject inbound Telegram files larger than `telegram.max_inbound_file_bytes` before download when Telegram provides `file_size`; after download, delete and reject files that exceed the limit.
 - Reject outbound `telegram_attach` files larger than `telegram.max_outbound_attachment_bytes`.
 - Reject outbound `telegram_attach` paths outside `security.attachment_roots` unless `security.unrestricted_attachments` is true.
-- Reject outbound `telegram_attach` paths matching `security.sensitive_path_denylist` unless `security.unrestricted_attachments` is true.
+- Reject outbound `telegram_attach` paths matching `security.sensitive_path_denylist` unless `security.unrestricted_attachments` is true; default sensitive paths include common shell, SSH, AWS, Azure, Google Cloud, and Kubernetes credential locations.
 
 ## 12. Reference Algorithms
 

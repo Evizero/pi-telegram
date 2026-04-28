@@ -234,6 +234,7 @@ async function checkAgentStartHookDrainsDeferredCompactionTurns(): Promise<void>
 		unregisterSession: async () => undefined,
 		markSessionOffline: async () => undefined,
 		disconnectSessionRoute: async () => undefined,
+		prepareSessionReplacementHandoff: async () => false,
 		stopClientServer: async () => undefined,
 		shutdownClientRoute: () => undefined,
 		stopBroker: async () => undefined,

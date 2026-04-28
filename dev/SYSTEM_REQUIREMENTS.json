@@ -368,7 +368,12 @@
       },
       "status": "draft",
       "created": "2026-04-25",
-      "updated": "2026-04-25"
+      "updated": "2026-04-28",
+      "sources": {
+        "inbox": [
+          "setup-getme-should-use"
+        ]
+      }
     },
     {
       "id": "SyRS-webhook-before-polling",
@@ -443,7 +448,12 @@
       },
       "status": "draft",
       "created": "2026-04-25",
-      "updated": "2026-04-25"
+      "updated": "2026-04-28",
+      "sources": {
+        "inbox": [
+          "outbound-attachment-guard-should"
+        ]
+      }
     },
     {
       "id": "SyRS-outbound-photo-document-rules",
@@ -461,7 +471,12 @@
       },
       "status": "draft",
       "created": "2026-04-25",
-      "updated": "2026-04-25"
+      "updated": "2026-04-28",
+      "sources": {
+        "inbox": [
+          "sendphoto-fallback-should-only"
+        ]
+      }
     },
     {
       "id": "SyRS-local-authority-boundary",
@@ -569,13 +584,19 @@
         "StRS-attachment-exchange"
       ],
       "rationale": "A paired Telegram bridge controls powerful local sessions; leaking tokens, socket paths, credentials, or broker state would weaken both authorization and local-first trust.",
-      "acceptance_criteria": "Inspection confirms persisted config/state and IPC surfaces use private local storage where applicable, bot tokens and credentials are not logged or echoed to Telegram in normal operation, and downloaded Telegram files are stored with private permissions.",
+      "acceptance_criteria": "Inspection or tests confirm persisted config/state and IPC surfaces use private local storage where applicable; token-bearing JSON and broker-state temp files are created with restrictive permissions before secret bytes are written; bot tokens and credentials are not logged or echoed to Telegram in normal operation; and downloaded Telegram files are stored with private permissions.",
       "verification": {
-        "method": "inspection"
+        "method": "test"
       },
       "status": "draft",
       "created": "2026-04-25",
-      "updated": "2026-04-25"
+      "updated": "2026-04-28",
+      "sources": {
+        "inbox": [
+          "write-token-bearing-json",
+          "outbound-attachment-guard-should"
+        ]
+      }
     },
     {
       "id": "SyRS-inbound-attachment-untrusted",
@@ -735,20 +756,20 @@
       "id": "SyRS-cleanup-route-on-close",
       "origin": "derived",
       "label": "Clean route on close",
-      "statement": "The system shall unregister a connected pi session and remove its Telegram route and topic when the session explicitly disconnects or emits a normal session shutdown.",
+      "statement": "The system shall unregister a connected pi session and remove its Telegram route and topic when the session explicitly disconnects or reaches a terminal shutdown that is not being continued by a successful session-replacement handoff.",
       "traces_to": [
         "StRS-connection-scoped-telegram-view",
         "StRS-session-lifecycle-control",
         "StRS-multi-session-supervision"
       ],
       "rationale": "A deliberate disconnect or process close ends the Telegram view; unrelated sessions must remain connected and local pi history remains resumable outside Telegram.",
-      "acceptance_criteria": "Tests show /telegram-disconnect, Telegram /disconnect, and a normal pi session_shutdown remove only the target session route, request deleteForumTopic for topic routes, stop target typing/turn state, and leave unrelated sessions/routes reachable.",
+      "acceptance_criteria": "Tests show /telegram-disconnect, Telegram /disconnect, and terminal pi session_shutdown remove only the target session route, request deleteForumTopic for topic routes, stop target typing/turn state, and leave unrelated sessions/routes reachable, while replacement-session shutdown reasons do not prematurely delete a route that is handed to the replacement session.",
       "verification": {
         "method": "test"
       },
       "status": "draft",
       "created": "2026-04-25",
-      "updated": "2026-04-25",
+      "updated": "2026-04-28",
       "sources": {
         "inbox": [
           "telegram-topics-not-cleaned"
@@ -955,6 +976,31 @@
       "sources": {
         "inbox": [
           "telegram-attachment-tmp-cleanup"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-session-replacement-route-continuity",
+      "origin": "derived",
+      "label": "Preserve route across replacement",
+      "statement": "The system shall distinguish user-initiated pi session replacement from terminal shutdown and preserve Telegram reachability for the replacement session when the replacement starts successfully.",
+      "traces_to": [
+        "StRS-session-lifecycle-control",
+        "StRS-remote-session-supervision",
+        "StRS-multi-session-supervision",
+        "StRS-connection-scoped-telegram-view"
+      ],
+      "rationale": "Remote supervision should survive local pi /new, /resume, or /fork replacement flows when the operator is continuing work rather than ending the Telegram view, while explicit disconnect and true process close still clean up connection-scoped topics.",
+      "acceptance_criteria": "Tests or demonstration show a connected session that enters a successful new/resume/fork replacement records a bounded handoff, avoids treating the old runtime shutdown as final route cleanup, and reconnects or retargets Telegram routing to the replacement session without disrupting unrelated sessions; cancelled or failed replacement and ordinary quit/disconnect paths still clean up or preserve state according to the existing lifecycle requirements.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-28",
+      "updated": "2026-04-28",
+      "sources": {
+        "inbox": [
+          "support-slash-new-without"
         ]
       }
     }
