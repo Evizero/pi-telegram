@@ -1,6 +1,6 @@
 import type { Server } from "node:http";
 import { randomBytes } from "node:crypto";
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { BROKER_DIR, BROKER_HEARTBEAT_MS, CLIENT_HEARTBEAT_MS, DISCONNECT_REQUESTS_DIR, LOCK_DIR, LOCK_PATH, STATE_PATH, TEMP_DIR } from "./shared/config.js";
@@ -31,6 +31,7 @@ import { sendTelegramMarkdownReply, sendTelegramTextReply, type SendTextReplyOpt
 import { createTelegramTurnForSession as buildTelegramTurnForSession, durableTelegramTurn } from "./telegram/turns.js";
 import { collectSessionRegistration as buildSessionRegistration } from "./client/session-registration.js";
 import { PreviewManager } from "./telegram/previews.js";
+import { cleanupDownloadedTelegramSessionTempDirIfUnused, sweepOrphanedDownloadedTelegramSessionTempDirs } from "./telegram/temp-files.js";
 import { createTypingLoopController } from "./telegram/typing.js";
 import { registerRuntimePiHooks } from "./pi/hooks.js";
 import { promptForTelegramConfig } from "./telegram/setup.js";
@@ -236,6 +237,12 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	function logTerminalRouteCleanupFailure(route: TelegramRoute, reason: string): void {
 		console.warn(`[pi-telegram] Terminal Telegram topic cleanup failure for ${route.routeId}: ${reason}`);
 	}
+	function cleanupSessionTempDir(sessionId: string, currentBrokerState: BrokerState): Promise<void> {
+		return cleanupDownloadedTelegramSessionTempDirIfUnused({ sessionId, brokerState: currentBrokerState }).then(() => undefined);
+	}
+	function sweepOrphanedTelegramTempDirs(): Promise<void> {
+		return sweepOrphanedDownloadedTelegramSessionTempDirs({ brokerState }).then(() => undefined);
+	}
 	function retryPendingRouteCleanups(): Promise<{ ok: true }> {
 		return retryPendingRouteCleanupsInBroker({
 			getBrokerState: () => brokerState,
@@ -413,6 +420,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			stopTypingLoop,
 			callTelegram: callTelegramOnce,
 			cancelPendingFinalDeliveries: (targetSessionId, turnIds) => turnIds ? assistantFinalLedger.cancelTurns(turnIds) : assistantFinalLedger.cancelSession(targetSessionId),
+			cleanupSessionTempDir,
 			logTerminalCleanupFailure: logTerminalRouteCleanupFailure,
 		});
 	}
@@ -568,6 +576,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 				await processPendingDisconnectRequests();
 				await updateHandlers.markOfflineSessions();
 				await retryPendingRouteCleanups();
+				await sweepOrphanedTelegramTempDirs();
 				assistantFinalLedger.kick();
 			}).catch(() => {
 				brokerHeartbeatFailures += 1;
@@ -582,6 +591,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			await processPendingDisconnectRequests();
 			await retryPendingTurns();
 			await retryPendingRouteCleanups();
+			await sweepOrphanedTelegramTempDirs();
 			assistantFinalLedger.kick();
 		})();
 		updateStatus(ctx);
@@ -814,6 +824,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			refreshTelegramStatus,
 			stopTypingLoop,
 			callTelegram: callTelegramOnce,
+			cleanupSessionTempDir,
 			logTerminalCleanupFailure: logTerminalRouteCleanupFailure,
 		});
 	}
@@ -828,6 +839,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			stopTypingLoop,
 			callTelegram: callTelegramOnce,
 			cancelPendingFinalDeliveries: (targetSessionId, turnIds) => turnIds ? assistantFinalLedger.cancelTurns(turnIds) : assistantFinalLedger.cancelSession(targetSessionId),
+			cleanupSessionTempDir,
 			logTerminalCleanupFailure: logTerminalRouteCleanupFailure,
 		});
 	}
@@ -1077,7 +1089,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			await ensurePrivateDir(BROKER_DIR);
 			await ensurePrivateDir(DISCONNECT_REQUESTS_DIR);
 			await ensurePrivateDir(assistantFinalHandoff.pendingFinalsDir());
-			await mkdir(TEMP_DIR, { recursive: true });
+			await ensurePrivateDir(TEMP_DIR);
 		},
 		clearMediaGroups: () => {
 			for (const state of mediaGroups.values()) if (state.flushTimer) clearTimeout(state.flushTimer);

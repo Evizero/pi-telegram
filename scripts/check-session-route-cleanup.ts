@@ -133,6 +133,7 @@ async function honorScopedDisconnect(brokerState: BrokerState, request: PendingD
 async function checkUnregisterQueuesRetryableTopicCleanupAndDropsSessionState(): Promise<void> {
 	const brokerState = state();
 	const stopped: string[] = [];
+	const cleanedTemps: string[] = [];
 	let persisted = 0;
 	await unregisterSessionFromBroker({
 		targetSessionId: "session-1",
@@ -146,6 +147,12 @@ async function checkUnregisterQueuesRetryableTopicCleanupAndDropsSessionState():
 			throw new TelegramApiError("deleteForumTopic", "Too Many Requests", 429, 3);
 			return undefined as TResponse;
 		},
+		cleanupSessionTempDir: async (sessionId, currentBrokerState) => {
+			cleanedTemps.push(sessionId);
+			assert.equal(currentBrokerState.sessions[sessionId], undefined);
+			assert.deepEqual(Object.keys(currentBrokerState.pendingTurns ?? {}), []);
+			assert.deepEqual(Object.keys(currentBrokerState.pendingAssistantFinals ?? {}), []);
+		},
 	});
 
 	assert.equal(brokerState.sessions["session-1"], undefined);
@@ -158,6 +165,7 @@ async function checkUnregisterQueuesRetryableTopicCleanupAndDropsSessionState():
 	assert.ok(brokerState.pendingRouteCleanups?.["chat-1:9"]);
 	assert.ok((brokerState.pendingRouteCleanups?.["chat-1:9"]?.retryAtMs ?? 0) > Date.now());
 	assert.ok(persisted >= 2);
+	assert.deepEqual(cleanedTemps, ["session-1"]);
 }
 
 async function checkRetryPendingRouteCleanupCompletesAfterTransientFailure(): Promise<void> {
@@ -535,6 +543,7 @@ async function checkReconnectAfterCleanupCreatesFreshRoute(): Promise<void> {
 async function checkMarkOfflinePreservesPendingWorkAndQueuesRouteCleanup(): Promise<void> {
 	const brokerState = state();
 	const stopped: string[] = [];
+	const cleanedTemps: string[] = [];
 	let persisted = 0;
 	await markSessionOfflineInBroker({
 		targetSessionId: "session-1",
@@ -548,6 +557,12 @@ async function checkMarkOfflinePreservesPendingWorkAndQueuesRouteCleanup(): Prom
 			throw new TelegramApiError("deleteForumTopic", "Too Many Requests", 429, 3);
 			return undefined as TResponse;
 		},
+		cleanupSessionTempDir: async (sessionId, currentBrokerState) => {
+			cleanedTemps.push(sessionId);
+			assert.equal(currentBrokerState.sessions[sessionId], undefined);
+			assert.ok(currentBrokerState.pendingTurns?.turn1);
+			assert.ok(currentBrokerState.pendingAssistantFinals?.turn2);
+		},
 	});
 
 	assert.equal(brokerState.sessions["session-1"], undefined);
@@ -559,6 +574,7 @@ async function checkMarkOfflinePreservesPendingWorkAndQueuesRouteCleanup(): Prom
 	assert.deepEqual(stopped.sort(), ["turn1", "turn2"]);
 	assert.equal(brokerState.pendingRouteCleanups?.["chat-1:9"], undefined);
 	assert.ok(persisted >= 1);
+	assert.deepEqual(cleanedTemps, ["session-1"]);
 }
 
 async function checkMarkOfflineClearsRouteWhenOnlyPendingTurnsRemain(): Promise<void> {

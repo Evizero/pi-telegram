@@ -15,6 +15,7 @@ interface SessionCleanupOptions {
 	stopTypingLoop: (turnId: string) => void;
 	callTelegram: <TResponse>(method: string, body: Record<string, unknown>) => Promise<TResponse>;
 	cancelPendingFinalDeliveries?: (sessionId: string, turnIds?: string[]) => Promise<void> | void;
+	cleanupSessionTempDir?: (sessionId: string, brokerState: BrokerState) => Promise<void> | void;
 	logTerminalCleanupFailure?: (route: TelegramRoute, reason: string) => void;
 }
 
@@ -201,6 +202,10 @@ async function removeSessionFromBrokerState(options: SessionCleanupOptions, brok
 	removeTurnStateForSession(brokerState, options.targetSessionId, options.stopTypingLoop);
 }
 
+async function cleanupSessionTempDirIfPossible(options: SessionCleanupOptions, brokerState: BrokerState): Promise<void> {
+	await options.cleanupSessionTempDir?.(options.targetSessionId, brokerState);
+}
+
 export async function retryPendingRouteCleanupsInBroker(options: RouteCleanupOptions): Promise<{ ok: true }> {
 	const brokerState = await ensureBrokerState(options);
 	let changed = false;
@@ -243,6 +248,7 @@ export async function honorExplicitDisconnectRequestInBroker(options: SessionCle
 		removeSelectorSelectionsForSession(brokerState, targetSessionId);
 		if (targetRoutes.length === 0) {
 			await options.persistBrokerState();
+			await cleanupSessionTempDirIfPossible(options, brokerState);
 			options.refreshTelegramStatus();
 			return { ok: true, honored: true };
 		}
@@ -253,6 +259,7 @@ export async function honorExplicitDisconnectRequestInBroker(options: SessionCle
 	removeTurnStateForRoutes(brokerState, targetRoutes, options.stopTypingLoop);
 	await options.persistBrokerState();
 	await retryPendingRouteCleanupsInBroker(options);
+	await cleanupSessionTempDirIfPossible(options, brokerState);
 	options.refreshTelegramStatus();
 	return { ok: true, honored: true };
 }
@@ -265,6 +272,7 @@ export async function unregisterSessionFromBroker(options: SessionCleanupOptions
 	await removeSessionFromBrokerState(options, brokerState);
 	await options.persistBrokerState();
 	await retryPendingRouteCleanupsInBroker(options);
+	await cleanupSessionTempDirIfPossible(options, brokerState);
 	options.refreshTelegramStatus();
 	return { ok: true };
 }
@@ -282,6 +290,7 @@ export async function markSessionOfflineInBroker(options: SessionCleanupOptions)
 	}
 	await options.persistBrokerState();
 	await retryPendingRouteCleanupsInBroker(options);
+	await cleanupSessionTempDirIfPossible(options, brokerState);
 	options.refreshTelegramStatus();
 	return { ok: true };
 }

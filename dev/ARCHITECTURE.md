@@ -316,6 +316,10 @@ directory beneath `~/.pi/agent/telegram-broker/`.
 Configuration lives in `~/.pi/agent/telegram.json` with legacy broker config
 fallback.
 Downloaded Telegram files live under `~/.pi/agent/tmp/telegram/`.
+They are retained in private per-session temp directories while the associated
+session remains active, reconnectable, or still has pending Telegram turn/final
+state that may depend on them, then removed on authoritative session end or a
+conservative orphan sweep.
 These files are local runtime artifacts, not repository planning artifacts.
 
 ### Planning and source guidance are repository artifacts
@@ -700,7 +704,8 @@ This scenario protects `SyRS-activity-history-rendering`,
 Inbound Telegram file metadata is treated as untrusted.
 The Telegram API layer enforces hosted Bot API download caps through message
 metadata, `getFile`, HTTP headers, and streaming byte counts; missing
-`file_path` fails clearly; downloaded files are written privately.
+`file_path` fails clearly; downloaded files are written privately into
+session-scoped temp directories.
 Outbound files originate only from pi's explicit attachment queue, resolve
 relative paths against session cwd, pass allowlist/secret checks, and then use
 Telegram photo/document methods according to method constraints.
@@ -749,6 +754,9 @@ ordinary runtime churn.
 Routes are durable only as active or reconnectable Telegram views; they should be
 removed when the connection lifecycle ends and any required topic cleanup has
 reached a retry-safe outcome.
+Downloaded Telegram attachment temp directories are similarly session-scoped:
+they persist only while a live/reconnectable session or pending Telegram
+delivery state still depends on them, then become sweepable local artifacts.
 Selector-mode session choices are persisted in broker state. Assistant finals
 become broker-owned durable delivery state when the broker accepts them into the
 assistant-final ledger. Client-side final persistence, where it exists, should be

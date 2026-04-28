@@ -106,7 +106,8 @@ Send any message in the bot DM. It is forwarded into pi with a `[telegram]` pref
 Send images, albums, or files in the DM.
 
 The extension:
-- downloads them to `~/.pi/agent/tmp/telegram`
+- downloads them to `~/.pi/agent/tmp/telegram/<session-id>`
+- keeps those files private and cleans them up after the session lifecycle no longer needs them
 - includes local file paths in the prompt
 - forwards inbound images as image inputs to pi
 

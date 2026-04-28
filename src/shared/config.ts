@@ -49,6 +49,7 @@ export const CLIENT_HEARTBEAT_MS = 3_000;
 export const SESSION_OFFLINE_MS = 15_000;
 export const SESSION_LIST_OFFLINE_GRACE_MS = 5 * 60 * 1000;
 export const MODEL_LIST_TTL_MS = 30 * 60 * 1000;
+export const TELEGRAM_TEMP_SESSION_ORPHAN_TTL_MS = 24 * 60 * 60 * 1000;
 export const RECENT_UPDATE_LIMIT = 1000;
 
 export const SYSTEM_PROMPT_SUFFIX = `

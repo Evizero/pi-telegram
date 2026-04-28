@@ -2,7 +2,7 @@
   "meta": {
     "title": "pi-telegram",
     "version": "0.1.0",
-    "last_updated": "2026-04-27"
+    "last_updated": "2026-04-28"
   },
   "requirements": [
     {
@@ -927,6 +927,30 @@
       "sources": {
         "inbox": [
           "interactive-telegram-model-picker"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-attachment-temp-retention",
+      "origin": "derived",
+      "label": "Bound attachment temp retention",
+      "statement": "The system shall retain downloaded Telegram attachment files only in a private session-scoped temp directory for the associated session's active lifetime and bounded automatic reconnect grace, and shall remove stale session temp directories after authoritative session end or conservative orphan expiry once no live session or pending Telegram delivery state still depends on them.",
+      "traces_to": [
+        "StRS-attachment-exchange",
+        "StRS-delivery-continuity",
+        "StRS-session-lifecycle-control"
+      ],
+      "rationale": "Downloaded Telegram files are private runtime artifacts, but broker turnover and reconnect windows can still require them briefly for in-flight turns or retryable delivery. The bridge therefore needs explicit retention and cleanup rules that preserve active/reconnectable session continuity without letting stale per-session temp data accumulate indefinitely.",
+      "acceptance_criteria": "Tests or inspection show inbound downloads stay under private session-scoped temp directories; broker turnover or generic broker shutdown does not delete temp data for still-live or reconnectable sessions; explicit disconnect, normal session shutdown, and reconnect-grace expiry remove only the ended session's temp directory after dependent turn/final state clears; and stale orphaned temp directories with no live session or pending broker state are eventually removed by a conservative TTL sweep without deleting unrelated active session data.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-28",
+      "updated": "2026-04-28",
+      "sources": {
+        "inbox": [
+          "telegram-attachment-tmp-cleanup"
         ]
       }
     }

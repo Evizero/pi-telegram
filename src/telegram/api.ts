@@ -1,10 +1,12 @@
 import { randomBytes } from "node:crypto";
-import { chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { chmod, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { MAX_FILE_BYTES, MAX_TELEGRAM_DOWNLOAD_BYTES, TEMP_DIR } from "../shared/config.js";
 import type { TelegramApiResponse, TelegramGetFileResult } from "../shared/types.js";
 import { sanitizeFileName } from "../shared/format.js";
+import { ensurePrivateDir } from "../shared/utils.js";
+import { telegramSessionTempDir } from "./temp-files.js";
 
 export class TelegramApiError extends Error {
 	constructor(
@@ -89,10 +91,9 @@ export async function downloadTelegramFile(
 	const file = await callTelegram<TelegramGetFileResult>(botToken, "getFile", { file_id: fileId });
 	if (!file.file_path) throw new Error(`Telegram file is not currently downloadable: ${suggestedName}`);
 	if (file.file_size !== undefined && file.file_size > MAX_TELEGRAM_DOWNLOAD_BYTES) throw new Error(`Telegram file too large to download via Bot API: ${suggestedName}`);
-	const dir = join(TEMP_DIR, sessionId);
-	await mkdir(dir, { recursive: true });
-	await chmod(TEMP_DIR, 0o700).catch(() => undefined);
-	await chmod(dir, 0o700).catch(() => undefined);
+	const dir = telegramSessionTempDir(sessionId);
+	await ensurePrivateDir(TEMP_DIR);
+	await ensurePrivateDir(dir);
 	const targetPath = join(dir, `${Date.now()}-${randomBytes(4).toString("hex")}-${sanitizeFileName(suggestedName)}`);
 	const response = await fetch(`https://api.telegram.org/file/bot${botToken}/${file.file_path}`);
 	if (!response.ok) {
