@@ -54,9 +54,12 @@ The strongest drivers come directly from the intended purpose and requirements:
   (`StRS-multi-session-supervision`, `SyRS-register-session-route`,
   `SyRS-session-replacement-route-continuity`,
   `SyRS-list-and-select-sessions`, `SyRS-topic-routes-per-session`);
-- busy-turn control must default ordinary mobile input to follow-up work while preserving explicit steering for urgent intervention
-  (`StRS-busy-turn-intent`, `SyRS-busy-message-default-followup`,
-  `SyRS-queued-followup-steer-control`, `SyRS-follow-queues-next-turn`);
+- busy-turn control must default ordinary mobile input to follow-up work while
+  preserving explicit steering for urgent intervention and cancellation for
+  obsolete or mistaken follow-ups (`StRS-busy-turn-intent`,
+  `SyRS-busy-message-default-followup`,
+  `SyRS-queued-followup-steer-control`, `SyRS-cancel-queued-followup`,
+  `SyRS-queued-control-finalization`, `SyRS-follow-queues-next-turn`);
 - activity and final responses must stay intelligible, chronologically clear,
   and non-duplicated even when legacy preview cleanup, Telegram edits, chunks,
   pi/provider auto-retry, and Telegram delivery retries are involved
@@ -169,11 +172,19 @@ client queues it as follow-up work by default rather than steering immediately.
 If the user sends `/steer ...` or activates an authorized steer control for a
 still-queued follow-up, the same transport explicitly delivers steering for the
 active turn.
+If the user activates the sibling cancel control for that same still-queued
+follow-up, the bridge withdraws that queued turn without stopping the active
+turn or disturbing unrelated queued work.
+When a queued follow-up becomes non-actionable without a button press, the
+broker should finalize the visible queued-status message where Telegram editing
+is possible so stale buttons do not imply an action is still available.
 `/follow ...` remains a compatibility and accessibility path for explicit
 queued follow-up work.
-The important property is intent preservation: ordinary mobile notes wait their
-turn, while urgent intervention is still one explicit action away and targets a
-specific route/turn.
+The important property is intent preservation and clarity: ordinary mobile notes
+wait their turn, urgent intervention is still one explicit action away,
+obsolete or mistaken follow-ups can be withdrawn, and old Telegram controls do
+not misrepresent durable queue state while each action targets a specific
+route/turn.
 
 ### Telegram rate limit during final delivery
 
@@ -357,7 +368,8 @@ with related code when they explain the same behavior.
   auto-retry the same active Telegram turn; the bridge must defer Telegram
   finalization until retry success or a clear terminal failure.
 - Busy ordinary messages queue as follow-up by default; explicit steering
-  commands or controls target the active turn.
+  commands or controls target the active turn; queued-control buttons must be
+  removed or finalized when they no longer represent an actionable queued turn.
 - Activity collection preserves history; Telegram rendering may debounce but may
   not erase collected event meaning.
 - Final delivery detaches streamed preview messages before appending final
@@ -446,8 +458,8 @@ session registrations, routes, pending media groups, pending turns, queued-turn
 control records, visible assistant preview message references, pending
 assistant-final deliveries, completed turn IDs, and timestamps.
 It is the durable handoff record for polling safety, bounded route continuity,
-broker turnover, pending work retry, queued follow-up steer controls, cleanup
-retry, and dedupe.
+broker turnover, pending work retry, queued follow-up controls, cleanup retry,
+and dedupe.
 
 Architecture contract and current implementation: selector-mode session
 selections created by `/use` are route-continuity state persisted in
@@ -484,10 +496,13 @@ Queued-turn control records are broker-owned state that map compact Telegram
 callback tokens to a specific queued turn, route, session, target active turn,
 visible status message, status, and expiry. They are not execution authority by
 themselves: callback handling must ask the client to atomically remove a still-
-queued turn before steering it, then consume the pending turn through the same
-durable turn lifecycle used by normal delivery. Stale visible buttons may remain
-in Telegram, but they must resolve through this durable state and fail closed
-when the turn has started, expired, converted, or disappeared.
+queued turn before steering or cancelling it, then consume the pending turn
+through the same durable turn lifecycle used by normal delivery. When a queued
+turn becomes non-actionable without a callback, the broker should edit any known
+visible status message to remove action buttons and show a terminal state where
+Telegram editing succeeds. If visible cleanup is unavailable or retryable, the
+durable control state remains authoritative and stale callbacks must fail
+closed when the turn has started, expired, converted, cancelled, or disappeared.
 
 Assistant final payloads pair a pending turn with final text, stop/error state,
 and queued outbound attachments.
@@ -695,6 +710,7 @@ callback without turning the button press into an agent conversation message.
 This scenario protects `SyRS-deliver-telegram-turn`,
 `SyRS-durable-update-consumption`, `SyRS-media-group-batching`,
 `SyRS-busy-message-default-followup`, `SyRS-queued-followup-steer-control`,
+`SyRS-cancel-queued-followup`, `SyRS-queued-control-finalization`,
 `SyRS-follow-queues-next-turn`, and `SyRS-interactive-model-picker`.
 
 ### Unsupported Telegram runtime reload

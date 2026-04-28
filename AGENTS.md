@@ -52,7 +52,9 @@ Consult `docs.md` before changing Bot API integration. In particular:
   follow-up work by default.
 - `/follow <message>` should queue follow-up work, not steer.
 - `/steer <message>` and authorized queued-turn controls should steer explicit
-  active-turn corrections when still valid.
+  active-turn corrections when still valid; queued-turn cancel controls should
+  remove only the targeted still-queued follow-up, and stale queued-control
+  buttons should be finalized when the target is no longer actionable.
 - `/telegram-connect` during a busy turn should start mirroring current activity
   and the final response to Telegram.
 - Preserve activity history; debounce only Telegram edit/send operations.

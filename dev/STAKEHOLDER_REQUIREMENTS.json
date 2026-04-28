@@ -89,21 +89,24 @@
     {
       "id": "StRS-busy-turn-intent",
       "origin": "derived",
-      "label": "Choose steer or follow-up",
-      "statement": "Remote pi operators shall be able to choose whether a message sent during a busy turn steers current work or becomes follow-up work.",
-      "rationale": "Remote control is lifecycle-sensitive: urgent corrections should steer the active turn, while non-urgent next steps should wait until the current run completes.",
+      "label": "Choose busy-message outcome",
+      "statement": "Remote pi operators shall be able to choose whether a message sent during a busy turn steers current work, remains queued as follow-up work, or is withdrawn before it affects the pi session.",
+      "rationale": "Remote control is lifecycle-sensitive: urgent corrections should steer the active turn, non-urgent next steps should wait until the current run completes, and mistaken or obsolete follow-ups should be withdrawn without stopping active work or unrelated queued turns.",
       "stakeholders": [
         "remote-pi-operator"
       ],
       "priority": 1,
       "validation": {
         "method": "review",
-        "criteria": "Review the documented Telegram command behavior to confirm ordinary messages sent while a selected session is busy default to queued follow-up work, and that explicit steer controls let the operator redirect a still-queued follow-up into the active turn without ambiguity."
+        "criteria": "Review the documented Telegram command and queued-control behavior to confirm ordinary busy messages default to queued follow-up work, explicit steer controls can redirect a still-queued follow-up into the active turn, and a still-queued follow-up can be cancelled without stopping the active turn or removing unrelated queued work."
       },
       "status": "draft",
       "created": "2026-04-25",
       "updated": "2026-04-28",
       "sources": {
+        "inbox": [
+          "cancel-individual-queued-telegram"
+        ],
         "refs": [
           "dev/INTENDED_PURPOSE.md#essential-capabilities"
         ]

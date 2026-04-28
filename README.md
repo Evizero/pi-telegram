@@ -141,7 +141,7 @@ That aborts the active pi turn.
 ### Steer and queue follow-ups
 
 If you send a normal Telegram message while pi is busy, it is queued as follow-up work by default.
-Telegram shows a `Steer now` button for eligible queued follow-ups so you can convert one into active-turn steering without retyping it.
+Telegram shows `Steer now` and `Cancel` buttons for eligible queued follow-ups so you can convert one into active-turn steering or withdraw it before it starts. The bridge removes those buttons when the follow-up starts, is handled, or is no longer waiting.
 
 You can also be explicit:
 

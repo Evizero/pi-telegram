@@ -3,8 +3,8 @@ title: "Cancel individual queued Telegram follow-ups"
 type: "request"
 created: "2026-04-28"
 author: "Christof Stocker"
-status: "open"
-planned_as: []
+status: "planned"
+planned_as: ["add-cancel-controls-for-queued"]
 ---
 User asked whether a queued follow-up can be cancelled individually. Current implementation only offers `Steer now` for eligible queued follow-ups; `/stop` can clear queued work broadly but is not a precise cancel-this-follow-up control.
 

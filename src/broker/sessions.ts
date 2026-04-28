@@ -1,7 +1,9 @@
-import type { BrokerState, TelegramRoute, PendingTelegramTurn } from "../shared/types.js";
+import type { BrokerState, QueuedTurnControlState, TelegramRoute, PendingTelegramTurn } from "../shared/types.js";
 import { errorMessage, now } from "../shared/utils.js";
 import { getTelegramRetryAfterMs, TelegramApiError } from "../telegram/api.js";
+import { editTelegramTextMessage } from "../telegram/text.js";
 import { disconnectRequestBelongsToCurrentConnection, disconnectRequestMatchesRoute, isRouteScopedDisconnectRequest, type PendingDisconnectRequest } from "./disconnect-requests.js";
+import { DEFAULT_QUEUED_CONTROL_EDIT_RETRY_MS, isTransientQueuedControlEditError, markQueuedTurnControlExpired, queuedControlBelongsToRoute, QUEUED_CONTROL_TEXT } from "./queued-controls.js";
 
 const DEFAULT_ROUTE_CLEANUP_RETRY_MS = 1_000;
 
@@ -59,12 +61,14 @@ function rememberCompletedTurnId(brokerState: BrokerState, turnId: string): void
 	if (brokerState.completedTurnIds.length > 1000) brokerState.completedTurnIds.splice(0, brokerState.completedTurnIds.length - 1000);
 }
 
-function removeTurnStateForSession(brokerState: BrokerState, targetSessionId: string, stopTypingLoop: (turnId: string) => void): void {
+function removeTurnStateForSession(brokerState: BrokerState, targetSessionId: string, stopTypingLoop: (turnId: string) => void): string[] {
+	const removedTurnIds: string[] = [];
 	for (const [turnId, pending] of Object.entries(brokerState.pendingTurns ?? {})) {
 		if (pending.turn.sessionId !== targetSessionId) continue;
 		stopTypingLoop(turnId);
 		delete brokerState.pendingTurns![turnId];
 		rememberCompletedTurnId(brokerState, turnId);
+		removedTurnIds.push(turnId);
 		if (brokerState.assistantPreviewMessages?.[turnId]) delete brokerState.assistantPreviewMessages[turnId];
 	}
 	for (const [turnId, pending] of Object.entries(brokerState.pendingAssistantFinals ?? {})) {
@@ -72,8 +76,10 @@ function removeTurnStateForSession(brokerState: BrokerState, targetSessionId: st
 		stopTypingLoop(turnId);
 		delete brokerState.pendingAssistantFinals![turnId];
 		rememberCompletedTurnId(brokerState, turnId);
+		removedTurnIds.push(turnId);
 		if (brokerState.assistantPreviewMessages?.[turnId]) delete brokerState.assistantPreviewMessages[turnId];
 	}
+	return removedTurnIds;
 }
 
 function pendingOfflineSessionState(brokerState: BrokerState, targetSessionId: string, stopTypingLoop: (turnId: string) => void): { hasPendingTurns: boolean; hasPendingAssistantFinals: boolean } {
@@ -114,12 +120,14 @@ function pendingFinalTurnIdsForRoutes(brokerState: BrokerState, routes: Telegram
 		.map(([turnId]) => turnId);
 }
 
-function removeTurnStateForRoutes(brokerState: BrokerState, routes: TelegramRoute[], stopTypingLoop: (turnId: string) => void): void {
+function removeTurnStateForRoutes(brokerState: BrokerState, routes: TelegramRoute[], stopTypingLoop: (turnId: string) => void): string[] {
+	const removedTurnIds: string[] = [];
 	for (const [turnId, pending] of Object.entries(brokerState.pendingTurns ?? {})) {
 		if (!routes.some((route) => turnBelongsToRoute(pending.turn, route))) continue;
 		stopTypingLoop(turnId);
 		delete brokerState.pendingTurns![turnId];
 		rememberCompletedTurnId(brokerState, turnId);
+		removedTurnIds.push(turnId);
 		if (brokerState.assistantPreviewMessages?.[turnId]) delete brokerState.assistantPreviewMessages[turnId];
 	}
 	for (const [turnId, pending] of Object.entries(brokerState.pendingAssistantFinals ?? {})) {
@@ -127,8 +135,89 @@ function removeTurnStateForRoutes(brokerState: BrokerState, routes: TelegramRout
 		stopTypingLoop(turnId);
 		delete brokerState.pendingAssistantFinals![turnId];
 		rememberCompletedTurnId(brokerState, turnId);
+		removedTurnIds.push(turnId);
 		if (brokerState.assistantPreviewMessages?.[turnId]) delete brokerState.assistantPreviewMessages[turnId];
 	}
+	return removedTurnIds;
+}
+
+function markQueuedControlsCleared(brokerState: BrokerState, turnIds: string[], text: string = QUEUED_CONTROL_TEXT.cleared, matchesControl?: (control: QueuedTurnControlState) => boolean): QueuedTurnControlState[] {
+	if (!brokerState.queuedTurnControls) return [];
+	const turnIdSet = new Set(turnIds);
+	const controls: QueuedTurnControlState[] = [];
+	for (const control of Object.values(brokerState.queuedTurnControls)) {
+		const matches = turnIdSet.has(control.turnId) || matchesControl?.(control) === true;
+		if (!matches) continue;
+		if (control.statusMessageId !== undefined && control.completedText && control.statusMessageFinalizedAtMs === undefined) {
+			controls.push(control);
+			continue;
+		}
+		if (!markQueuedTurnControlExpired(control, text)) continue;
+		controls.push(control);
+	}
+	return controls;
+}
+
+async function finalizeQueuedControlMessages(options: Pick<SessionCleanupOptions, "callTelegram" | "persistBrokerState">, brokerState: BrokerState, controls: QueuedTurnControlState[]): Promise<{ deferred: boolean; retryAtMs?: number }> {
+	let changed = false;
+	let deferred = false;
+	let retryAtMs: number | undefined;
+	if (brokerState.queuedTurnControlCleanupRetryAtMs !== undefined) {
+		if (brokerState.queuedTurnControlCleanupRetryAtMs > now()) return { deferred: true, retryAtMs: brokerState.queuedTurnControlCleanupRetryAtMs };
+		delete brokerState.queuedTurnControlCleanupRetryAtMs;
+		changed = true;
+	}
+	const pendingRetryAtMs = controls.reduce<number | undefined>((earliest, control) => {
+		if (control.statusMessageRetryAtMs === undefined || control.statusMessageRetryAtMs <= now()) return earliest;
+		return earliest === undefined ? control.statusMessageRetryAtMs : Math.min(earliest, control.statusMessageRetryAtMs);
+	}, undefined);
+	if (pendingRetryAtMs !== undefined) {
+		brokerState.queuedTurnControlCleanupRetryAtMs = pendingRetryAtMs;
+		await options.persistBrokerState();
+		return { deferred: true, retryAtMs: pendingRetryAtMs };
+	}
+	for (const control of controls) {
+		if (control.statusMessageId === undefined || !control.completedText || control.statusMessageFinalizedAtMs !== undefined) continue;
+		if (control.statusMessageRetryAtMs !== undefined && control.statusMessageRetryAtMs > now()) {
+			deferred = true;
+			retryAtMs = retryAtMs === undefined ? control.statusMessageRetryAtMs : Math.min(retryAtMs, control.statusMessageRetryAtMs);
+			brokerState.queuedTurnControlCleanupRetryAtMs = retryAtMs;
+			changed = true;
+			break;
+		}
+		try {
+			await editTelegramTextMessage(options.callTelegram, control.chatId, control.statusMessageId, control.completedText);
+		} catch (error) {
+			const retryAfterMs = getTelegramRetryAfterMs(error);
+			if (retryAfterMs !== undefined || isTransientQueuedControlEditError(error)) {
+				control.statusMessageRetryAtMs = now() + (retryAfterMs ?? DEFAULT_QUEUED_CONTROL_EDIT_RETRY_MS) + (retryAfterMs !== undefined ? 250 : 0);
+				brokerState.queuedTurnControlCleanupRetryAtMs = control.statusMessageRetryAtMs;
+				retryAtMs = retryAtMs === undefined ? control.statusMessageRetryAtMs : Math.min(retryAtMs, control.statusMessageRetryAtMs);
+				control.updatedAtMs = now();
+				changed = true;
+				deferred = true;
+				break;
+			}
+		}
+		control.statusMessageRetryAtMs = undefined;
+		control.statusMessageFinalizedAtMs = now();
+		control.updatedAtMs = now();
+		changed = true;
+	}
+	if (changed) await options.persistBrokerState();
+	return { deferred, retryAtMs };
+}
+
+function deferPendingRouteCleanups(brokerState: BrokerState, retryAtMs: number | undefined): boolean {
+	if (retryAtMs === undefined) return false;
+	let changed = false;
+	for (const cleanup of Object.values(brokerState.pendingRouteCleanups ?? {})) {
+		if (cleanup.retryAtMs !== undefined && cleanup.retryAtMs >= retryAtMs) continue;
+		cleanup.retryAtMs = retryAtMs;
+		cleanup.updatedAtMs = now();
+		changed = true;
+	}
+	return changed;
 }
 
 function detachRoutesForDisconnectRequest(brokerState: BrokerState, request: PendingDisconnectRequest): TelegramRoute[] {
@@ -195,11 +284,12 @@ async function clearVisiblePendingTurnPreviews(options: Pick<SessionCleanupOptio
 	}
 }
 
-async function removeSessionFromBrokerState(options: SessionCleanupOptions, brokerState: BrokerState): Promise<void> {
+async function removeSessionFromBrokerState(options: SessionCleanupOptions, brokerState: BrokerState): Promise<QueuedTurnControlState[]> {
 	delete brokerState.sessions[options.targetSessionId];
 	for (const route of detachSessionRoutes(brokerState, options.targetSessionId)) queueRouteCleanup(brokerState, route);
 	removeSelectorSelectionsForSession(brokerState, options.targetSessionId);
-	removeTurnStateForSession(brokerState, options.targetSessionId, options.stopTypingLoop);
+	const removedTurnIds = removeTurnStateForSession(brokerState, options.targetSessionId, options.stopTypingLoop);
+	return markQueuedControlsCleared(brokerState, removedTurnIds, QUEUED_CONTROL_TEXT.cleared, (control) => control.sessionId === options.targetSessionId);
 }
 
 async function cleanupSessionTempDirIfPossible(options: SessionCleanupOptions, brokerState: BrokerState): Promise<void> {
@@ -211,6 +301,21 @@ export async function retryPendingRouteCleanupsInBroker(options: RouteCleanupOpt
 	let changed = false;
 	for (const [cleanupId, entry] of Object.entries(brokerState.pendingRouteCleanups ?? {})) {
 		if (entry.retryAtMs !== undefined && entry.retryAtMs > now()) continue;
+		const markedControls = markQueuedControlsCleared(brokerState, [], QUEUED_CONTROL_TEXT.cleared, (control) => queuedControlBelongsToRoute(control, entry.route));
+		if (markedControls.length > 0) {
+			changed = true;
+			await options.persistBrokerState();
+		}
+		const pendingQueuedControls = Object.values(brokerState.queuedTurnControls ?? {}).filter((control) => queuedControlBelongsToRoute(control, entry.route) && control.statusMessageId !== undefined && control.completedText !== undefined && control.statusMessageFinalizedAtMs === undefined);
+		const queuedControlCleanup = await finalizeQueuedControlMessages(options, brokerState, pendingQueuedControls);
+		if (queuedControlCleanup.deferred) {
+			entry.retryAtMs = queuedControlCleanup.retryAtMs;
+			brokerState.queuedTurnControlCleanupRetryAtMs = queuedControlCleanup.retryAtMs;
+			entry.updatedAtMs = now();
+			changed = true;
+			continue;
+		}
+		if (pendingQueuedControls.some((control) => control.statusMessageFinalizedAtMs === undefined)) continue;
 		try {
 			await options.callTelegram("deleteForumTopic", { chat_id: entry.route.chatId, message_thread_id: entry.route.messageThreadId });
 			delete brokerState.pendingRouteCleanups![cleanupId];
@@ -243,11 +348,14 @@ export async function honorExplicitDisconnectRequestInBroker(options: SessionCle
 	const currentSession = brokerState.sessions[targetSessionId];
 	const requestTargetsCurrentConnection = disconnectRequestBelongsToCurrentConnection(request, currentSession);
 	const targetRoutes = Object.values(brokerState.routes).filter((route) => disconnectRequestMatchesRoute(request, route));
+	let finalizedSessionControls: QueuedTurnControlState[] = [];
 	if (requestTargetsCurrentConnection) {
 		delete brokerState.sessions[targetSessionId];
 		removeSelectorSelectionsForSession(brokerState, targetSessionId);
+		finalizedSessionControls = markQueuedControlsCleared(brokerState, [], QUEUED_CONTROL_TEXT.cleared, (control) => control.sessionId === targetSessionId);
 		if (targetRoutes.length === 0) {
 			await options.persistBrokerState();
+			await finalizeQueuedControlMessages(options, brokerState, finalizedSessionControls);
 			await cleanupSessionTempDirIfPossible(options, brokerState);
 			options.refreshTelegramStatus();
 			return { ok: true, honored: true };
@@ -256,9 +364,16 @@ export async function honorExplicitDisconnectRequestInBroker(options: SessionCle
 	const pendingFinalTurnIds = pendingFinalTurnIdsForRoutes(brokerState, targetRoutes);
 	if (pendingFinalTurnIds.length > 0) await options.cancelPendingFinalDeliveries?.(targetSessionId, pendingFinalTurnIds);
 	for (const route of detachRoutesForDisconnectRequest(brokerState, request)) queueRouteCleanup(brokerState, route);
-	removeTurnStateForRoutes(brokerState, targetRoutes, options.stopTypingLoop);
+	const removedTurnIds = removeTurnStateForRoutes(brokerState, targetRoutes, options.stopTypingLoop);
+	const finalizedControls = requestTargetsCurrentConnection ? finalizedSessionControls : markQueuedControlsCleared(brokerState, removedTurnIds, QUEUED_CONTROL_TEXT.cleared, (control) => targetRoutes.some((route) => queuedControlBelongsToRoute(control, route)));
 	await options.persistBrokerState();
-	await retryPendingRouteCleanupsInBroker(options);
+	const queuedControlCleanup = await finalizeQueuedControlMessages(options, brokerState, finalizedControls);
+	if (queuedControlCleanup.deferred) {
+		brokerState.queuedTurnControlCleanupRetryAtMs = queuedControlCleanup.retryAtMs;
+		deferPendingRouteCleanups(brokerState, queuedControlCleanup.retryAtMs);
+		await options.persistBrokerState();
+	}
+	if (!queuedControlCleanup.deferred) await retryPendingRouteCleanupsInBroker(options);
 	await cleanupSessionTempDirIfPossible(options, brokerState);
 	options.refreshTelegramStatus();
 	return { ok: true, honored: true };
@@ -269,9 +384,15 @@ export async function unregisterSessionFromBroker(options: SessionCleanupOptions
 	if (!targetSessionId) return { ok: true };
 	const brokerState = await ensureBrokerState(options);
 	await options.cancelPendingFinalDeliveries?.(targetSessionId);
-	await removeSessionFromBrokerState(options, brokerState);
+	const finalizedControls = await removeSessionFromBrokerState(options, brokerState);
 	await options.persistBrokerState();
-	await retryPendingRouteCleanupsInBroker(options);
+	const queuedControlCleanup = await finalizeQueuedControlMessages(options, brokerState, finalizedControls);
+	if (queuedControlCleanup.deferred) {
+		brokerState.queuedTurnControlCleanupRetryAtMs = queuedControlCleanup.retryAtMs;
+		deferPendingRouteCleanups(brokerState, queuedControlCleanup.retryAtMs);
+		await options.persistBrokerState();
+	}
+	if (!queuedControlCleanup.deferred) await retryPendingRouteCleanupsInBroker(options);
 	await cleanupSessionTempDirIfPossible(options, brokerState);
 	options.refreshTelegramStatus();
 	return { ok: true };
@@ -288,8 +409,15 @@ export async function markSessionOfflineInBroker(options: SessionCleanupOptions)
 		await clearVisiblePendingTurnPreviews(options, brokerState, targetSessionId);
 		for (const route of detachSessionRoutes(brokerState, targetSessionId)) queueRouteCleanup(brokerState, route);
 	}
+	const finalizedControls = markQueuedControlsCleared(brokerState, [], QUEUED_CONTROL_TEXT.cleared, (control) => control.sessionId === targetSessionId);
 	await options.persistBrokerState();
-	await retryPendingRouteCleanupsInBroker(options);
+	const queuedControlCleanup = await finalizeQueuedControlMessages(options, brokerState, finalizedControls);
+	if (queuedControlCleanup.deferred) {
+		brokerState.queuedTurnControlCleanupRetryAtMs = queuedControlCleanup.retryAtMs;
+		deferPendingRouteCleanups(brokerState, queuedControlCleanup.retryAtMs);
+		await options.persistBrokerState();
+	}
+	if (!queuedControlCleanup.deferred) await retryPendingRouteCleanupsInBroker(options);
 	await cleanupSessionTempDirIfPossible(options, brokerState);
 	options.refreshTelegramStatus();
 	return { ok: true };

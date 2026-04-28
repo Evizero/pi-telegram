@@ -4,7 +4,7 @@ import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { BROKER_DIR, BROKER_HEARTBEAT_MS, CLIENT_HEARTBEAT_MS, DISCONNECT_REQUESTS_DIR, LOCK_DIR, LOCK_PATH, SESSION_REPLACEMENT_HANDOFFS_DIR, STATE_PATH, TEMP_DIR } from "./shared/config.js";
-import type { ActiveTelegramTurn, BrokerLease, BrokerState, ClientDeliverTurnResult, ConvertQueuedTurnToSteerRequest, ConvertQueuedTurnToSteerResult, IpcEnvelope, ModelSummary, PendingTelegramTurn, AssistantFinalPayload, SessionRegistration, TelegramConfig, TelegramMediaGroupState, TelegramMessage, TelegramRoute } from "./shared/types.js";
+import type { ActiveTelegramTurn, BrokerLease, BrokerState, CancelQueuedTurnRequest, CancelQueuedTurnResult, ClientDeliverTurnResult, ConvertQueuedTurnToSteerRequest, ConvertQueuedTurnToSteerResult, IpcEnvelope, ModelSummary, PendingTelegramTurn, AssistantFinalPayload, SessionRegistration, TelegramConfig, TelegramMediaGroupState, TelegramMessage, TelegramRoute } from "./shared/types.js";
 import { configureBrokerScope, readConfig, writeConfig } from "./shared/config.js";
 import { ActivityRenderer, ActivityReporter, type ActivityUpdatePayload } from "./broker/activity.js";
 import { isRouteScopedDisconnectRequest, processDisconnectRequestsInBroker, type PendingDisconnectRequest } from "./broker/disconnect-requests.js";
@@ -22,11 +22,12 @@ import { ManualCompactionTurnQueue } from "./client/manual-compaction.js";
 import { RetryAwareTelegramTurnFinalizer } from "./client/retry-aware-finalization.js";
 import { shutdownTelegramClientRoute } from "./client/route-shutdown.js";
 import { TelegramCommandRouter } from "./broker/commands.js";
+import { QUEUED_CONTROL_TEXT } from "./shared/queued-control-text.js";
 import { AssistantFinalDeliveryLedger } from "./broker/finals.js";
 import { handleLocalUserMirrorMessage } from "./broker/local-user-message.js";
 import { ensurePrivateDir, errorMessage, now, processExists, randomId, readJson, writeJson } from "./shared/utils.js";
 import { createIpcServer as createIpcServerBase, postIpc as postIpcBase } from "./shared/ipc.js";
-import { callTelegram as callTelegramBase, callTelegramMultipart as callTelegramMultipartBase, downloadTelegramFile as downloadTelegramFileBase } from "./telegram/api.js";
+import { callTelegram as callTelegramBase, callTelegramMultipart as callTelegramMultipartBase, downloadTelegramFile as downloadTelegramFileBase, getTelegramRetryAfterMs } from "./telegram/api.js";
 import { withTelegramRetry } from "./telegram/retry.js";
 import { sendTelegramMarkdownReply, sendTelegramTextReply, type SendTextReplyOptions } from "./telegram/text.js";
 import { createTelegramTurnForSession as buildTelegramTurnForSession, durableTelegramTurn } from "./telegram/turns.js";
@@ -90,8 +91,8 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			void postIpc(connectedBrokerSocketPath, "turn_started", { turnId }, sessionId).catch(() => undefined);
 		},
 		sendUserMessage: (content, options) => { void pi.sendUserMessage(content, options); },
-		acknowledgeConsumedTurn: (turnId) => {
-			void acknowledgeConsumedTurn(turnId);
+		acknowledgeConsumedTurn: (turnId, finalizeQueuedControlText) => {
+			void acknowledgeConsumedTurn(turnId, finalizeQueuedControlText);
 		},
 	});
 	let setupInProgress = false;
@@ -203,6 +204,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		durableTelegramTurn,
 		sendTextReply,
 		callTelegram,
+		callTelegramForQueuedControlCleanup: callTelegramOnce,
 		postIpc,
 		stopTypingLoop,
 		unregisterSession,
@@ -245,6 +247,13 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	}
 	function sweepOrphanedTelegramTempDirs(): Promise<void> {
 		return sweepOrphanedDownloadedTelegramSessionTempDirs({ brokerState }).then(() => undefined);
+	}
+	async function retryQueuedTurnControlFinalizations(): Promise<void> {
+		try {
+			await commandRouter.retryQueuedTurnControlFinalizations();
+		} catch (error) {
+			if (getTelegramRetryAfterMs(error) === undefined) console.warn(`[pi-telegram] Failed to finalize queued Telegram controls: ${errorMessage(error)}`);
+		}
 	}
 	function retryPendingRouteCleanups(): Promise<{ ok: true }> {
 		return retryPendingRouteCleanupsInBroker({
@@ -595,6 +604,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 				await assistantFinalHandoff.processPendingClientFinalFiles();
 				await processPendingDisconnectRequests();
 				await updateHandlers.markOfflineSessions();
+				await retryQueuedTurnControlFinalizations();
 				await retryPendingRouteCleanups();
 				await sweepOrphanedTelegramTempDirs();
 				assistantFinalLedger.kick();
@@ -610,6 +620,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			await assistantFinalHandoff.processPendingClientFinalFiles();
 			await processPendingDisconnectRequests();
 			await retryPendingTurns();
+			await retryQueuedTurnControlFinalizations();
 			await retryPendingRouteCleanups();
 			await sweepOrphanedTelegramTempDirs();
 			assistantFinalLedger.kick();
@@ -821,7 +832,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		if (envelope.type === "activity_update") return await activityRenderer.handleUpdate(envelope.payload as ActivityUpdatePayload);
 		if (envelope.type === "activity_complete") return await handleActivityComplete(envelope.payload as { turnId: string; activityId?: string });
 		if (envelope.type === "assistant_final") return await assistantFinalLedger.accept(envelope.payload as AssistantFinalPayload);
-		if (envelope.type === "turn_consumed") return await handleTurnConsumed(envelope.payload as { turnId: string });
+		if (envelope.type === "turn_consumed") return await handleTurnConsumed(envelope.payload as { turnId: string; finalizeQueuedControlText?: string });
 		if (envelope.type === "local_user_message") return await handleLocalUserMessage(envelope.session_id, envelope.payload as { text: string; imagesCount?: number; routeId?: string; chatId?: number | string; messageThreadId?: number });
 		throw new Error(`Unsupported broker IPC message: ${envelope.type}`);
 	}
@@ -887,7 +898,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	async function handleTurnStarted(payload: { turnId: string }): Promise<{ ok: true }> {
 		const pending = brokerState?.pendingTurns?.[payload.turnId];
 		if (pending) await startTypingLoop(pending.turn);
-		if (expireQueuedTurnControls([payload.turnId])) await persistBrokerState();
+		await commandRouter.finalizeQueuedTurnControls([payload.turnId], QUEUED_CONTROL_TEXT.started);
 		return { ok: true };
 	}
 	function matchingDurablePreview(turnId: string, chatId: number | string, messageThreadId?: number): number | undefined {
@@ -920,29 +931,21 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		if (!brokerState.completedTurnIds.includes(turnId)) brokerState.completedTurnIds.push(turnId);
 		if (brokerState.completedTurnIds.length > 1000) brokerState.completedTurnIds.splice(0, brokerState.completedTurnIds.length - 1000);
 	}
-	function expireQueuedTurnControls(turnIds: string[]): boolean {
-		if (!brokerState?.queuedTurnControls || turnIds.length === 0) return false;
-		let changed = false;
-		const turnIdSet = new Set(turnIds);
-		for (const control of Object.values(brokerState.queuedTurnControls)) {
-			if (!turnIdSet.has(control.turnId) || control.status !== "offered") continue;
-			control.status = "expired";
-			control.updatedAtMs = now();
-			changed = true;
-		}
-		return changed;
-	}
-	async function handleTurnConsumed(payload: { turnId: string }): Promise<{ ok: true }> {
+	async function handleTurnConsumed(payload: { turnId: string; finalizeQueuedControlText?: string }): Promise<{ ok: true }> {
+		const finalizeQueuedControlText = payload.finalizeQueuedControlText ?? QUEUED_CONTROL_TEXT.noLongerWaiting;
+		commandRouter.markQueuedTurnControlsConsumed([payload.turnId], finalizeQueuedControlText);
 		if (brokerState?.pendingAssistantFinals?.[payload.turnId]) {
 			if (brokerState.pendingTurns?.[payload.turnId]) delete brokerState.pendingTurns[payload.turnId];
 			stopTypingLoop(payload.turnId);
 			await persistBrokerState();
+			await commandRouter.retryQueuedTurnControlFinalizations();
 			return { ok: true };
 		}
 		await rememberCompletedBrokerTurn(payload.turnId);
 		if (brokerState?.pendingTurns?.[payload.turnId]) delete brokerState.pendingTurns[payload.turnId];
 		stopTypingLoop(payload.turnId);
 		await persistBrokerState();
+		await commandRouter.retryQueuedTurnControlFinalizations();
 		return { ok: true };
 	}
 	function isAllowedTelegramChat(message: TelegramMessage): boolean {
@@ -1005,6 +1008,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	async function handleClientIpc(envelope: IpcEnvelope): Promise<unknown> {
 		if (envelope.type === "deliver_turn") return await clientDeliverTurn(envelope.payload as PendingTelegramTurn);
 		if (envelope.type === "convert_queued_turn_to_steer") return await clientConvertQueuedTurnToSteer(envelope.payload as ConvertQueuedTurnToSteerRequest);
+		if (envelope.type === "cancel_queued_turn") return await clientCancelQueuedTurn(envelope.payload as CancelQueuedTurnRequest);
 		if (envelope.type === "abort_turn") return await clientAbortTurn();
 		if (envelope.type === "stale_client_connection") {
 			const payload = envelope.payload as { connectionNonce?: string };
@@ -1035,15 +1039,18 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	function rememberCompletedLocalTurn(turnId: string): void {
 		clientRuntime.rememberCompletedLocalTurn(turnId);
 	}
-	async function acknowledgeConsumedTurn(turnId: string): Promise<void> {
+	async function acknowledgeConsumedTurn(turnId: string, finalizeQueuedControlText?: string): Promise<void> {
 		rememberCompletedLocalTurn(turnId);
-		await postIpc(connectedBrokerSocketPath, "turn_consumed", { turnId }, sessionId).catch(() => undefined);
+		await postIpc(connectedBrokerSocketPath, "turn_consumed", { turnId, finalizeQueuedControlText }, sessionId).catch(() => undefined);
 	}
 	function clientDeliverTurn(turn: PendingTelegramTurn): Promise<ClientDeliverTurnResult> {
 		return clientRuntime.deliverTurn(turn);
 	}
 	function clientConvertQueuedTurnToSteer(request: ConvertQueuedTurnToSteerRequest): Promise<ConvertQueuedTurnToSteerResult> {
 		return clientRuntime.convertQueuedTurnToSteer(request);
+	}
+	function clientCancelQueuedTurn(request: CancelQueuedTurnRequest): Promise<CancelQueuedTurnResult> {
+		return clientRuntime.cancelQueuedTurn(request);
 	}
 	function clientAbortTurn(): Promise<{ text: string; clearedTurnIds: string[] }> {
 		return clientRuntime.abortTurn();

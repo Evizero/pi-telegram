@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { ActiveTelegramTurn, AssistantFinalPayload, BrokerLease, ConvertQueuedTurnToSteerRequest, ConvertQueuedTurnToSteerResult, ClientDeliverTurnResult, ModelSummary, PendingTelegramTurn, TelegramRoute } from "../shared/types.js";
+import { QUEUED_CONTROL_TEXT } from "../shared/queued-control-text.js";
+import type { ActiveTelegramTurn, AssistantFinalPayload, BrokerLease, CancelQueuedTurnRequest, CancelQueuedTurnResult, ConvertQueuedTurnToSteerRequest, ConvertQueuedTurnToSteerResult, ClientDeliverTurnResult, ModelSummary, PendingTelegramTurn, TelegramRoute } from "../shared/types.js";
 import { errorMessage, randomId } from "../shared/utils.js";
 import { clientAbortTelegramTurn } from "./abort-turn.js";
 import { clientCompactSession } from "./compact.js";
@@ -36,7 +37,7 @@ export interface ClientRuntimeDeps {
 	};
 	findPendingFinal: (turnId: string) => AssistantFinalPayload | undefined;
 	sendAssistantFinalToBroker: (payload: AssistantFinalPayload) => Promise<boolean>;
-	acknowledgeConsumedTurn: (turnId: string) => Promise<void>;
+	acknowledgeConsumedTurn: (turnId: string, finalizeQueuedControlText?: string) => Promise<void>;
 	ensureCurrentTurnMirroredToTelegram: (ctx: ExtensionContext | undefined, historyText: string) => void;
 	startNextTelegramTurn: () => void;
 	readLease: () => Promise<BrokerLease | undefined>;
@@ -90,8 +91,20 @@ export class ClientRuntime {
 			else this.deps.getManualCompactionQueue().enqueueDeferredTurn(removed);
 			throw error;
 		}
-		await this.deps.acknowledgeConsumedTurn(removed.turnId);
-		return { status: "converted", text: "Steered queued follow-up into the active turn.", turnId: removed.turnId };
+		await this.deps.acknowledgeConsumedTurn(removed.turnId, QUEUED_CONTROL_TEXT.steered);
+		return { status: "converted", text: QUEUED_CONTROL_TEXT.steered, turnId: removed.turnId };
+	}
+
+	async cancelQueuedTurn(request: CancelQueuedTurnRequest): Promise<CancelQueuedTurnResult> {
+		if (this.deps.completedTurnIds.has(request.turnId)) return { status: "already_handled", text: "This queued follow-up was already handled.", turnId: request.turnId };
+		if (this.deps.getActiveTelegramTurn()?.turnId === request.turnId) return { status: "stale", text: "That follow-up has already started.", turnId: request.turnId };
+		const queuedTurns = this.deps.getQueuedTelegramTurns();
+		const queuedIndex = queuedTurns.findIndex((turn) => turn.turnId === request.turnId);
+		const removed = queuedIndex >= 0 ? queuedTurns.splice(queuedIndex, 1)[0] : this.deps.getManualCompactionQueue().removeDeferredTurn(request.turnId);
+		if (!removed) return { status: "not_found", text: "That queued follow-up is no longer waiting.", turnId: request.turnId };
+		await this.deps.acknowledgeConsumedTurn(removed.turnId, QUEUED_CONTROL_TEXT.cancelled);
+		this.deps.startNextTelegramTurn();
+		return { status: "cancelled", text: QUEUED_CONTROL_TEXT.cancelled, turnId: removed.turnId };
 	}
 
 	abortTurn(): Promise<{ text: string; clearedTurnIds: string[] }> {

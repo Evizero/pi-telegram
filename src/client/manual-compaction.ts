@@ -1,3 +1,4 @@
+import { QUEUED_CONTROL_TEXT } from "../shared/queued-control-text.js";
 import type { ActiveTelegramTurn, PendingTelegramTurn } from "../shared/types.js";
 
 export interface ManualCompactionTurnQueueDeps {
@@ -9,7 +10,7 @@ export interface ManualCompactionTurnQueueDeps {
 	prepareTurnAbort: () => void;
 	postTurnStarted: (turnId: string) => void;
 	sendUserMessage: (content: PendingTelegramTurn["content"], options?: { deliverAs: "steer" | "followUp" }) => void;
-	acknowledgeConsumedTurn: (turnId: string) => void;
+	acknowledgeConsumedTurn: (turnId: string, finalizeQueuedControlText?: string) => void;
 }
 
 export class ManualCompactionTurnQueue {
@@ -77,7 +78,7 @@ export class ManualCompactionTurnQueue {
 		this.pendingRemainder = [];
 		for (const turn of pending) {
 			this.deps.sendUserMessage(turn.content, { deliverAs: turn.deliveryMode === "steer" ? "steer" : "followUp" });
-			this.deps.acknowledgeConsumedTurn(turn.turnId);
+			this.deps.acknowledgeConsumedTurn(turn.turnId, QUEUED_CONTROL_TEXT.started);
 		}
 	}
 

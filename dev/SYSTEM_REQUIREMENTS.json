@@ -1056,6 +1056,54 @@
           "default-telegram-busy-messages"
         ]
       }
+    },
+    {
+      "id": "SyRS-cancel-queued-followup",
+      "origin": "derived",
+      "label": "Cancel queued follow-up",
+      "statement": "The system shall let the paired Telegram user cancel a still-queued Telegram follow-up turn for the selected route through an authorized, route-scoped, idempotent Telegram control before that turn starts or is converted to steering.",
+      "traces_to": [
+        "StRS-busy-turn-intent",
+        "StRS-delivery-continuity",
+        "StRS-paired-user-control"
+      ],
+      "rationale": "Queued follow-up controls should offer two distinct outcomes for the same pending turn: steer it into the active turn when it is urgent, or withdraw it when it was mistaken or obsolete. Cancellation must share the same authorization, route scope, durability, and idempotence expectations as the steer control without becoming a broad /stop operation.",
+      "acceptance_criteria": "Focused command-routing and client-queue tests demonstrate that a still-queued follow-up can be cancelled once; the pending broker turn and matching local queued or deferred turn are consumed or removed without affecting the active turn or unrelated queued turns; duplicate, stale, wrong-route, already-started, already-converted, stopped, or offline callbacks answer safely without duplicate effects; and retry_after during callback answers or status-message edits remains retry-significant without duplicating cancellation.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-28",
+      "updated": "2026-04-28",
+      "sources": {
+        "inbox": [
+          "cancel-individual-queued-telegram"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-queued-control-finalization",
+      "origin": "derived",
+      "label": "Remove stale queued controls",
+      "statement": "The system shall remove visible Telegram action controls from a queued follow-up status message when the follow-up is no longer actionable, while preserving durable fail-closed callback handling if the status message cannot be edited.",
+      "traces_to": [
+        "StRS-busy-turn-intent",
+        "StRS-activity-final-feedback",
+        "StRS-delivery-continuity"
+      ],
+      "rationale": "Queued follow-up buttons are helpful while a follow-up is waiting, but stale buttons in Telegram history misrepresent what can still be steered or cancelled. The durable queued-control state remains the authority, so visible cleanup should improve operator clarity without weakening retry safety or fail-closed callback behavior.",
+      "acceptance_criteria": "Focused lifecycle and command-routing tests demonstrate that when a queued follow-up starts normally, is stopped or cleared without a button press, or its control expires, any known queued-status message is edited to terminal text without the inline keyboard; stale callbacks still resolve from durable state without mutating unrelated queues; and retry_after from cleanup edits remains retry-significant without duplicating delivery or resurrecting work.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-28",
+      "updated": "2026-04-28",
+      "sources": {
+        "inbox": [
+          "remove-stale-queued-follow"
+        ]
+      }
     }
   ]
 }

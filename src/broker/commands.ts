@@ -1,10 +1,11 @@
 import { MODEL_LIST_TTL_MS, SESSION_LIST_OFFLINE_GRACE_MS } from "../shared/config.js";
 import { routeId } from "../shared/format.js";
-import type { BrokerState, ClientDeliverTurnResult, ConvertQueuedTurnToSteerResult, InlineKeyboardMarkup, ModelSummary, PendingTelegramTurn, QueuedTurnControlState, SessionRegistration, TelegramCallbackQuery, TelegramMessage, TelegramModelPickerState, TelegramRoute } from "../shared/types.js";
+import type { BrokerState, CancelQueuedTurnResult, ClientDeliverTurnResult, ConvertQueuedTurnToSteerResult, InlineKeyboardMarkup, ModelSummary, PendingTelegramTurn, QueuedTurnControlState, SessionRegistration, TelegramCallbackQuery, TelegramMessage, TelegramModelPickerState, TelegramRoute } from "../shared/types.js";
 import { errorMessage, now, randomId } from "../shared/utils.js";
 import { getTelegramRetryAfterMs } from "../telegram/api.js";
 import { answerTelegramCallbackQuery, editTelegramTextMessage } from "../telegram/text.js";
 import { createModelPickerState, exactModelSelector, isModelPickerCallbackData, parseModelPickerCallback, renderInitialModelPicker, renderModelPicker, renderProviderPicker } from "./model-picker.js";
+import { callbackMatchesQueuedTurnControl, DEFAULT_QUEUED_CONTROL_EDIT_RETRY_MS, isQueuedTurnControlCallbackData, isTransientQueuedControlEditError, markExpiredControlVisible, markMissingPendingControlHandled, markQueuedTurnControlExpired, parseQueuedTurnControlCallback, pruneQueuedTurnControls, queuedControlBelongsToRoute, queuedControlNeedsVisibleFinalization, QUEUED_CONTROL_TEXT, queuedTurnControlCallbackData, QUEUED_TURN_CONTROL_TTL_MS, setQueuedControlTerminal, type QueuedTurnControlAction } from "./queued-controls.js";
 
 export function telegramCommandName(text: string): string {
 	const command = text.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
@@ -25,22 +26,7 @@ function messagesWithFirstText(messages: TelegramMessage[], text: string): Teleg
 	});
 }
 
-function queuedTurnSteerCallbackData(token: string): string {
-	return `${QUEUED_TURN_CONTROL_CALLBACK_PREFIX}:${token}`;
-}
-
-function isQueuedTurnSteerCallbackData(data: string | undefined): boolean {
-	return data?.startsWith(`${QUEUED_TURN_CONTROL_CALLBACK_PREFIX}:`) ?? false;
-}
-
-function parseQueuedTurnSteerCallbackToken(data: string | undefined): string | undefined {
-	if (!data) return undefined;
-	const [prefix, token, ...rest] = data.split(":");
-	if (prefix !== QUEUED_TURN_CONTROL_CALLBACK_PREFIX || !token || rest.length > 0) return undefined;
-	return token;
-}
-
-export interface TelegramCommandRouterDeps {
+interface TelegramCommandRouterDeps {
 	getBrokerState: () => BrokerState | undefined;
 	persistBrokerState: () => Promise<void>;
 	markOfflineSessions: () => Promise<void>;
@@ -48,6 +34,7 @@ export interface TelegramCommandRouterDeps {
 	durableTelegramTurn: (turn: PendingTelegramTurn) => PendingTelegramTurn;
 	sendTextReply: (chatId: number | string, messageThreadId: number | undefined, text: string, options?: { disableNotification?: boolean; replyMarkup?: InlineKeyboardMarkup }) => Promise<number | undefined>;
 	callTelegram: <TResponse>(method: string, body: Record<string, unknown>) => Promise<TResponse>;
+	callTelegramForQueuedControlCleanup?: <TResponse>(method: string, body: Record<string, unknown>) => Promise<TResponse>;
 	postIpc: <TResponse>(socketPath: string, type: string, payload: unknown, targetSessionId?: string) => Promise<TResponse>;
 	stopTypingLoop: (turnId: string) => void;
 	unregisterSession: (targetSessionId: string) => Promise<unknown>;
@@ -55,8 +42,6 @@ export interface TelegramCommandRouterDeps {
 }
 
 const COMPLETED_MODEL_PICKER_TTL_MS = 24 * 60 * 60 * 1000;
-const QUEUED_TURN_CONTROL_CALLBACK_PREFIX = "qst1";
-const QUEUED_TURN_CONTROL_TTL_MS = 24 * 60 * 60 * 1000;
 
 export class TelegramCommandRouter {
 	private readonly modelListCache = new Map<string, { expiresAt: number; models: ModelSummary[] }>();
@@ -77,7 +62,7 @@ export class TelegramCommandRouter {
 	}
 
 	async dispatchCallback(query: TelegramCallbackQuery): Promise<boolean> {
-		if (isQueuedTurnSteerCallbackData(query.data)) return await this.dispatchQueuedTurnSteerCallback(query);
+		if (isQueuedTurnControlCallbackData(query.data)) return await this.dispatchQueuedTurnControlCallback(query);
 		if (!isModelPickerCallbackData(query.data)) return false;
 		const brokerState = this.deps.getBrokerState();
 		if (!brokerState) return true;
@@ -133,7 +118,8 @@ export class TelegramCommandRouter {
 		const rawText = messages.map((message) => (message.text || message.caption || "").trim()).find((text) => text.length > 0) || "";
 		const lower = rawText.toLowerCase();
 		const command = telegramCommandName(rawText);
-		if (this.pruneSelectorSelections(brokerState) || this.pruneModelPickers(brokerState) || this.pruneQueuedTurnControls(brokerState)) await this.deps.persistBrokerState();
+		await this.retryQueuedTurnControlFinalizations();
+		if (this.pruneSelectorSelections(brokerState) || this.pruneModelPickers(brokerState) || pruneQueuedTurnControls(brokerState)) await this.deps.persistBrokerState();
 		const route = this.routeForMessage(firstMessage);
 		if (command === "/sessions") {
 			await this.sendSessions(firstMessage.chat.id, firstMessage.message_thread_id);
@@ -165,11 +151,14 @@ export class TelegramCommandRouter {
 				const result = await this.deps.postIpc<{ text: string; clearedTurnIds?: string[] }>(session.clientSocketPath, "abort_turn", { turnId: "active" }, session.sessionId);
 				if (brokerState.pendingTurns && result.clearedTurnIds) {
 					for (const turnId of result.clearedTurnIds) delete brokerState.pendingTurns[turnId];
-					this.expireQueuedTurnControls(result.clearedTurnIds);
+					await this.finalizeQueuedTurnControls(result.clearedTurnIds, QUEUED_CONTROL_TEXT.cleared).catch((error) => {
+						if (getTelegramRetryAfterMs(error) === undefined) throw error;
+					});
 					await this.deps.persistBrokerState();
 				}
 				await this.deps.sendTextReply(route.chatId, route.messageThreadId, result.text);
 			} catch (error) {
+				if (getTelegramRetryAfterMs(error) !== undefined) throw error;
 				await this.deps.sendTextReply(route.chatId, route.messageThreadId, `Failed to stop session: ${errorMessage(error)}`);
 			}
 			return;
@@ -261,52 +250,90 @@ export class TelegramCommandRouter {
 		}
 	}
 
-	private async dispatchQueuedTurnSteerCallback(query: TelegramCallbackQuery): Promise<boolean> {
+	private async dispatchQueuedTurnControlCallback(query: TelegramCallbackQuery): Promise<boolean> {
 		const brokerState = this.deps.getBrokerState();
 		if (!brokerState) return true;
-		const token = parseQueuedTurnSteerCallbackToken(query.data);
-		if (!token) {
-			await this.tryAnswerCallback(query.id, "This steer button is invalid.", true);
+		await this.retryQueuedTurnControlFinalizations();
+		const callback = parseQueuedTurnControlCallback(query.data);
+		if (!callback) {
+			await this.tryAnswerCallback(query.id, "This queued follow-up button is invalid.", true);
 			return true;
 		}
-		const pruned = this.pruneQueuedTurnControls(brokerState);
+		const { action, token } = callback;
+		const pruned = pruneQueuedTurnControls(brokerState);
 		const control = brokerState.queuedTurnControls?.[token];
 		if (!control) {
 			if (pruned) await this.deps.persistBrokerState();
-			await this.tryAnswerCallback(query.id, "This queued follow-up is no longer steerable.", true);
+			await this.tryAnswerCallback(query.id, `This queued follow-up is no longer ${action === "steer" ? "steerable" : "cancellable"}.`, true);
 			return true;
 		}
-		if (!this.callbackMatchesQueuedTurnControl(query, control)) {
-			await this.tryAnswerCallback(query.id, "This steer button no longer matches this Telegram route.", true);
+		if (!callbackMatchesQueuedTurnControl(query, control)) {
+			await this.tryAnswerCallback(query.id, "This queued follow-up button no longer matches this Telegram route.", true);
 			return true;
 		}
-		if (control.status === "converted") {
-			if (control.completedText) await this.tryEditQueuedControlMessage(query, control, control.completedText);
-			await this.tryAnswerCallback(query.id, "Queued follow-up already steered.");
-			return true;
-		}
-		if (control.status === "expired" || control.expiresAtMs < now()) {
-			control.status = "expired";
-			control.updatedAtMs = now();
-			await this.deps.persistBrokerState();
-			await this.tryAnswerCallback(query.id, "This queued follow-up is no longer steerable.", true);
-			await this.tryEditQueuedControlMessage(query, control, "Queued follow-up is no longer steerable.");
-			return true;
-		}
+		if (await this.finishTerminalQueuedTurnControl(query, control, action)) return true;
 		const pending = brokerState.pendingTurns?.[control.turnId];
-		if (!pending) {
-			control.status = control.status === "converting" ? "converted" : "expired";
-			control.updatedAtMs = now();
+		if (!pending && (control.status === "converting" || control.status === "cancelling")) {
+			const wasConverting = control.status === "converting";
+			markMissingPendingControlHandled(control);
+			const text = control.completedText!;
 			await this.deps.persistBrokerState();
-			await this.tryAnswerCallback(query.id, control.status === "converted" ? "Queued follow-up already handled." : "This queued follow-up is no longer waiting.", control.status !== "converted");
-			await this.tryEditQueuedControlMessage(query, control, control.status === "converted" ? "Queued follow-up already handled." : "Queued follow-up is no longer waiting.");
+			await this.tryEditQueuedControlMessage(query, control, text);
+			await this.tryAnswerCallback(query.id, wasConverting ? "Queued follow-up already steered." : "Queued follow-up already cancelled.");
+			return true;
+		}
+		if (control.expiresAtMs < now()) {
+			markQueuedTurnControlExpired(control, QUEUED_CONTROL_TEXT.noLongerWaiting);
+			await this.deps.persistBrokerState();
+			await this.tryEditQueuedControlMessage(query, control, control.completedText!);
+			await this.tryAnswerCallback(query.id, "This queued follow-up is no longer waiting.", true);
+			return true;
+		}
+		if ((control.status === "converting" && action === "cancel") || (control.status === "cancelling" && action === "steer")) {
+			await this.tryAnswerCallback(query.id, control.status === "converting" ? "Queued follow-up is already being steered." : "Queued follow-up is already being cancelled.", true);
+			return true;
+		}
+		if (!pending) {
+			const text = QUEUED_CONTROL_TEXT.noLongerWaiting;
+			setQueuedControlTerminal(control, "expired", text);
+			await this.deps.persistBrokerState();
+			await this.tryEditQueuedControlMessage(query, control, text);
+			await this.tryAnswerCallback(query.id, text, true);
 			return true;
 		}
 		const session = brokerState.sessions[control.sessionId];
 		if (!session || session.status === "offline" || !this.queuedControlRouteStillValid(brokerState, control)) {
+			const text = QUEUED_CONTROL_TEXT.noLongerWaiting;
+			markQueuedTurnControlExpired(control, text);
+			await this.deps.persistBrokerState();
+			if (queuedControlNeedsVisibleFinalization(control)) await this.tryEditQueuedControlMessage(query, control, text);
 			await this.tryAnswerCallback(query.id, "That pi session is offline or no longer matches this route.", true);
 			return true;
 		}
+		if (action === "steer") return await this.convertQueuedTurnControlToSteer(query, control, session);
+		return await this.cancelQueuedTurnControl(query, control, session);
+	}
+
+	private async finishTerminalQueuedTurnControl(query: TelegramCallbackQuery, control: QueuedTurnControlState, action: QueuedTurnControlAction): Promise<boolean> {
+		if (control.status === "converted") {
+			if (queuedControlNeedsVisibleFinalization(control)) await this.tryEditQueuedControlMessage(query, control, control.completedText!);
+			await this.tryAnswerCallback(query.id, action === "steer" ? "Queued follow-up already steered." : "Queued follow-up was already steered.", action === "cancel");
+			return true;
+		}
+		if (control.status === "cancelled") {
+			if (queuedControlNeedsVisibleFinalization(control)) await this.tryEditQueuedControlMessage(query, control, control.completedText!);
+			await this.tryAnswerCallback(query.id, action === "cancel" ? "Queued follow-up already cancelled." : "Queued follow-up was cancelled.", action === "steer");
+			return true;
+		}
+		if (control.status === "expired") {
+			if (queuedControlNeedsVisibleFinalization(control)) await this.tryEditQueuedControlMessage(query, control, control.completedText!);
+			await this.tryAnswerCallback(query.id, "This queued follow-up is no longer waiting.", true);
+			return true;
+		}
+		return false;
+	}
+
+	private async convertQueuedTurnControlToSteer(query: TelegramCallbackQuery, control: QueuedTurnControlState, session: SessionRegistration): Promise<boolean> {
 		control.status = "converting";
 		control.updatedAtMs = now();
 		await this.deps.persistBrokerState();
@@ -323,17 +350,45 @@ export class TelegramCommandRouter {
 		}
 		if (result.status === "converted" || result.status === "already_handled") {
 			await this.rememberBrokerTurnConsumed(control.turnId);
-			control.status = "converted";
-			control.completedText = result.text;
-			control.updatedAtMs = now();
-			control.expiresAtMs = now() + QUEUED_TURN_CONTROL_TTL_MS;
+			const text = result.status === "already_handled" ? QUEUED_CONTROL_TEXT.steered : result.text;
+			setQueuedControlTerminal(control, "converted", text);
 			await this.deps.persistBrokerState();
-			await this.tryEditQueuedControlMessage(query, control, result.text);
-			await this.tryAnswerCallback(query.id, result.text);
+			await this.tryEditQueuedControlMessage(query, control, text);
+			await this.tryAnswerCallback(query.id, text);
 			return true;
 		}
-		control.status = "expired";
+		setQueuedControlTerminal(control, "expired", result.text);
+		await this.deps.persistBrokerState();
+		await this.tryEditQueuedControlMessage(query, control, result.text);
+		await this.tryAnswerCallback(query.id, result.text, true);
+		return true;
+	}
+
+	private async cancelQueuedTurnControl(query: TelegramCallbackQuery, control: QueuedTurnControlState, session: SessionRegistration): Promise<boolean> {
+		control.status = "cancelling";
 		control.updatedAtMs = now();
+		await this.deps.persistBrokerState();
+		let result: CancelQueuedTurnResult;
+		try {
+			result = await this.deps.postIpc<CancelQueuedTurnResult>(session.clientSocketPath, "cancel_queued_turn", { turnId: control.turnId }, session.sessionId);
+		} catch (error) {
+			session.status = "offline";
+			control.status = "offered";
+			control.updatedAtMs = now();
+			await this.deps.persistBrokerState();
+			await this.tryAnswerCallback(query.id, `Failed to cancel queued follow-up: ${errorMessage(error)}`, true);
+			return true;
+		}
+		if (result.status === "cancelled" || result.status === "already_handled") {
+			await this.rememberBrokerTurnConsumed(control.turnId);
+			const text = result.status === "already_handled" ? QUEUED_CONTROL_TEXT.cancelled : result.text;
+			setQueuedControlTerminal(control, "cancelled", text);
+			await this.deps.persistBrokerState();
+			await this.tryEditQueuedControlMessage(query, control, text);
+			await this.tryAnswerCallback(query.id, text);
+			return true;
+		}
+		setQueuedControlTerminal(control, "expired", result.text);
 		await this.deps.persistBrokerState();
 		await this.tryEditQueuedControlMessage(query, control, result.text);
 		await this.tryAnswerCallback(query.id, result.text, true);
@@ -343,7 +398,7 @@ export class TelegramCommandRouter {
 	private async offerQueuedTurnSteerControl(turn: PendingTelegramTurn, targetActiveTurnId: string | undefined): Promise<void> {
 		const brokerState = this.deps.getBrokerState();
 		if (!brokerState || !turn.routeId) return;
-		this.pruneQueuedTurnControls(brokerState);
+		pruneQueuedTurnControls(brokerState);
 		const existing = Object.values(brokerState.queuedTurnControls ?? {}).find((control) => control.turnId === turn.turnId && control.status === "offered");
 		if (existing) {
 			await this.sendQueuedTurnControlStatus(existing);
@@ -377,9 +432,9 @@ export class TelegramCommandRouter {
 
 	private async sendQueuedTurnControlStatus(control: QueuedTurnControlState): Promise<void> {
 		if (control.statusMessageId !== undefined) return;
-		const messageId = await this.deps.sendTextReply(control.chatId, control.messageThreadId, "Queued as follow-up.", {
+		const messageId = await this.deps.sendTextReply(control.chatId, control.messageThreadId, QUEUED_CONTROL_TEXT.offered, {
 			disableNotification: true,
-			replyMarkup: { inline_keyboard: [[{ text: "Steer now", callback_data: queuedTurnSteerCallbackData(control.token) }]] },
+			replyMarkup: { inline_keyboard: [[{ text: "Steer now", callback_data: queuedTurnControlCallbackData("steer", control.token) }, { text: "Cancel", callback_data: queuedTurnControlCallbackData("cancel", control.token) }]] },
 		});
 		if (messageId !== undefined) {
 			control.statusMessageId = messageId;
@@ -398,46 +453,143 @@ export class TelegramCommandRouter {
 		this.deps.stopTypingLoop(turnId);
 	}
 
-	private expireQueuedTurnControls(turnIds: string[]): void {
+	markQueuedTurnControlsExpired(turnIds: string[], text: string = QUEUED_CONTROL_TEXT.noLongerWaiting): boolean {
 		const brokerState = this.deps.getBrokerState();
-		if (!brokerState?.queuedTurnControls || turnIds.length === 0) return;
+		if (!brokerState?.queuedTurnControls || turnIds.length === 0) return false;
+		let changed = false;
 		const turnIdSet = new Set(turnIds);
 		for (const control of Object.values(brokerState.queuedTurnControls)) {
-			if (!turnIdSet.has(control.turnId) || control.status !== "offered") continue;
-			control.status = "expired";
-			control.updatedAtMs = now();
-		}
-	}
-
-	private callbackMatchesQueuedTurnControl(query: TelegramCallbackQuery, control: QueuedTurnControlState): boolean {
-		const message = query.message;
-		if (!message) return false;
-		if (String(message.chat.id) !== String(control.chatId)) return false;
-		if (message.message_thread_id !== control.messageThreadId) return false;
-		if (control.statusMessageId !== undefined && message.message_id !== control.statusMessageId) return false;
-		return true;
-	}
-
-	private queuedControlRouteStillValid(brokerState: BrokerState, control: QueuedTurnControlState): boolean {
-		return Object.values(brokerState.routes).some((route) => route.routeId === control.routeId && route.sessionId === control.sessionId && String(route.chatId) === String(control.chatId) && route.messageThreadId === control.messageThreadId);
-	}
-
-	private pruneQueuedTurnControls(brokerState: BrokerState): boolean {
-		let changed = false;
-		for (const [token, control] of Object.entries(brokerState.queuedTurnControls ?? {})) {
-			if (control.expiresAtMs > now() && brokerState.sessions[control.sessionId]) continue;
-			delete brokerState.queuedTurnControls![token];
-			changed = true;
+			if (!turnIdSet.has(control.turnId)) continue;
+			changed = markQueuedTurnControlExpired(control, text) || changed;
 		}
 		return changed;
 	}
 
+	markQueuedTurnControlsConsumed(turnIds: string[], text: string = QUEUED_CONTROL_TEXT.noLongerWaiting): boolean {
+		const brokerState = this.deps.getBrokerState();
+		if (!brokerState?.queuedTurnControls || turnIds.length === 0) return false;
+		let changed = false;
+		const turnIdSet = new Set(turnIds);
+		for (const control of Object.values(brokerState.queuedTurnControls)) {
+			if (!turnIdSet.has(control.turnId)) continue;
+			if (control.status === "converting") {
+				const terminalText = text === QUEUED_CONTROL_TEXT.noLongerWaiting ? QUEUED_CONTROL_TEXT.steered : text;
+				changed = setQueuedControlTerminal(control, "converted", terminalText) || changed;
+			} else if (control.status === "cancelling") {
+				const terminalText = text === QUEUED_CONTROL_TEXT.noLongerWaiting ? QUEUED_CONTROL_TEXT.cancelled : text;
+				changed = setQueuedControlTerminal(control, "cancelled", terminalText) || changed;
+			} else changed = markQueuedTurnControlExpired(control, text) || changed;
+		}
+		return changed;
+	}
+
+	async finalizeQueuedTurnControls(turnIds: string[], text: string = QUEUED_CONTROL_TEXT.noLongerWaiting): Promise<boolean> {
+		const brokerState = this.deps.getBrokerState();
+		if (!brokerState?.queuedTurnControls || turnIds.length === 0) return false;
+		let changed = this.markQueuedTurnControlsExpired(turnIds, text);
+		if (changed) await this.deps.persistBrokerState();
+		if (brokerState.queuedTurnControlCleanupRetryAtMs !== undefined) {
+			if (brokerState.queuedTurnControlCleanupRetryAtMs > now()) return changed;
+			delete brokerState.queuedTurnControlCleanupRetryAtMs;
+			changed = true;
+			await this.deps.persistBrokerState();
+		}
+		for (const control of Object.values(brokerState.queuedTurnControls)) {
+			if (!turnIds.includes(control.turnId) || !queuedControlNeedsVisibleFinalization(control)) continue;
+			try {
+				changed = await this.finalizeQueuedControlStatusMessage(control, control.completedText!) || changed;
+				if (brokerState.queuedTurnControlCleanupRetryAtMs !== undefined && brokerState.queuedTurnControlCleanupRetryAtMs > now()) return changed;
+			} catch (error) {
+				if (getTelegramRetryAfterMs(error) === undefined) throw error;
+				brokerState.queuedTurnControlCleanupRetryAtMs = control.statusMessageRetryAtMs;
+				await this.deps.persistBrokerState();
+				throw error;
+			}
+		}
+		return changed;
+	}
+
+	async retryQueuedTurnControlFinalizations(): Promise<boolean> {
+		const brokerState = this.deps.getBrokerState();
+		if (!brokerState?.queuedTurnControls) return false;
+		let changed = false;
+		if (brokerState.queuedTurnControlCleanupRetryAtMs !== undefined) {
+			if (brokerState.queuedTurnControlCleanupRetryAtMs > now()) return false;
+			delete brokerState.queuedTurnControlCleanupRetryAtMs;
+			changed = true;
+			await this.deps.persistBrokerState();
+		}
+		for (const control of Object.values(brokerState.queuedTurnControls)) {
+			const missingPendingTurn = brokerState.pendingTurns?.[control.turnId] === undefined;
+			let marked = false;
+			if (control.status === "expired" && !control.completedText) marked = markExpiredControlVisible(control, QUEUED_CONTROL_TEXT.noLongerWaiting);
+			else if (control.status === "offered" && (control.expiresAtMs < now() || missingPendingTurn)) marked = markQueuedTurnControlExpired(control, QUEUED_CONTROL_TEXT.noLongerWaiting);
+			else if (missingPendingTurn && (control.status === "converting" || control.status === "cancelling")) marked = markMissingPendingControlHandled(control);
+			if (marked) {
+				changed = true;
+				await this.deps.persistBrokerState();
+			}
+			if (queuedControlNeedsVisibleFinalization(control)) {
+				try {
+					changed = await this.finalizeQueuedControlStatusMessage(control, control.completedText!) || changed;
+					if (brokerState.queuedTurnControlCleanupRetryAtMs !== undefined && brokerState.queuedTurnControlCleanupRetryAtMs > now()) return true;
+				} catch (error) {
+					if (getTelegramRetryAfterMs(error) === undefined) throw error;
+					brokerState.queuedTurnControlCleanupRetryAtMs = control.statusMessageRetryAtMs;
+					await this.deps.persistBrokerState();
+					return true;
+				}
+			}
+		}
+		return changed;
+	}
+
+	private queuedControlRouteStillValid(brokerState: BrokerState, control: QueuedTurnControlState): boolean {
+		return Object.values(brokerState.routes).some((route) => queuedControlBelongsToRoute(control, route));
+	}
+
 	private async tryEditQueuedControlMessage(query: TelegramCallbackQuery, control: QueuedTurnControlState, text: string): Promise<void> {
+		const brokerState = this.deps.getBrokerState();
+		if (brokerState?.queuedTurnControlCleanupRetryAtMs !== undefined) {
+			if (brokerState.queuedTurnControlCleanupRetryAtMs > now()) return;
+			delete brokerState.queuedTurnControlCleanupRetryAtMs;
+			await this.deps.persistBrokerState();
+		}
 		const messageId = query.message?.message_id ?? control.statusMessageId;
 		if (messageId === undefined) return;
-		await editTelegramTextMessage(this.deps.callTelegram, control.chatId, messageId, text).catch((error) => {
-			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
-		});
+		await this.finalizeQueuedControlStatusMessage(control, text, messageId);
+	}
+
+	private async finalizeQueuedControlStatusMessage(control: QueuedTurnControlState, text: string, messageId = control.statusMessageId): Promise<boolean> {
+		if (messageId === undefined) return false;
+		if (control.statusMessageFinalizedAtMs !== undefined && control.completedText === text) return false;
+		try {
+			await editTelegramTextMessage(this.deps.callTelegramForQueuedControlCleanup ?? this.deps.callTelegram, control.chatId, messageId, text);
+		} catch (error) {
+			const retryAfterMs = getTelegramRetryAfterMs(error);
+			if (retryAfterMs !== undefined) {
+				control.statusMessageRetryAtMs = now() + retryAfterMs + 250;
+				const brokerState = this.deps.getBrokerState();
+				if (brokerState) brokerState.queuedTurnControlCleanupRetryAtMs = control.statusMessageRetryAtMs;
+				control.updatedAtMs = now();
+				await this.deps.persistBrokerState();
+				throw error;
+			}
+			if (isTransientQueuedControlEditError(error)) {
+				control.statusMessageRetryAtMs = now() + DEFAULT_QUEUED_CONTROL_EDIT_RETRY_MS;
+				const brokerState = this.deps.getBrokerState();
+				if (brokerState) brokerState.queuedTurnControlCleanupRetryAtMs = control.statusMessageRetryAtMs;
+				control.updatedAtMs = now();
+				await this.deps.persistBrokerState();
+				return false;
+			}
+		}
+		control.completedText = text;
+		control.statusMessageRetryAtMs = undefined;
+		control.statusMessageFinalizedAtMs = now();
+		control.updatedAtMs = now();
+		await this.deps.persistBrokerState();
+		return true;
 	}
 
 	private async selectModelFromPicker(query: TelegramCallbackQuery, picker: TelegramModelPickerState, modelIndex: number): Promise<void> {

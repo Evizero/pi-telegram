@@ -180,6 +180,14 @@ export interface PendingTelegramTurn {
 
 export type ActiveTelegramTurn = PendingTelegramTurn;
 
+/**
+ * Durable broker-owned state for one Telegram queued-follow-up control message.
+ * `offered` means the queued turn is still actionable; `converting` and
+ * `cancelling` are in-flight client handshakes; `converted`, `cancelled`, and
+ * `expired` are terminal control outcomes. Terminal records may keep
+ * `completedText` plus visible-message retry/finalization timestamps so stale
+ * Telegram buttons can be cleaned up later without becoming execution authority.
+ */
 export interface QueuedTurnControlState {
 	token: string;
 	turnId: string;
@@ -188,9 +196,11 @@ export interface QueuedTurnControlState {
 	chatId: number | string;
 	messageThreadId?: number;
 	statusMessageId?: number;
+	statusMessageFinalizedAtMs?: number;
+	statusMessageRetryAtMs?: number;
 	targetActiveTurnId?: string;
 	completedText?: string;
-	status: "offered" | "converting" | "converted" | "expired";
+	status: "offered" | "converting" | "cancelling" | "converted" | "cancelled" | "expired";
 	createdAtMs: number;
 	updatedAtMs: number;
 	expiresAtMs: number;
@@ -212,6 +222,16 @@ export interface ConvertQueuedTurnToSteerRequest {
 
 export interface ConvertQueuedTurnToSteerResult {
 	status: "converted" | "already_handled" | "not_found" | "stale";
+	text: string;
+	turnId: string;
+}
+
+export interface CancelQueuedTurnRequest {
+	turnId: string;
+}
+
+export interface CancelQueuedTurnResult {
+	status: "cancelled" | "already_handled" | "not_found" | "stale";
 	text: string;
 	turnId: string;
 }
@@ -365,6 +385,8 @@ export interface BrokerState {
 	selectorSelections?: Record<string, TelegramSelectorSelection>;
 	modelPickers?: Record<string, TelegramModelPickerState>;
 	queuedTurnControls?: Record<string, QueuedTurnControlState>;
+	/** Earliest broker-wide retry time for deferred queued-control status-message cleanup edits. */
+	queuedTurnControlCleanupRetryAtMs?: number;
 	completedTurnIds?: string[];
 	createdAtMs: number;
 	updatedAtMs: number;

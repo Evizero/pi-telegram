@@ -26,7 +26,7 @@ async function checkFinishStartsFirstDeferredTurnAndDrainsRemainder(): Promise<v
 	let activeTurn: ActiveTelegramTurn | undefined;
 	const sent: Array<{ text: string; deliverAs?: "steer" | "followUp" }> = [];
 	const started: string[] = [];
-	const consumed: string[] = [];
+	const consumed: Array<{ turnId: string; finalizeQueuedControlText?: string }> = [];
 	const queue = new ManualCompactionTurnQueue({
 		getQueuedTelegramTurns: () => queuedTurns,
 		setQueuedTelegramTurns: (turns) => { queuedTurns = turns; },
@@ -40,7 +40,7 @@ async function checkFinishStartsFirstDeferredTurnAndDrainsRemainder(): Promise<v
 			assert.equal(text?.type, "text");
 			sent.push({ text: text.text, deliverAs: options?.deliverAs });
 		},
-		acknowledgeConsumedTurn: (turnId) => { consumed.push(turnId); },
+		acknowledgeConsumedTurn: (turnId, finalizeQueuedControlText) => { consumed.push({ turnId, finalizeQueuedControlText }); },
 	});
 
 	queue.start();
@@ -57,7 +57,10 @@ async function checkFinishStartsFirstDeferredTurnAndDrainsRemainder(): Promise<v
 		{ text: "second", deliverAs: "followUp" },
 		{ text: "third", deliverAs: "followUp" },
 	]);
-	assert.deepEqual(consumed, ["second", "third"]);
+	assert.deepEqual(consumed, [
+		{ turnId: "second", finalizeQueuedControlText: "Queued follow-up has started." },
+		{ turnId: "third", finalizeQueuedControlText: "Queued follow-up has started." },
+	]);
 }
 
 function idleCtx(): ExtensionContext {

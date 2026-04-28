@@ -326,6 +326,108 @@ async function checkQueuedTurnConversionRemovesBeforeSteering(): Promise<void> {
 	assert.equal((await runtime.convertQueuedTurnToSteer({ turnId: "convert-me", targetActiveTurnId: "active" })).status, "already_handled");
 }
 
+async function checkQueuedTurnCancellationRemovesOnlyTarget(): Promise<void> {
+	const queued = [turn("keep-before"), turn("cancel-me"), turn("keep-after")];
+	const completed = new Set<string>();
+	const consumed: string[] = [];
+	let starts = 0;
+	const runtime = new ClientRuntime({
+		pi: { sendUserMessage: () => { throw new Error("cancel should not send user message"); } } as never,
+		completedTurnIds: completed,
+		getSessionId: () => "session-1",
+		getLatestCtx: busyCtx,
+		getConnectedRoute: () => undefined,
+		isRoutableRoute: (_route: TelegramRoute | undefined): _route is TelegramRoute => false,
+		getActiveTelegramTurn: () => activeTurn("active"),
+		setActiveTelegramTurn: () => undefined,
+		getQueuedTelegramTurns: () => queued,
+		getCurrentAbort: () => undefined,
+		setCurrentAbort: () => undefined,
+		getManualCompactionQueue: () => ({
+			isActive: () => false,
+			hasDeferredTurn: () => false,
+			enqueueDeferredTurn: () => false,
+			peekPendingRemainder: () => [],
+			clearPendingRemainder: () => [],
+			removeDeferredTurn: () => undefined,
+			cancelDeferredStart: () => undefined,
+			start: () => undefined,
+			finish: () => undefined,
+		}),
+		activeTurnFinalizer: {
+			hasDeferredTurn: () => false,
+			releaseDeferredTurn: async () => undefined,
+			restoreDeferredPayload: () => undefined,
+		},
+		findPendingFinal: () => undefined,
+		sendAssistantFinalToBroker: async () => true,
+		acknowledgeConsumedTurn: async (turnId) => { consumed.push(turnId); completed.add(turnId); },
+		ensureCurrentTurnMirroredToTelegram: () => undefined,
+		startNextTelegramTurn: () => { starts += 1; },
+		readLease: async () => undefined,
+		updateStatus: () => undefined,
+	});
+
+	const result = await runtime.cancelQueuedTurn({ turnId: "cancel-me" });
+	assert.equal(result.status, "cancelled");
+	assert.deepEqual(queued.map((candidate) => candidate.turnId), ["keep-before", "keep-after"]);
+	assert.deepEqual(consumed, ["cancel-me"]);
+	assert.equal(starts, 1);
+	assert.equal((await runtime.cancelQueuedTurn({ turnId: "cancel-me" })).status, "already_handled");
+	assert.equal((await runtime.cancelQueuedTurn({ turnId: "active" })).status, "stale");
+}
+
+async function checkQueuedTurnCancellationRemovesDeferredTurn(): Promise<void> {
+	const deferred = [turn("deferred-cancel"), turn("deferred-keep")];
+	const completed = new Set<string>();
+	const consumed: string[] = [];
+	const runtime = new ClientRuntime({
+		pi: { sendUserMessage: () => { throw new Error("deferred cancel should not send user message"); } } as never,
+		completedTurnIds: completed,
+		getSessionId: () => "session-1",
+		getLatestCtx: busyCtx,
+		getConnectedRoute: () => undefined,
+		isRoutableRoute: (_route: TelegramRoute | undefined): _route is TelegramRoute => false,
+		getActiveTelegramTurn: () => activeTurn("active"),
+		setActiveTelegramTurn: () => undefined,
+		getQueuedTelegramTurns: () => [],
+		getCurrentAbort: () => undefined,
+		setCurrentAbort: () => undefined,
+		getManualCompactionQueue: () => ({
+			isActive: () => false,
+			hasDeferredTurn: (turnId) => deferred.some((candidate) => candidate.turnId === turnId),
+			enqueueDeferredTurn: (queuedTurn) => { deferred.push(queuedTurn); return true; },
+			peekPendingRemainder: () => [...deferred],
+			clearPendingRemainder: () => deferred.splice(0, deferred.length),
+			removeDeferredTurn: (turnId) => {
+				const index = deferred.findIndex((candidate) => candidate.turnId === turnId);
+				if (index < 0) return undefined;
+				return deferred.splice(index, 1)[0];
+			},
+			cancelDeferredStart: () => undefined,
+			start: () => undefined,
+			finish: () => undefined,
+		}),
+		activeTurnFinalizer: {
+			hasDeferredTurn: () => false,
+			releaseDeferredTurn: async () => undefined,
+			restoreDeferredPayload: () => undefined,
+		},
+		findPendingFinal: () => undefined,
+		sendAssistantFinalToBroker: async () => true,
+		acknowledgeConsumedTurn: async (turnId) => { consumed.push(turnId); completed.add(turnId); },
+		ensureCurrentTurnMirroredToTelegram: () => undefined,
+		startNextTelegramTurn: () => undefined,
+		readLease: async () => undefined,
+		updateStatus: () => undefined,
+	});
+
+	const result = await runtime.cancelQueuedTurn({ turnId: "deferred-cancel" });
+	assert.equal(result.status, "cancelled");
+	assert.deepEqual(deferred.map((candidate) => candidate.turnId), ["deferred-keep"]);
+	assert.deepEqual(consumed, ["deferred-cancel"]);
+}
+
 async function checkCompactionBoundaryMessagesJoinDeferredRemainder(): Promise<void> {
 	const queued: PendingTelegramTurn[] = [];
 	const appended: PendingTelegramTurn[] = [];
@@ -363,5 +465,7 @@ await checkManualCompactionQueuesFollowUpWithoutStartingTurn();
 await checkActiveTurnPreventsImmediateRestartWhileCtxStillIdle();
 await checkDeferredCompactionDuplicateIsIgnored();
 await checkQueuedTurnConversionRemovesBeforeSteering();
+await checkQueuedTurnCancellationRemovesOnlyTarget();
+await checkQueuedTurnCancellationRemovesDeferredTurn();
 await checkCompactionBoundaryMessagesJoinDeferredRemainder();
 console.log("Client turn delivery checks passed");
