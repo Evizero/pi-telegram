@@ -55,6 +55,7 @@ export class BrokerSessionRegistrationCoordinator {
 			status: replacement ? "connecting" : (registration.status === "connecting" ? "idle" : registration.status),
 			staleStandDownConnectionNonce: replacement ? previous.connectionNonce : undefined,
 			staleStandDownRequestedAtMs: replacement ? now() : undefined,
+			reconnectGraceStartedAtMs: undefined,
 		};
 		const route = await this.ensureRouteForSessionLocked(brokerState.sessions[registration.sessionId]);
 		await this.deps.persistBrokerState();
@@ -75,6 +76,7 @@ export class BrokerSessionRegistrationCoordinator {
 			status: fenced ? "connecting" : registration.status,
 			lastHeartbeatMs: now(),
 			topicName: topicNameFor(registration),
+			reconnectGraceStartedAtMs: undefined,
 		};
 		const route = await this.ensureRouteForSessionLocked(brokerState.sessions[registration.sessionId]);
 		await this.deps.persistBrokerState();

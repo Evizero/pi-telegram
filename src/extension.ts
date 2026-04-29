@@ -241,6 +241,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			setBrokerState: (state) => { brokerState = state; },
 			persistBrokerState,
 			callTelegram: callTelegramOnce,
+			assertCanDeleteRoute: assertCurrentBrokerLeaseForPersist,
 			logTerminalCleanupFailure: logTerminalRouteCleanupFailure,
 		});
 	}
@@ -261,12 +262,12 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		if (!brokerState) return;
 		brokerState.assistantPreviewMessages ??= {};
 		brokerState.assistantPreviewMessages[turnId] = { chatId, messageThreadId, messageId, updatedAtMs: now() };
-		void persistBrokerState();
+		void persistBrokerState().catch(() => undefined);
 	}
 	function forgetVisiblePreviewMessage(turnId: string): void {
 		if (!brokerState?.assistantPreviewMessages?.[turnId]) return;
 		delete brokerState.assistantPreviewMessages[turnId];
-		void persistBrokerState();
+		void persistBrokerState().catch(() => undefined);
 	}
 	function showPairingInstructions(ctx: ExtensionContext, pin: string): void {
 		const text = pairingInstructions(config.botUsername, pin);
@@ -378,6 +379,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			refreshTelegramStatus,
 			stopTypingLoop,
 			callTelegram: callTelegramOnce,
+			assertCanDeleteRoute: assertCurrentBrokerLeaseForPersist,
 			cancelPendingFinalDeliveries: (targetSessionId, turnIds) => turnIds ? assistantFinalLedger.cancelTurns(turnIds) : assistantFinalLedger.cancelSession(targetSessionId),
 			cleanupSessionTempDir,
 			logTerminalCleanupFailure: logTerminalRouteCleanupFailure,
@@ -430,7 +432,8 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	async function disconnectSessionRoute(mode: "explicit" | "shutdown" = "explicit"): Promise<void> {
 		const hadConnectedRoute = clientHost.getConnectedRoute();
 		const request = makeDisconnectRequest(sessionId, mode === "explicit" ? hadConnectedRoute : undefined);
-		if (mode === "explicit" && !isBroker && hadConnectedRoute) {
+		const brokerActive = isBroker && await isBrokerActive();
+		if (mode === "explicit" && !brokerActive && hadConnectedRoute) {
 			await writeDisconnectRequest(request);
 			try {
 				await postBrokerControl("disconnect_session_route", request);
@@ -452,7 +455,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 				shutdownError = error;
 			}
 			if (shutdownError) throw shutdownError;
-			if (isBroker) {
+			if (brokerActive) {
 				if (mode === "shutdown") {
 					await assistantFinalLedger.drainReady();
 					if (Object.values(brokerState?.pendingAssistantFinals ?? {}).some((entry) => entry.turn.sessionId === sessionId)) {
@@ -492,9 +495,14 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		}
 		return { schemaVersion: 1, lastProcessedUpdateId: config.lastUpdateId, recentUpdateIds: [], sessions: {}, routes: {}, pendingMediaGroups: {}, pendingTurns: {}, pendingAssistantFinals: {}, pendingRouteCleanups: {}, assistantPreviewMessages: {}, queuedTurnControls: {}, completedTurnIds: [], createdAtMs: now(), updatedAtMs: now() };
 	}
+	async function assertCurrentBrokerLeaseForPersist(): Promise<void> {
+		const lease = await readLease();
+		if (!isBroker || !lease || lease.ownerId !== ownerId || lease.leaseEpoch !== brokerLeaseEpoch || lease.leaseUntilMs <= now()) throw new Error("stale_broker");
+	}
 	function persistBrokerState(): Promise<void> {
 		brokerStatePersistQueue = brokerStatePersistQueue.catch(() => undefined).then(async () => {
 			if (!brokerState) return;
+			await assertCurrentBrokerLeaseForPersist();
 			brokerState.updatedAtMs = now();
 			await writeJson(STATE_PATH, brokerState);
 		});
@@ -531,6 +539,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		brokerHeartbeatFailures = 0;
 		brokerHeartbeatTimer = setInterval(() => {
 			void renewBrokerLease().then(async () => {
+				if (!(await isBrokerActive())) return;
 				brokerHeartbeatFailures = 0;
 				await assistantFinalHandoff.processPendingClientFinalFiles();
 				await processPendingDisconnectRequests();
@@ -671,6 +680,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			refreshTelegramStatus,
 			stopTypingLoop,
 			callTelegram: callTelegramOnce,
+			assertCanDeleteRoute: assertCurrentBrokerLeaseForPersist,
 			cleanupSessionTempDir,
 			logTerminalCleanupFailure: logTerminalRouteCleanupFailure,
 		});
@@ -685,6 +695,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			refreshTelegramStatus,
 			stopTypingLoop,
 			callTelegram: callTelegramOnce,
+			assertCanDeleteRoute: assertCurrentBrokerLeaseForPersist,
 			cancelPendingFinalDeliveries: (targetSessionId, turnIds) => turnIds ? assistantFinalLedger.cancelTurns(turnIds) : assistantFinalLedger.cancelSession(targetSessionId),
 			cleanupSessionTempDir,
 			logTerminalCleanupFailure: logTerminalRouteCleanupFailure,

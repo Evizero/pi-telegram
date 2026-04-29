@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { RECENT_UPDATE_LIMIT, SESSION_OFFLINE_MS, TELEGRAM_MEDIA_GROUP_DEBOUNCE_MS } from "../shared/config.js";
+import { RECENT_UPDATE_LIMIT, SESSION_OFFLINE_MS, SESSION_RECONNECT_GRACE_MS, TELEGRAM_MEDIA_GROUP_DEBOUNCE_MS } from "../shared/config.js";
 import { clearPairingState, isMessageBeforePairingWindow, isPairingPending, PAIRING_MAX_FAILED_ATTEMPTS, pairingCandidateFromText } from "../shared/pairing.js";
 import type { BrokerLease, BrokerState, TelegramCallbackQuery, TelegramConfig, TelegramMediaGroupState, TelegramMessage, TelegramUpdate } from "../shared/types.js";
 import type { TelegramCommandRouter } from "./commands.js";
@@ -60,6 +60,7 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 		const previousConfig = { ...config };
 		const brokerState = deps.getBrokerState();
 		const previousRoutes = brokerState ? Object.fromEntries(Object.entries(brokerState.routes).map(([id, route]) => [id, { ...route }])) : undefined;
+		const previousRouteCleanups = brokerState ? Object.fromEntries(Object.entries(brokerState.pendingRouteCleanups ?? {}).map(([id, cleanup]) => [id, { ...cleanup, route: { ...cleanup.route } }])) : undefined;
 		const nextConfig = { ...config, topicMode: "forum_supergroup" as const, fallbackMode: "forum_supergroup" as const, fallbackSupergroupChatId: message.chat.id };
 		deps.setConfig(nextConfig);
 		await deps.sendTextReply(message.chat.id, message.message_thread_id, `Using this group for pi session topics: ${message.chat.title ?? message.chat.id}`).catch(() => undefined);
@@ -71,7 +72,12 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 			deps.setConfig(previousConfig);
 			const currentBrokerState = deps.getBrokerState();
 			if (currentBrokerState && previousRoutes) {
+				const orphanedRoutes = Object.values(currentBrokerState.routes).filter((route) => route.messageThreadId !== undefined && previousRoutes[route.routeId] === undefined && !Object.values(previousRoutes).some((previousRoute) => String(previousRoute.chatId) === String(route.chatId) && previousRoute.messageThreadId === route.messageThreadId));
 				currentBrokerState.routes = previousRoutes;
+				currentBrokerState.pendingRouteCleanups = previousRouteCleanups ?? {};
+				for (const route of orphanedRoutes) {
+					currentBrokerState.pendingRouteCleanups[route.routeId] = { route, createdAtMs: now(), updatedAtMs: now() };
+				}
 				await deps.persistBrokerState();
 			}
 			await deps.writeConfig(previousConfig).catch(() => undefined);
@@ -353,9 +359,30 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 	async function markOfflineSessions(): Promise<void> {
 		const brokerState = deps.getBrokerState();
 		if (!brokerState) return;
-		const expiredSessionIds = Object.values(brokerState.sessions)
-			.filter((session) => now() - session.lastHeartbeatMs > SESSION_OFFLINE_MS)
-			.map((session) => session.sessionId);
+		const currentTimeMs = now();
+		const expiredSessionIds: string[] = [];
+		let changed = false;
+		for (const session of Object.values(brokerState.sessions)) {
+			if (currentTimeMs - session.lastHeartbeatMs <= SESSION_OFFLINE_MS) {
+				if (session.reconnectGraceStartedAtMs !== undefined) {
+					delete session.reconnectGraceStartedAtMs;
+					changed = true;
+				}
+				continue;
+			}
+			if (session.reconnectGraceStartedAtMs === undefined) {
+				session.reconnectGraceStartedAtMs = currentTimeMs;
+				if (session.status !== "offline") session.status = "offline";
+				changed = true;
+				continue;
+			}
+			if (session.status !== "offline") {
+				session.status = "offline";
+				changed = true;
+			}
+			if (currentTimeMs - session.reconnectGraceStartedAtMs > SESSION_RECONNECT_GRACE_MS) expiredSessionIds.push(session.sessionId);
+		}
+		if (changed) await deps.persistBrokerState();
 		for (const sessionId of expiredSessionIds) await deps.markSessionOffline(sessionId);
 	}
 

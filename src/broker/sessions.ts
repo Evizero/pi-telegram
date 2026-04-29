@@ -16,6 +16,7 @@ interface SessionCleanupOptions {
 	refreshTelegramStatus: () => void;
 	stopTypingLoop: (turnId: string) => void;
 	callTelegram: <TResponse>(method: string, body: Record<string, unknown>) => Promise<TResponse>;
+	assertCanDeleteRoute?: () => Promise<void> | void;
 	cancelPendingFinalDeliveries?: (sessionId: string, turnIds?: string[]) => Promise<void> | void;
 	cleanupSessionTempDir?: (sessionId: string, brokerState: BrokerState) => Promise<void> | void;
 	logTerminalCleanupFailure?: (route: TelegramRoute, reason: string) => void;
@@ -27,6 +28,7 @@ interface RouteCleanupOptions {
 	setBrokerState: (state: BrokerState) => void;
 	persistBrokerState: () => Promise<void>;
 	callTelegram: <TResponse>(method: string, body: Record<string, unknown>) => Promise<TResponse>;
+	assertCanDeleteRoute?: () => Promise<void> | void;
 	logTerminalCleanupFailure?: (route: TelegramRoute, reason: string) => void;
 }
 
@@ -220,6 +222,17 @@ function deferPendingRouteCleanups(brokerState: BrokerState, retryAtMs: number |
 	return changed;
 }
 
+function routeMatchesCleanup(activeRoute: TelegramRoute, cleanupRoute: TelegramRoute): boolean {
+	if (activeRoute.routeId === cleanupRoute.routeId) return true;
+	return String(activeRoute.chatId) === String(cleanupRoute.chatId)
+		&& activeRoute.messageThreadId !== undefined
+		&& activeRoute.messageThreadId === cleanupRoute.messageThreadId;
+}
+
+function cleanupTargetsActiveRoute(brokerState: BrokerState, cleanupRoute: TelegramRoute): boolean {
+	return Object.values(brokerState.routes).some((route) => routeMatchesCleanup(route, cleanupRoute));
+}
+
 function detachRoutesForDisconnectRequest(brokerState: BrokerState, request: PendingDisconnectRequest): TelegramRoute[] {
 	const removedRoutes: TelegramRoute[] = [];
 	for (const [id, route] of Object.entries(brokerState.routes)) {
@@ -301,6 +314,11 @@ export async function retryPendingRouteCleanupsInBroker(options: RouteCleanupOpt
 	let changed = false;
 	for (const [cleanupId, entry] of Object.entries(brokerState.pendingRouteCleanups ?? {})) {
 		if (entry.retryAtMs !== undefined && entry.retryAtMs > now()) continue;
+		if (cleanupTargetsActiveRoute(brokerState, entry.route)) {
+			delete brokerState.pendingRouteCleanups![cleanupId];
+			changed = true;
+			continue;
+		}
 		const markedControls = markQueuedControlsCleared(brokerState, [], QUEUED_CONTROL_TEXT.cleared, (control) => queuedControlBelongsToRoute(control, entry.route));
 		if (markedControls.length > 0) {
 			changed = true;
@@ -316,6 +334,13 @@ export async function retryPendingRouteCleanupsInBroker(options: RouteCleanupOpt
 			continue;
 		}
 		if (pendingQueuedControls.some((control) => control.statusMessageFinalizedAtMs === undefined)) continue;
+		await options.assertCanDeleteRoute?.();
+		if (brokerState.pendingRouteCleanups?.[cleanupId] !== entry) continue;
+		if (cleanupTargetsActiveRoute(brokerState, entry.route)) {
+			delete brokerState.pendingRouteCleanups![cleanupId];
+			changed = true;
+			continue;
+		}
 		try {
 			await options.callTelegram("deleteForumTopic", { chat_id: entry.route.chatId, message_thread_id: entry.route.messageThreadId });
 			delete brokerState.pendingRouteCleanups![cleanupId];

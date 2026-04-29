@@ -8,6 +8,7 @@ import { ensureRouteForSessionInBroker } from "../src/broker/routes.js";
 import { BrokerSessionRegistrationCoordinator } from "../src/broker/session-registration.js";
 import { honorExplicitDisconnectRequestInBroker, unregisterSessionFromBroker, retryPendingRouteCleanupsInBroker, markSessionOfflineInBroker } from "../src/broker/sessions.js";
 import { createRuntimeUpdateHandlers } from "../src/broker/updates.js";
+import { SESSION_OFFLINE_MS, SESSION_RECONNECT_GRACE_MS } from "../src/shared/config.js";
 import type { BrokerState, QueuedTurnControlState, SessionRegistration, TelegramRoute } from "../src/shared/types.js";
 
 function session(overrides: Partial<SessionRegistration> = {}): SessionRegistration {
@@ -729,6 +730,121 @@ async function checkReconnectAfterCleanupCreatesFreshRoute(): Promise<void> {
 	assert.match(replies[0]?.text ?? "", /connected pi session/i);
 }
 
+async function checkRouteCleanupRechecksActiveRouteAfterAwait(): Promise<void> {
+	const cleanupRoute = topicRoute("session-1");
+	const queuedControl: QueuedTurnControlState = {
+		token: "late-active-control",
+		turnId: "turn-late-active",
+		sessionId: "session-1",
+		routeId: cleanupRoute.routeId,
+		chatId: cleanupRoute.chatId,
+		messageThreadId: cleanupRoute.messageThreadId,
+		statusMessageId: 80,
+		status: "offered",
+		createdAtMs: Date.now(),
+		updatedAtMs: Date.now(),
+		expiresAtMs: Date.now() + 60_000,
+	};
+	const brokerState = state({
+		sessions: {},
+		routes: {},
+		pendingRouteCleanups: { [cleanupRoute.routeId]: { route: cleanupRoute, createdAtMs: Date.now() - 10_000, updatedAtMs: Date.now() - 10_000 } },
+		pendingTurns: {},
+		pendingAssistantFinals: {},
+		assistantPreviewMessages: {},
+		selectorSelections: {},
+		queuedTurnControls: { [queuedControl.token]: queuedControl },
+	});
+	const calls: string[] = [];
+	await retryPendingRouteCleanupsInBroker({
+		getBrokerState: () => brokerState,
+		loadBrokerState: async () => brokerState,
+		setBrokerState: () => undefined,
+		persistBrokerState: async () => undefined,
+		callTelegram: async <TResponse>(method: string) => {
+			calls.push(method);
+			if (method === "editMessageText") brokerState.routes[cleanupRoute.routeId] = cleanupRoute;
+			return true as TResponse;
+		},
+	});
+
+	assert.deepEqual(calls, ["editMessageText"]);
+	assert.equal(brokerState.pendingRouteCleanups?.[cleanupRoute.routeId], undefined);
+	assert.ok(brokerState.routes[cleanupRoute.routeId]);
+}
+
+async function checkRouteCleanupFencesTelegramDeletion(): Promise<void> {
+	const cleanupRoute = topicRoute("offline-session");
+	const brokerState = state({
+		sessions: {},
+		routes: {},
+		pendingRouteCleanups: { [cleanupRoute.routeId]: { route: cleanupRoute, createdAtMs: Date.now() - 10_000, updatedAtMs: Date.now() - 10_000 } },
+		pendingTurns: {},
+		pendingAssistantFinals: {},
+		assistantPreviewMessages: {},
+		selectorSelections: {},
+	});
+	const calls: string[] = [];
+	await assert.rejects(() => retryPendingRouteCleanupsInBroker({
+		getBrokerState: () => brokerState,
+		loadBrokerState: async () => brokerState,
+		setBrokerState: () => undefined,
+		persistBrokerState: async () => undefined,
+		assertCanDeleteRoute: () => { throw new Error("stale_broker"); },
+		callTelegram: async <TResponse>(method: string) => {
+			calls.push(method);
+			return true as TResponse;
+		},
+	}), /stale_broker/);
+
+	assert.deepEqual(calls, []);
+	assert.ok(brokerState.pendingRouteCleanups?.[cleanupRoute.routeId]);
+}
+
+async function checkRouteCleanupSkipsCurrentlyActiveRoute(): Promise<void> {
+	const activeRoute = topicRoute("session-1");
+	const brokerState = state({
+		routes: { [activeRoute.routeId]: activeRoute },
+		pendingRouteCleanups: { [activeRoute.routeId]: { route: { ...activeRoute }, createdAtMs: Date.now() - 10_000, updatedAtMs: Date.now() - 10_000 } },
+		pendingTurns: {},
+		pendingAssistantFinals: {},
+		assistantPreviewMessages: {},
+		selectorSelections: {},
+	});
+	const calls: string[] = [];
+	await retryPendingRouteCleanupsInBroker({
+		getBrokerState: () => brokerState,
+		loadBrokerState: async () => brokerState,
+		setBrokerState: () => undefined,
+		persistBrokerState: async () => undefined,
+		callTelegram: async <TResponse>(method: string) => {
+			calls.push(method);
+			return true as TResponse;
+		},
+	});
+
+	assert.deepEqual(calls, []);
+	assert.ok(brokerState.routes[activeRoute.routeId]);
+	assert.equal(brokerState.pendingRouteCleanups?.[activeRoute.routeId], undefined);
+}
+
+async function checkRouteCreationFailurePreservesExistingRoute(): Promise<void> {
+	const registration = session({ topicName: "project · failed-move" });
+	const oldRoute = topicRoute(registration.sessionId);
+	const brokerState = state({ sessions: { [registration.sessionId]: registration }, routes: { [oldRoute.routeId]: oldRoute }, pendingRouteCleanups: {} });
+	await assert.rejects(() => ensureRouteForSessionInBroker({
+		brokerState,
+		registration,
+		config: { allowedChatId: 222, topicMode: "forum_supergroup", fallbackMode: "forum_supergroup", fallbackSupergroupChatId: 222 },
+		selectedChatId: undefined,
+		sendTextReply: async () => 1,
+		callTelegram: async () => { throw new TelegramApiError("createForumTopic", "not enough rights", 403, undefined); },
+	}), /not enough rights/);
+
+	assert.equal(brokerState.routes[oldRoute.routeId], oldRoute);
+	assert.equal(Object.keys(brokerState.pendingRouteCleanups ?? {}).length, 0);
+}
+
 async function checkMarkOfflinePreservesPendingWorkAndQueuesRouteCleanup(): Promise<void> {
 	const queuedControl: QueuedTurnControlState = {
 		token: "offline-control",
@@ -1061,22 +1177,82 @@ async function checkMarkOfflinePreservesPreviewRefWhenDeleteRetryableFails(): Pr
 	assert.ok(brokerState.assistantPreviewMessages?.turn1);
 }
 
+async function checkTopicSetupFailureRestoresRoutesAndQueuesNewOrphanCleanup(): Promise<void> {
+	const oldRoute = topicRoute("session-1");
+	const orphanRoute = { ...topicRoute("session-1"), routeId: "111:77", messageThreadId: 77 };
+	const brokerState = state({ routes: { [oldRoute.routeId]: oldRoute }, pendingRouteCleanups: {}, pendingTurns: {}, pendingAssistantFinals: {}, assistantPreviewMessages: {}, selectorSelections: {} });
+	const replies: string[] = [];
+	let persisted = 0;
+	const handlers = createRuntimeUpdateHandlers({
+		getConfig: () => ({ allowedUserId: 1, topicMode: "single_chat_selector", allowedChatId: 1 }),
+		setConfig: () => undefined,
+		getBrokerState: () => brokerState,
+		setBrokerState: () => undefined,
+		getBrokerLeaseEpoch: () => 1,
+		getOwnerId: () => "owner",
+		commandRouter: { dispatch: async () => undefined } as never,
+		mediaGroups: new Map(),
+		callTelegram: async <TResponse>() => [] as unknown as TResponse,
+		writeConfig: async () => undefined,
+		persistBrokerState: async () => { persisted += 1; },
+		loadBrokerState: async () => brokerState,
+		readLease: async () => undefined,
+		stopBroker: async () => undefined,
+		updateStatus: () => undefined,
+		refreshTelegramStatus: () => undefined,
+		sendTextReply: async (_chatId, _threadId, text) => { replies.push(text); return 1; },
+		ensureRoutesAfterPairing: async () => {
+			delete brokerState.routes[oldRoute.routeId];
+			brokerState.routes[orphanRoute.routeId] = orphanRoute;
+			throw new Error("topic create failed");
+		},
+		isAllowedTelegramChat: () => true,
+		stopTypingLoop: () => undefined,
+		dropAssistantPreviewState: async () => undefined,
+		postIpc: async <TResponse>() => ({ ok: true } as TResponse),
+		unregisterSession: async () => ({ ok: true }),
+		markSessionOffline: async () => ({ ok: true }),
+	});
+
+	await handlers.handleUpdate({
+		update_id: 1,
+		message: {
+			message_id: 1,
+			chat: { id: 111, type: "supergroup", is_forum: true, title: "pi" },
+			from: { id: 1, is_bot: false, first_name: "User" },
+			text: "/topicsetup",
+		},
+	}, {} as never);
+
+	assert.deepEqual(brokerState.routes[oldRoute.routeId], oldRoute);
+	assert.equal(brokerState.routes[orphanRoute.routeId], undefined);
+	assert.deepEqual(brokerState.pendingRouteCleanups?.[orphanRoute.routeId]?.route, orphanRoute);
+	assert.ok(replies.some((text) => /keeping the previous Telegram routing/i.test(text)));
+	assert.ok(persisted >= 1);
+}
+
 async function checkOfflineMarkingUsesReconnectGraceBeforeCleanup(): Promise<void> {
 	const freshSession = session({ sessionId: "fresh", lastHeartbeatMs: Date.now() - 5_000, status: "offline" });
-	const staleSession = session({ sessionId: "stale", lastHeartbeatMs: Date.now() - 20_000, status: "busy" });
+	const reconnectingSession = session({ sessionId: "reconnecting", lastHeartbeatMs: Date.now() - SESSION_OFFLINE_MS - 1_000, status: "busy", activeTurnId: "active-turn" });
+	const expiredSession = session({ sessionId: "expired", lastHeartbeatMs: Date.now() - SESSION_OFFLINE_MS - 1_000, status: "offline", reconnectGraceStartedAtMs: Date.now() - SESSION_RECONNECT_GRACE_MS - 1_000 });
+	const freshRoute = { ...topicRoute("fresh"), routeId: "chat-1:11", messageThreadId: 11 };
+	const reconnectingRoute = { ...topicRoute("reconnecting"), routeId: "chat-1:12", messageThreadId: 12 };
+	const expiredRoute = { ...topicRoute("expired"), routeId: "chat-1:13", messageThreadId: 13 };
 	const brokerState: BrokerState = {
 		schemaVersion: 1,
 		recentUpdateIds: [],
-		sessions: { fresh: freshSession, stale: staleSession },
+		sessions: { fresh: freshSession, reconnecting: reconnectingSession, expired: expiredSession },
 		routes: {
-			[topicRoute("fresh").routeId]: topicRoute("fresh"),
-			[topicRoute("stale").routeId]: topicRoute("stale"),
+			[freshRoute.routeId]: freshRoute,
+			[reconnectingRoute.routeId]: reconnectingRoute,
+			[expiredRoute.routeId]: expiredRoute,
 		},
 		pendingRouteCleanups: {},
 		createdAtMs: Date.now(),
 		updatedAtMs: Date.now(),
 	};
 	const expired: string[] = [];
+	let persisted = 0;
 	const handlers = createRuntimeUpdateHandlers({
 		getConfig: () => ({ allowedUserId: 1 }),
 		setConfig: () => undefined,
@@ -1088,7 +1264,7 @@ async function checkOfflineMarkingUsesReconnectGraceBeforeCleanup(): Promise<voi
 		mediaGroups: new Map(),
 		callTelegram: async <TResponse>() => [] as unknown as TResponse,
 		writeConfig: async () => undefined,
-		persistBrokerState: async () => undefined,
+		persistBrokerState: async () => { persisted += 1; },
 		loadBrokerState: async () => brokerState,
 		readLease: async () => undefined,
 		stopBroker: async () => undefined,
@@ -1100,15 +1276,21 @@ async function checkOfflineMarkingUsesReconnectGraceBeforeCleanup(): Promise<voi
 		stopTypingLoop: () => undefined,
 		dropAssistantPreviewState: async () => undefined,
 		postIpc: async <TResponse>() => ({ ok: true } as TResponse),
-		unregisterSession: async (targetSessionId: string) => { expired.push(`unregister:${targetSessionId}`); delete brokerState.sessions[targetSessionId]; return { ok: true }; },
-		markSessionOffline: async (targetSessionId: string) => { expired.push(targetSessionId); delete brokerState.sessions[targetSessionId]; return { ok: true }; },
+		unregisterSession: async (targetSessionId: string) => { expired.push(`unregister:${targetSessionId}`); delete brokerState.sessions[targetSessionId]; for (const [routeId, route] of Object.entries(brokerState.routes)) if (route.sessionId === targetSessionId) delete brokerState.routes[routeId]; return { ok: true }; },
+		markSessionOffline: async (targetSessionId: string) => { expired.push(targetSessionId); delete brokerState.sessions[targetSessionId]; for (const [routeId, route] of Object.entries(brokerState.routes)) if (route.sessionId === targetSessionId) delete brokerState.routes[routeId]; return { ok: true }; },
 	});
 
 	await handlers.markOfflineSessions();
 
-	assert.deepEqual(expired, ["stale"]);
+	assert.deepEqual(expired, ["expired"]);
 	assert.ok(brokerState.sessions.fresh);
-	assert.ok(brokerState.routes[topicRoute("fresh").routeId]);
+	assert.ok(brokerState.sessions.reconnecting);
+	assert.equal(brokerState.sessions.reconnecting.status, "offline");
+	assert.equal(typeof brokerState.sessions.reconnecting.reconnectGraceStartedAtMs, "number");
+	assert.ok(brokerState.routes[freshRoute.routeId]);
+	assert.ok(brokerState.routes[reconnectingRoute.routeId]);
+	assert.equal(brokerState.routes[expiredRoute.routeId], undefined);
+	assert.ok(persisted >= 1);
 }
 
 await checkUnregisterQueuesRetryableTopicCleanupAndDropsSessionState();
@@ -1130,6 +1312,11 @@ await checkRegistrationHonorsPendingDisconnectBeforeRouteReuse();
 await checkStaleRegistrationCannotConsumeCurrentDisconnectRequest();
 await checkRouteHomeChangeQueuesOldTopicCleanup();
 await checkReconnectAfterCleanupCreatesFreshRoute();
+await checkRouteCleanupRechecksActiveRouteAfterAwait();
+await checkRouteCleanupFencesTelegramDeletion();
+await checkRouteCleanupSkipsCurrentlyActiveRoute();
+await checkRouteCreationFailurePreservesExistingRoute();
+await checkTopicSetupFailureRestoresRoutesAndQueuesNewOrphanCleanup();
 await checkMarkOfflinePreservesPendingWorkAndQueuesRouteCleanup();
 await checkMarkOfflineClearsRouteWhenOnlyPendingTurnsRemain();
 await checkMarkOfflinePreservesPreviewRefWhenDeleteRetryableFails();

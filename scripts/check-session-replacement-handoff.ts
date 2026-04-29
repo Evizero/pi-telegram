@@ -74,6 +74,7 @@ function state(): BrokerState {
 		selectorSelections: { "111": { chatId: 111, sessionId: "old-session", expiresAtMs: 10_000, updatedAtMs: 1 } },
 		pendingTurns: { "turn-1": { turn: turn("old-session"), updatedAtMs: 1 } },
 		pendingAssistantFinals: { "final-1": final("old-session") },
+		pendingRouteCleanups: { [oldRoute.routeId]: { route: oldRoute, createdAtMs: 1, updatedAtMs: 1 } },
 		createdAtMs: 1,
 		updatedAtMs: 1,
 	};
@@ -122,6 +123,7 @@ async function checkConsumeRetargetsBrokerState(): Promise<void> {
 		assert.equal(consumed, true);
 		assert.equal(brokerState.sessions["old-session"], undefined);
 		assert.equal(brokerState.routes["111:9"].sessionId, "new-session");
+		assert.equal(brokerState.pendingRouteCleanups?.["111:9"], undefined);
 		assert.equal(brokerState.routes["111:unrelated-session"].sessionId, "unrelated-session");
 		assert.equal(brokerState.pendingTurns?.["turn-1"].turn.sessionId, "new-session");
 		assert.equal(brokerState.pendingAssistantFinals?.["final-1"].turn.sessionId, "new-session");

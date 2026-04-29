@@ -161,6 +161,9 @@ function retargetBrokerStateForReplacement(brokerState: BrokerState, handoff: Se
 	};
 	const routeKey = route.messageThreadId === undefined ? `${route.routeId}:${registration.sessionId}` : route.routeId;
 	brokerState.routes[routeKey] = route;
+	for (const [cleanupId, cleanup] of Object.entries(brokerState.pendingRouteCleanups ?? {})) {
+		if (cleanup.route.routeId === route.routeId || (String(cleanup.route.chatId) === String(route.chatId) && cleanup.route.messageThreadId === route.messageThreadId)) delete brokerState.pendingRouteCleanups![cleanupId];
+	}
 	for (const pending of Object.values(brokerState.pendingTurns ?? {})) {
 		pending.turn = retargetTurn(pending.turn, oldSessionId, registration.sessionId, route);
 	}

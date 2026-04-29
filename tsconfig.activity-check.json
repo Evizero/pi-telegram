@@ -18,6 +18,7 @@
     "scripts/check-client-final-handoff.ts",
     "scripts/check-client-info.ts",
     "scripts/check-client-git-status.ts",
+    "scripts/check-durable-json-loading.ts",
     "scripts/check-client-runtime-host.ts",
     "scripts/check-retry-aware-finalization.ts",
     "scripts/check-runtime-pi-hooks.ts",

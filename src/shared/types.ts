@@ -325,6 +325,7 @@ export interface SessionRegistration {
 	connectionNonce: string;
 	staleStandDownConnectionNonce?: string;
 	staleStandDownRequestedAtMs?: number;
+	reconnectGraceStartedAtMs?: number;
 	clientSocketPath: string;
 	topicName: string;
 	replacement?: SessionReplacementRegistrationContext;

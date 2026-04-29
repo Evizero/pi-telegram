@@ -246,10 +246,12 @@ behavior.
 A connected pi session explicitly disconnects, closes normally, or stops
 heartbeating because the process died.
 Normal shutdown should unregister the session and request Telegram topic/route
-cleanup immediately. Heartbeat or IPC loss should enter only a bounded automatic
-reconnect grace period; if the session reconnects in time, the existing route can
-continue, and if it does not, the broker should unregister the session and delete
-its Telegram topic or selector route.
+cleanup immediately. Heartbeat or IPC loss is two-stage: after the heartbeat
+staleness threshold the broker may mark the session offline for display, but it
+records a reconnect-grace start time and preserves the route until the bounded
+automatic reconnect grace expires. If the session reconnects in time, the
+existing route continues; if it does not, the broker unregisters the session and
+deletes its Telegram topic or selector route.
 The important property is that Telegram shows a temporary view for the current
 connection, while native pi history remains on the local machine for `/resume`
 and later reconnection in a new Telegram view.
@@ -467,14 +469,16 @@ broker-scoped state until they expire, are changed, or become invalid.
 Selector selections also ensure a selector route exists for the selected
 chat/session so later commands can resolve the selected session.
 
-Writes must be serialized so an older persistence operation cannot resurrect
-completed turns or discard newer routes or selections.
+Writes must be serialized and fenced by the current broker lease owner/epoch so
+an older or stale broker persistence operation cannot resurrect completed turns,
+regress update offsets, requeue stale cleanups, or discard newer routes or
+selections.
 
 ### Session registration
 
 `SessionRegistration` stores session identity, owner, process, cwd, project and
 Git metadata, model summary, status, active turn ID, queue count, heartbeat,
-client socket path, and topic name.
+reconnect-grace timestamp, client socket path, and topic name.
 This record is what lets Telegram show useful session choices without moving
 execution out of pi.
 

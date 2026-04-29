@@ -29,24 +29,43 @@ function queueRouteCleanup(brokerState: BrokerState, route: TelegramRoute): void
 	};
 }
 
+function routesForSession(brokerState: BrokerState, sessionId: string): Array<[string, TelegramRoute]> {
+	return Object.entries(brokerState.routes).filter(([, route]) => route.sessionId === sessionId);
+}
+
+function removePendingCleanupForActiveRoute(brokerState: BrokerState, route: TelegramRoute): void {
+	for (const [cleanupId, cleanup] of Object.entries(brokerState.pendingRouteCleanups ?? {})) {
+		if (cleanup.route.routeId === route.routeId || (String(cleanup.route.chatId) === String(route.chatId) && cleanup.route.messageThreadId === route.messageThreadId)) delete brokerState.pendingRouteCleanups![cleanupId];
+	}
+}
+
+function replaceRoutesForSession(brokerState: BrokerState, sessionId: string, route: TelegramRoute, routeKey: string): void {
+	for (const [id, previousRoute] of routesForSession(brokerState, sessionId)) {
+		if (id === routeKey || previousRoute.routeId === route.routeId) continue;
+		queueRouteCleanup(brokerState, previousRoute);
+		delete brokerState.routes[id];
+	}
+	brokerState.routes[routeKey] = route;
+	removePendingCleanupForActiveRoute(brokerState, route);
+}
+
 export async function ensureRouteForSessionInBroker(deps: EnsureRouteForSessionDeps): Promise<TelegramRoute> {
 	const { brokerState, registration, config, selectedChatId, sendTextReply, callTelegram } = deps;
-	const existing = Object.values(brokerState.routes).find((route) => route.sessionId === registration.sessionId);
+	const existingRoutes = routesForSession(brokerState, registration.sessionId);
+	const existing = existingRoutes.find(([, route]) => route.chatId !== 0)?.[1] ?? existingRoutes[0]?.[1];
 	const expectedChatId = targetChatIdForRoutes(config);
 	if (existing && existing.chatId !== 0) {
-		if (expectedChatId !== undefined && String(existing.chatId) === String(expectedChatId)) return existing;
-		if (existing.routeMode === "single_chat_selector" && selectedChatId !== undefined && String(existing.chatId) === String(selectedChatId)) return existing;
-		for (const [id, route] of Object.entries(brokerState.routes)) {
-			if (route.sessionId !== registration.sessionId) continue;
-			queueRouteCleanup(brokerState, route);
-			delete brokerState.routes[id];
+		if (expectedChatId !== undefined && String(existing.chatId) === String(expectedChatId)) {
+			removePendingCleanupForActiveRoute(brokerState, existing);
+			return existing;
 		}
-	}
-	if (existing && existing.chatId === 0) {
-		for (const [id, route] of Object.entries(brokerState.routes)) {
-			if (route.sessionId !== registration.sessionId) continue;
-			queueRouteCleanup(brokerState, route);
-			delete brokerState.routes[id];
+		if (existing.routeMode === "single_chat_selector" && selectedChatId !== undefined && String(existing.chatId) === String(selectedChatId)) {
+			removePendingCleanupForActiveRoute(brokerState, existing);
+			return existing;
+		}
+		if (expectedChatId === undefined && selectedChatId === undefined) {
+			removePendingCleanupForActiveRoute(brokerState, existing);
+			return existing;
 		}
 	}
 	if (usesForumSupergroupRouting(config) && config.fallbackSupergroupChatId === undefined) {
@@ -54,7 +73,7 @@ export async function ensureRouteForSessionInBroker(deps: EnsureRouteForSessionD
 	}
 	const targetChatId = targetChatIdForRoutes(config) ?? selectedChatId;
 	if (!targetChatId) {
-		return {
+		return existing ?? {
 			routeId: `pending:${registration.sessionId}`,
 			sessionId: registration.sessionId,
 			chatId: 0,
@@ -78,7 +97,7 @@ export async function ensureRouteForSessionInBroker(deps: EnsureRouteForSessionD
 				createdAtMs: now(),
 				updatedAtMs: now(),
 			};
-			brokerState.routes[route.routeId] = route;
+			replaceRoutesForSession(brokerState, registration.sessionId, route, route.routeId);
 			await sendTextReply(route.chatId, route.messageThreadId, `Connected pi session: ${registration.topicName}`).catch(() => undefined);
 			return route;
 		} catch (error) {
@@ -96,7 +115,8 @@ export async function ensureRouteForSessionInBroker(deps: EnsureRouteForSessionD
 		createdAtMs: now(),
 		updatedAtMs: now(),
 	};
-	brokerState.routes[`${route.routeId}:${registration.sessionId}`] = route;
+	const routeKey = `${route.routeId}:${registration.sessionId}`;
+	replaceRoutesForSession(brokerState, registration.sessionId, route, routeKey);
 	await sendTextReply(route.chatId, undefined, `Connected pi session: ${registration.topicName}\nUse /sessions and /use to select sessions.`);
 	return route;
 }

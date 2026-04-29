@@ -22,9 +22,14 @@ export async function ensurePrivateDir(path: string): Promise<void> {
 export async function readJson<T>(path: string): Promise<T | undefined> {
 	try {
 		return JSON.parse(await readFile(path, "utf8")) as T;
-	} catch {
-		return undefined;
+	} catch (error) {
+		if (isNodeError(error) && error.code === "ENOENT") return undefined;
+		throw error;
 	}
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+	return error instanceof Error && "code" in error;
 }
 
 export async function writeJson(path: string, value: unknown): Promise<void> {
