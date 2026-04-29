@@ -37,6 +37,7 @@ help - Show available commands
 sessions - List active pi sessions
 use - Select a pi session in selector mode
 status - Show selected session status
+git - Show read-only repository status and diffstat tools
 model - Show or change the selected session model
 compact - Compact the selected session context
 follow - Queue a follow-up for after the active run
@@ -121,6 +122,10 @@ Examples:
 - `read this README and summarize it`
 - `write me a markdown file with the plan and send it back`
 - `generate a shell script and attach it`
+
+### Inspect Git state
+
+Send `/git` to open read-only repository tools for the selected session. Use the buttons to request compact Status or Diffstat output from that session's local workspace without creating a pi agent turn.
 
 ### Stop a run
 

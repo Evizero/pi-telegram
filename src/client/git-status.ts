@@ -23,7 +23,8 @@ export interface ParsedGitStatus {
 	ahead?: number;
 	behind?: number;
 	entries: GitStatusEntry[];
-	warnings?: string[];
+	failureNotes?: string[];
+	infoNotes?: string[];
 }
 
 export interface ParsedGitShortstat {
@@ -35,6 +36,11 @@ export interface ParsedGitShortstat {
 interface GitCommandOutput {
 	stdout: string;
 	stderr: string;
+}
+
+export interface GitOutputNote {
+	kind: "failure" | "info";
+	text: string;
 }
 
 export async function clientQueryGitRepository(ctx: ExtensionContext | undefined, request: ClientGitRepositoryQueryRequest): Promise<ClientGitRepositoryQueryResult> {
@@ -68,11 +74,11 @@ export function formatGitStatus(status: ParsedGitStatus): string {
 	const untracked = status.entries.filter((entry) => entry.code === "??");
 	if (status.upstream) lines.push(`Upstream: ${status.upstream}${formatAheadBehind(status)}`);
 	if (status.entries.length === 0) {
-		lines.push(status.warnings?.length ? "State: unknown — bounded Git query incomplete" : "State: clean");
-		appendWarnings(lines, status.warnings);
+		lines.push(status.failureNotes?.length ? "State: unknown — bounded Git query incomplete" : "State: clean");
+		appendNotes(lines, [...(status.failureNotes ?? []), ...(status.infoNotes ?? [])]);
 		return lines.join("\n");
 	}
-	const countPrefix = status.warnings?.length ? "at least " : "";
+	const countPrefix = status.failureNotes?.length ? "at least " : "";
 	const changedLabel = tracked.length === 1 ? "1 changed" : `${tracked.length} changed`;
 	const untrackedLabel = untracked.length === 1 ? "1 untracked" : `${untracked.length} untracked`;
 	lines.push(`State: dirty — ${countPrefix}${changedLabel}, ${countPrefix}${untrackedLabel}`);
@@ -80,7 +86,7 @@ export function formatGitStatus(status: ParsedGitStatus): string {
 	const shownEntries = status.entries.slice(0, MAX_FILE_LINES);
 	for (const entry of shownEntries) lines.push(`${entry.code.padEnd(2, " ")} ${entry.path}`);
 	if (status.entries.length > shownEntries.length) lines.push(`… ${status.entries.length - shownEntries.length} more`);
-	appendWarnings(lines, status.warnings);
+	appendNotes(lines, [...(status.failureNotes ?? []), ...(status.infoNotes ?? [])]);
 	return truncateText(lines.join("\n"));
 }
 
@@ -92,7 +98,7 @@ export function parseGitShortstat(text: string): ParsedGitShortstat {
 	};
 }
 
-export function formatGitDiffstat(status: ParsedGitStatus, shortstat: ParsedGitShortstat | undefined, warning?: string): string {
+export function formatGitDiffstat(status: ParsedGitStatus, shortstat: ParsedGitShortstat | undefined, note?: GitOutputNote): string {
 	const lines = ["Git diffstat", formatBranchLine(status)];
 	if (status.upstream) lines.push(`Upstream: ${status.upstream}${formatAheadBehind(status)}`);
 	if (!shortstat) lines.push("Staged diff: unknown");
@@ -100,9 +106,11 @@ export function formatGitDiffstat(status: ParsedGitStatus, shortstat: ParsedGitS
 	else lines.push(`Staged diff: ${shortstat.files} ${shortstat.files === 1 ? "file" : "files"}, +${shortstat.insertions}/-${shortstat.deletions}`);
 	const trackedChanged = status.entries.filter((entry) => entry.code !== "??").length;
 	const untracked = status.entries.filter((entry) => entry.code === "??").length;
-	const statusPrefix = status.warnings?.length ? "at least " : "";
+	const statusPrefix = status.failureNotes?.length ? "at least " : "";
 	lines.push(`Status files: ${statusPrefix}${trackedChanged} changed, ${statusPrefix}${untracked} untracked`);
-	appendWarnings(lines, [...(status.warnings ?? []), ...(warning ? [warning] : [])]);
+	const failureNotes = [...(note?.kind === "failure" ? [note.text] : []), ...(status.failureNotes ?? [])];
+	const infoNotes = [...(status.infoNotes ?? []), ...(note?.kind === "info" ? [note.text] : [])];
+	appendNotes(lines, [...failureNotes, ...infoNotes]);
 	return truncateText(lines.join("\n"));
 }
 
@@ -126,43 +134,45 @@ async function queryStatus(cwd: string): Promise<{ ok: true; parsed: ParsedGitSt
 	}
 	const safeStatus = await querySafeStatusEntries(cwd, Boolean(parsed.head));
 	parsed.entries = safeStatus.entries;
-	parsed.warnings = safeStatus.warnings.length > 0 ? safeStatus.warnings : undefined;
+	parsed.failureNotes = safeStatus.failureNotes.length > 0 ? safeStatus.failureNotes : undefined;
+	parsed.infoNotes = safeStatus.infoNotes.length > 0 ? safeStatus.infoNotes : undefined;
 	return { ok: true, parsed };
 }
 
-async function querySafeStatusEntries(cwd: string, hasHead: boolean): Promise<{ entries: GitStatusEntry[]; warnings: string[] }> {
-	const warnings: string[] = [];
+async function querySafeStatusEntries(cwd: string, hasHead: boolean): Promise<{ entries: GitStatusEntry[]; failureNotes: string[]; infoNotes: string[] }> {
+	const failureNotes: string[] = [];
+	const infoNotes: string[] = [];
 	const byPath = new Map<string, { x?: string; y?: string }>();
-	for (const entry of parseNameStatus(await querySafeStagedNameStatus(cwd, hasHead, warnings))) {
+	for (const entry of parseNameStatus(await querySafeStagedNameStatus(cwd, hasHead, failureNotes))) {
 		byPath.set(entry.path, { x: entry.code });
 	}
-	const deleted = new Set(splitGitLines(await runGitComponent(cwd, [...READ_ONLY_GIT_GLOBAL_ARGS, "ls-files", "--deleted", "--exclude-standard"], "deleted-file list", warnings)));
+	const deleted = new Set(splitGitLines(await runGitComponent(cwd, [...READ_ONLY_GIT_GLOBAL_ARGS, "ls-files", "--deleted", "--exclude-standard"], "deleted-file list", failureNotes)));
 	for (const path of deleted) {
 		const entry = byPath.get(path) ?? {};
 		entry.y = "D";
 		byPath.set(path, entry);
 	}
-	for (const path of await queryMetadataModifiedPaths(cwd, deleted, warnings)) {
+	for (const path of await queryMetadataModifiedPaths(cwd, deleted, failureNotes, infoNotes)) {
 		const entry = byPath.get(path) ?? {};
 		entry.y = "M";
 		byPath.set(path, entry);
 	}
 	const entries: GitStatusEntry[] = [...byPath.entries()].map(([path, entry]) => ({ code: `${entry.x ?? " "}${entry.y ?? " "}`, path }));
-	for (const path of splitGitLines(await runGitComponent(cwd, [...READ_ONLY_GIT_GLOBAL_ARGS, "ls-files", "--others", "--exclude-standard"], "untracked-file list", warnings))) {
+	for (const path of splitGitLines(await runGitComponent(cwd, [...READ_ONLY_GIT_GLOBAL_ARGS, "ls-files", "--others", "--exclude-standard"], "untracked-file list", failureNotes))) {
 		entries.push({ code: "??", path });
 	}
-	return { entries, warnings };
+	return { entries, failureNotes, infoNotes };
 }
 
-async function querySafeStagedNameStatus(cwd: string, hasHead: boolean, warnings: string[]): Promise<string | undefined> {
+async function querySafeStagedNameStatus(cwd: string, hasHead: boolean, failureNotes: string[]): Promise<string | undefined> {
 	const baseArgs = [...READ_ONLY_GIT_GLOBAL_ARGS, "diff", "--cached", "--no-ext-diff", "--no-textconv", "--ignore-submodules=all", "--name-status"];
-	if (hasHead) return await runGitComponent(cwd, [...baseArgs, "HEAD", "--"], "staged-file list", warnings);
-	return await runGitComponent(cwd, [...baseArgs, "--"], "staged-file list", warnings);
+	if (hasHead) return await runGitComponent(cwd, [...baseArgs, "HEAD", "--"], "staged-file list", failureNotes);
+	return await runGitComponent(cwd, [...baseArgs, "--"], "staged-file list", failureNotes);
 }
 
-async function queryMetadataModifiedPaths(cwd: string, deleted: Set<string>, warnings: string[]): Promise<string[]> {
-	const debugText = await runGitComponent(cwd, [...READ_ONLY_GIT_GLOBAL_ARGS, "ls-files", "--debug"], "tracked-file metadata", warnings);
-	const stageText = await runGitComponent(cwd, [...READ_ONLY_GIT_GLOBAL_ARGS, "ls-files", "--stage"], "tracked-file mode list", warnings);
+async function queryMetadataModifiedPaths(cwd: string, deleted: Set<string>, failureNotes: string[], infoNotes: string[]): Promise<string[]> {
+	const debugText = await runGitComponent(cwd, [...READ_ONLY_GIT_GLOBAL_ARGS, "ls-files", "--debug"], "tracked-file metadata", failureNotes);
+	const stageText = await runGitComponent(cwd, [...READ_ONLY_GIT_GLOBAL_ARGS, "ls-files", "--stage"], "tracked-file mode list", failureNotes);
 	if (!debugText) return [];
 	const indexModes = parseLsFilesStageModes(stageText);
 	const compareFileMode = (await runGitOptional(cwd, [...READ_ONLY_GIT_GLOBAL_ARGS, "config", "--bool", "core.filemode"])) !== "false";
@@ -180,7 +190,7 @@ async function queryMetadataModifiedPaths(cwd: string, deleted: Set<string>, war
 			// Missing files are covered by the deleted-file query; inaccessible files are left unreported rather than executing Git filters.
 		}
 	}
-	warnings.push("Unstaged content detection is metadata-only and may miss same-size edits within the same mtime second.");
+	infoNotes.push("Unstaged content detection is metadata-only and may miss same-size edits within the same mtime second.");
 	return modified;
 }
 
@@ -238,18 +248,18 @@ function splitGitLines(text: string | undefined): string[] {
 async function queryDiffstat(cwd: string, status: ParsedGitStatus): Promise<string> {
 	try {
 		const result = await runGit(cwd, [...READ_ONLY_GIT_GLOBAL_ARGS, "diff", "--cached", "--no-ext-diff", "--no-textconv", "--ignore-submodules=all", "--shortstat", "HEAD", "--"]);
-		return formatGitDiffstat(status, parseGitShortstat(result.stdout), safeDiffstatNote(status));
+		return formatGitDiffstat(status, parseGitShortstat(result.stdout), gitInfoNote(safeDiffstatNote(status)));
 	} catch (error) {
 		const message = compactError(error);
 		if (/ambiguous argument 'HEAD'|unknown revision|bad revision/i.test(message)) {
 			try {
 				const result = await runGit(cwd, [...READ_ONLY_GIT_GLOBAL_ARGS, "diff", "--cached", "--no-ext-diff", "--no-textconv", "--ignore-submodules=all", "--shortstat", "--"]);
-				return formatGitDiffstat(status, parseGitShortstat(result.stdout), safeDiffstatNote(status));
+				return formatGitDiffstat(status, parseGitShortstat(result.stdout), gitInfoNote(safeDiffstatNote(status)));
 			} catch (fallbackError) {
-				return formatGitDiffstat(status, undefined, compactError(fallbackError));
+				return formatGitDiffstat(status, undefined, gitFailureNote(compactError(fallbackError)));
 			}
 		}
-		return formatGitDiffstat(status, undefined, message);
+		return formatGitDiffstat(status, undefined, gitFailureNote(message));
 	}
 }
 
@@ -262,12 +272,12 @@ async function runGitOptional(cwd: string, args: string[]): Promise<string | und
 	}
 }
 
-async function runGitComponent(cwd: string, args: string[], label: string, warnings: string[]): Promise<string | undefined> {
+async function runGitComponent(cwd: string, args: string[], label: string, failureNotes: string[]): Promise<string | undefined> {
 	try {
 		const result = await runGit(cwd, args);
 		return result.stdout || undefined;
 	} catch (error) {
-		warnings.push(`${label} incomplete: ${compactError(error)}`);
+		failureNotes.push(`${label} incomplete: ${compactError(error)}`);
 		return undefined;
 	}
 }
@@ -290,6 +300,8 @@ function gitEnvironment(): NodeJS.ProcessEnv {
 		if (key.startsWith("GIT_")) continue;
 		env[key] = value;
 	}
+	env.GIT_CONFIG_NOSYSTEM = "1";
+	env.GIT_CONFIG_GLOBAL = "/dev/null";
 	env.GIT_OPTIONAL_LOCKS = "0";
 	env.GIT_EXTERNAL_DIFF = "";
 	return env;
@@ -341,10 +353,18 @@ function formatAheadBehind(status: ParsedGitStatus): string {
 	return ahead || behind ? ` (+${ahead}/-${behind})` : "";
 }
 
-function appendWarnings(lines: string[], warnings: string[] | undefined): void {
-	if (!warnings?.length) return;
-	for (const warning of warnings.slice(0, 3)) lines.push(`Note: ${warning}`);
-	if (warnings.length > 3) lines.push(`Note: ${warnings.length - 3} more warnings omitted.`);
+function appendNotes(lines: string[], notes: string[] | undefined): void {
+	if (!notes?.length) return;
+	for (const note of notes.slice(0, 3)) lines.push(`Note: ${note}`);
+	if (notes.length > 3) lines.push(`Note: ${notes.length - 3} more notes omitted.`);
+}
+
+function gitFailureNote(text: string): GitOutputNote {
+	return { kind: "failure", text };
+}
+
+function gitInfoNote(text: string | undefined): GitOutputNote | undefined {
+	return text ? { kind: "info", text } : undefined;
 }
 
 function safeDiffstatNote(status: ParsedGitStatus): string | undefined {
