@@ -1,4 +1,4 @@
-import type { BrokerState, QueuedTurnControlState, TelegramRoute, PendingTelegramTurn } from "../shared/types.js";
+import type { BrokerState, QueuedTurnControlState, TelegramRoute } from "../shared/types.js";
 import { errorMessage, now } from "../shared/utils.js";
 import { getTelegramRetryAfterMs } from "../telegram/api.js";
 import {
@@ -10,6 +10,7 @@ import {
 } from "../telegram/errors.js";
 import { deleteTelegramMessage, editTelegramTextMessage } from "../telegram/message-ops.js";
 import { disconnectRequestBelongsToCurrentConnection, disconnectRequestMatchesRoute, isRouteScopedDisconnectRequest, type PendingDisconnectRequest } from "./disconnect-requests.js";
+import { cleanupTargetsActiveRoute, detachRoutesForSessionAndQueueCleanup, queueRouteCleanup, turnBelongsToRoute } from "./routes.js";
 import { DEFAULT_QUEUED_CONTROL_EDIT_RETRY_MS, isTransientQueuedControlEditError, markQueuedTurnControlExpired, queuedControlBelongsToRoute, QUEUED_CONTROL_TEXT } from "./queued-controls.js";
 
 const DEFAULT_ROUTE_CLEANUP_RETRY_MS = 1_000;
@@ -45,16 +46,6 @@ async function ensureBrokerState(options: Pick<SessionCleanupOptions, "getBroker
 	const loaded = await options.loadBrokerState();
 	options.setBrokerState(loaded);
 	return loaded;
-}
-
-function queueRouteCleanup(brokerState: BrokerState, route: TelegramRoute): void {
-	if (route.messageThreadId === undefined) return;
-	brokerState.pendingRouteCleanups ??= {};
-	brokerState.pendingRouteCleanups[route.routeId] = {
-		route,
-		createdAtMs: brokerState.pendingRouteCleanups[route.routeId]?.createdAtMs ?? now(),
-		updatedAtMs: now(),
-	};
 }
 
 function removeSelectorSelectionsForSession(brokerState: BrokerState, targetSessionId: string): void {
@@ -105,22 +96,6 @@ function pendingOfflineSessionState(brokerState: BrokerState, targetSessionId: s
 		hasPendingAssistantFinals = true;
 	}
 	return { hasPendingTurns, hasPendingAssistantFinals };
-}
-
-function detachSessionRoutes(brokerState: BrokerState, targetSessionId: string): TelegramRoute[] {
-	const removedRoutes: TelegramRoute[] = [];
-	for (const [id, route] of Object.entries(brokerState.routes)) {
-		if (route.sessionId !== targetSessionId) continue;
-		removedRoutes.push(route);
-		delete brokerState.routes[id];
-	}
-	return removedRoutes;
-}
-
-function turnBelongsToRoute(turn: PendingTelegramTurn, route: TelegramRoute): boolean {
-	if (turn.sessionId !== route.sessionId) return false;
-	if (turn.routeId !== undefined) return turn.routeId === route.routeId;
-	return String(turn.chatId) === String(route.chatId) && turn.messageThreadId === route.messageThreadId;
 }
 
 function pendingFinalTurnIdsForRoutes(brokerState: BrokerState, routes: TelegramRoute[]): string[] {
@@ -229,17 +204,6 @@ function deferPendingRouteCleanups(brokerState: BrokerState, retryAtMs: number |
 	return changed;
 }
 
-function routeMatchesCleanup(activeRoute: TelegramRoute, cleanupRoute: TelegramRoute): boolean {
-	if (activeRoute.routeId === cleanupRoute.routeId) return true;
-	return String(activeRoute.chatId) === String(cleanupRoute.chatId)
-		&& activeRoute.messageThreadId !== undefined
-		&& activeRoute.messageThreadId === cleanupRoute.messageThreadId;
-}
-
-function cleanupTargetsActiveRoute(brokerState: BrokerState, cleanupRoute: TelegramRoute): boolean {
-	return Object.values(brokerState.routes).some((route) => routeMatchesCleanup(route, cleanupRoute));
-}
-
 function detachRoutesForDisconnectRequest(brokerState: BrokerState, request: PendingDisconnectRequest): TelegramRoute[] {
 	const removedRoutes: TelegramRoute[] = [];
 	for (const [id, route] of Object.entries(brokerState.routes)) {
@@ -272,7 +236,7 @@ async function clearVisiblePendingTurnPreviews(options: Pick<SessionCleanupOptio
 
 async function removeSessionFromBrokerState(options: SessionCleanupOptions, brokerState: BrokerState): Promise<QueuedTurnControlState[]> {
 	delete brokerState.sessions[options.targetSessionId];
-	for (const route of detachSessionRoutes(brokerState, options.targetSessionId)) queueRouteCleanup(brokerState, route);
+	detachRoutesForSessionAndQueueCleanup(brokerState, options.targetSessionId);
 	removeSelectorSelectionsForSession(brokerState, options.targetSessionId);
 	const removedTurnIds = removeTurnStateForSession(brokerState, options.targetSessionId, options.stopTypingLoop);
 	return markQueuedControlsCleared(brokerState, removedTurnIds, QUEUED_CONTROL_TEXT.cleared, (control) => control.sessionId === options.targetSessionId);
@@ -405,7 +369,7 @@ export async function markSessionOfflineInBroker(options: SessionCleanupOptions)
 	const pendingState = pendingOfflineSessionState(brokerState, targetSessionId, options.stopTypingLoop);
 	if (!pendingState.hasPendingAssistantFinals) {
 		await clearVisiblePendingTurnPreviews(options, brokerState, targetSessionId);
-		for (const route of detachSessionRoutes(brokerState, targetSessionId)) queueRouteCleanup(brokerState, route);
+		detachRoutesForSessionAndQueueCleanup(brokerState, targetSessionId);
 	}
 	const finalizedControls = markQueuedControlsCleared(brokerState, [], QUEUED_CONTROL_TEXT.cleared, (control) => control.sessionId === targetSessionId);
 	await options.persistBrokerState();

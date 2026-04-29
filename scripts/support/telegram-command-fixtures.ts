@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { TelegramCommandRouter } from "../../src/broker/commands.js";
-import type { BrokerState, PendingTelegramTurn, SessionRegistration, TelegramCallbackQuery, TelegramMessage } from "../../src/shared/types.js";
+import type { BrokerState, PendingTelegramTurn, SessionRegistration, TelegramCallbackQuery, TelegramConfig, TelegramMessage } from "../../src/shared/types.js";
 
 export type IpcCall = { type: string; payload: unknown; target?: string };
 export type TelegramCall = { method: string; body: Record<string, unknown> };
@@ -69,9 +69,11 @@ export function createRouter(
 	callTelegramOverride?: <TResponse>(method: string, body: Record<string, unknown>) => Promise<TResponse>,
 	sendTextOverride?: (chatId: number | string, threadId: number | undefined, text: string, options?: { disableNotification?: boolean; replyMarkup?: unknown }) => Promise<number | undefined>,
 	postIpcOverride?: <TResponse>(socketPath: string, type: string, payload: unknown, targetSessionId?: string) => Promise<TResponse>,
+	config: TelegramConfig = { allowedChatId: 123, topicMode: "auto", fallbackMode: "single_chat_selector" },
 ): TelegramCommandRouter {
 	return new TelegramCommandRouter({
 		getBrokerState: () => brokerState,
+		getConfig: () => config,
 		persistBrokerState: async () => undefined,
 		markOfflineSessions: async () => undefined,
 		createTelegramTurnForSession: async (messages, sessionIdForTurn) => ({

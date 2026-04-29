@@ -3,7 +3,8 @@ import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { SESSION_REPLACEMENT_HANDOFF_TTL_MS } from "../shared/config.js";
-import type { BrokerState, PendingTelegramTurn, SessionRegistration, TelegramRoute } from "../shared/types.js";
+import type { BrokerState, SessionRegistration, TelegramRoute } from "../shared/types.js";
+import { canonicalRouteKey, retargetTurnToRoute, routeMatchesTopicIdentity } from "../shared/routing.js";
 import { ensurePrivateDir, now, readJson, writeJson } from "../shared/utils.js";
 
 export type SessionReplacementReason = "new" | "resume" | "fork";
@@ -135,17 +136,6 @@ function handoffMatchesContext(handoff: SessionReplacementHandoff, context: Sess
 	return true;
 }
 
-function retargetTurn(turn: PendingTelegramTurn, oldSessionId: string, newSessionId: string, route: TelegramRoute): PendingTelegramTurn {
-	if (turn.sessionId !== oldSessionId) return turn;
-	return {
-		...turn,
-		sessionId: newSessionId,
-		routeId: turn.routeId === undefined || turn.routeId === route.routeId ? route.routeId : turn.routeId,
-		chatId: route.chatId,
-		messageThreadId: route.messageThreadId,
-	};
-}
-
 function retargetBrokerStateForReplacement(brokerState: BrokerState, handoff: SessionReplacementHandoff, registration: SessionRegistration): void {
 	const oldSessionId = handoff.oldSessionId;
 	delete brokerState.sessions[oldSessionId];
@@ -159,16 +149,23 @@ function retargetBrokerStateForReplacement(brokerState: BrokerState, handoff: Se
 		topicName: handoff.route.topicName || registration.topicName,
 		updatedAtMs: now(),
 	};
-	const routeKey = route.messageThreadId === undefined ? `${route.routeId}:${registration.sessionId}` : route.routeId;
-	brokerState.routes[routeKey] = route;
+	brokerState.routes[canonicalRouteKey(route)] = route;
 	for (const [cleanupId, cleanup] of Object.entries(brokerState.pendingRouteCleanups ?? {})) {
-		if (cleanup.route.routeId === route.routeId || (String(cleanup.route.chatId) === String(route.chatId) && cleanup.route.messageThreadId === route.messageThreadId)) delete brokerState.pendingRouteCleanups![cleanupId];
+		if (routeMatchesTopicIdentity(route, cleanup.route)) delete brokerState.pendingRouteCleanups![cleanupId];
 	}
 	for (const pending of Object.values(brokerState.pendingTurns ?? {})) {
-		pending.turn = retargetTurn(pending.turn, oldSessionId, registration.sessionId, route);
+		pending.turn = retargetTurnToRoute(pending.turn, oldSessionId, registration.sessionId, route);
 	}
 	for (const pending of Object.values(brokerState.pendingAssistantFinals ?? {})) {
-		pending.turn = retargetTurn(pending.turn, oldSessionId, registration.sessionId, route);
+		pending.turn = retargetTurnToRoute(pending.turn, oldSessionId, registration.sessionId, route);
+	}
+	for (const control of Object.values(brokerState.queuedTurnControls ?? {})) {
+		if (control.sessionId !== oldSessionId) continue;
+		control.sessionId = registration.sessionId;
+		control.routeId = control.routeId === undefined || control.routeId === route.routeId ? route.routeId : control.routeId;
+		control.chatId = route.chatId;
+		control.messageThreadId = route.messageThreadId;
+		control.updatedAtMs = now();
 	}
 	for (const selection of Object.values(brokerState.selectorSelections ?? {})) {
 		if (selection.sessionId === oldSessionId) {

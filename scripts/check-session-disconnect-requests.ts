@@ -70,7 +70,8 @@ async function checkShutdownRouteCanPreservePendingFinalRetryQueue(): Promise<vo
 }
 
 async function checkDisconnectRequestsWaitForPendingFinalsButOtherwiseUnregister(): Promise<void> {
-	const currentSession = session({ lastHeartbeatMs: Date.now() });
+	const nowMs = Date.now();
+	const currentSession = session({ connectionStartedAtMs: nowMs - 1, lastHeartbeatMs: nowMs });
 	const brokerState = state({ sessions: { [currentSession.sessionId]: currentSession }, routes: { [topicRoute().routeId]: topicRoute() }, pendingAssistantFinals: {}, pendingRouteCleanups: {} });
 	const unregistered: string[] = [];
 	const cleared: string[] = [];

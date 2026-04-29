@@ -1,6 +1,7 @@
 import type { BrokerState, QueuedTurnControlState, TelegramCallbackQuery, TelegramRoute } from "../shared/types.js";
 import { QUEUED_CONTROL_TEXT } from "../shared/queued-control-text.js";
 import { now } from "../shared/utils.js";
+import { routeBoundControlBelongsToRoute } from "../shared/routing.js";
 import { isTransientTelegramMessageEditError } from "../telegram/errors.js";
 
 export { QUEUED_CONTROL_TEXT } from "../shared/queued-control-text.js";
@@ -34,9 +35,7 @@ export function isTransientQueuedControlEditError(error: unknown): boolean {
 }
 
 export function queuedControlBelongsToRoute(control: QueuedTurnControlState, route: TelegramRoute): boolean {
-	if (control.sessionId !== route.sessionId) return false;
-	if (control.routeId !== undefined) return control.routeId === route.routeId;
-	return String(control.chatId) === String(route.chatId) && control.messageThreadId === route.messageThreadId;
+	return routeBoundControlBelongsToRoute(control, route);
 }
 
 export function queuedControlNeedsVisibleFinalization(control: QueuedTurnControlState): boolean {

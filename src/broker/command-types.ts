@@ -1,7 +1,8 @@
-import type { BrokerState, InlineKeyboardMarkup, PendingTelegramTurn, TelegramMessage } from "../shared/types.js";
+import type { BrokerState, InlineKeyboardMarkup, PendingTelegramTurn, TelegramConfig, TelegramMessage } from "../shared/types.js";
 
 export interface TelegramCommandRouterDeps {
 	getBrokerState: () => BrokerState | undefined;
+	getConfig: () => TelegramConfig;
 	persistBrokerState: () => Promise<void>;
 	markOfflineSessions: () => Promise<void>;
 	createTelegramTurnForSession: (messages: TelegramMessage[], sessionIdForTurn: string) => Promise<PendingTelegramTurn>;

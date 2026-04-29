@@ -48,6 +48,7 @@ function pendingTurnFromMessage(message: TelegramMessage | undefined, sessionId:
 export function noopCommandRouter(getBrokerState: () => BrokerState | undefined = () => undefined): TelegramCommandRouter {
 	const deps: TelegramCommandRouterDeps = {
 		getBrokerState,
+		getConfig: () => ({ allowedChatId: 123, topicMode: "auto", fallbackMode: "single_chat_selector" }),
 		persistBrokerState: async () => undefined,
 		markOfflineSessions: async () => undefined,
 		createTelegramTurnForSession: async (messages, sessionId) => pendingTurnFromMessage(messages[0], sessionId),

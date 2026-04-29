@@ -1,6 +1,7 @@
 import { MODEL_LIST_TTL_MS, SESSION_LIST_OFFLINE_GRACE_MS } from "../shared/config.js";
 import { routeId } from "../shared/format.js";
-import type { BrokerState, ClientDeliverTurnResult, PendingTelegramTurn, SessionRegistration, TelegramCallbackQuery, TelegramMessage, TelegramRoute } from "../shared/types.js";
+import { canonicalRouteKey } from "../shared/routing.js";
+import type { BrokerState, ClientDeliverTurnResult, PendingTelegramTurn, SessionRegistration, TelegramCallbackQuery, TelegramConfig, TelegramMessage, TelegramRoute } from "../shared/types.js";
 import { errorMessage, now } from "../shared/utils.js";
 import { getTelegramRetryAfterMs } from "../telegram/api.js";
 import type { TelegramCommandRouterDeps } from "./command-types.js";
@@ -11,9 +12,19 @@ import { TelegramModelCommandHandler } from "./model-command.js";
 import { isModelPickerCallbackData } from "./model-picker.js";
 import { isQueuedTurnControlCallbackData, pruneQueuedTurnControls, QUEUED_CONTROL_TEXT } from "./queued-controls.js";
 import { QueuedTurnControlHandler } from "./queued-turn-control-handler.js";
+import { replaceRoutesForSession } from "./routes.js";
 
 export { telegramCommandName } from "./command-text.js";
 export type { TelegramCommandRouterDeps } from "./command-types.js";
+
+function selectorRoutingAvailableForChat(config: TelegramConfig, chatId: number | string): boolean {
+	const topicMode = config.topicMode ?? "auto";
+	if (topicMode === "disabled") return false;
+	const selectorMode = topicMode === "single_chat_selector" || (topicMode === "auto" && (config.fallbackMode ?? "single_chat_selector") === "single_chat_selector");
+	if (!selectorMode) return false;
+	if (config.allowedChatId === undefined) return true;
+	return String(config.allowedChatId) === String(chatId);
+}
 
 export class TelegramCommandRouter {
 	private readonly modelCommands: TelegramModelCommandHandler;
@@ -292,6 +303,11 @@ export class TelegramCommandRouter {
 	private async handleUseCommand(message: TelegramMessage, text: string): Promise<void> {
 		const brokerState = this.deps.getBrokerState();
 		if (!brokerState) return;
+		const config = this.deps.getConfig();
+		if (!selectorRoutingAvailableForChat(config, message.chat.id)) {
+			await this.deps.sendTextReply(message.chat.id, message.message_thread_id, config.topicMode === "disabled" ? "Telegram routing is disabled by config." : "Selector routing is not enabled for this chat. Use the session topic instead.");
+			return;
+		}
 		await this.deps.markOfflineSessions();
 		const arg = text.trim().split(/\s+/)[1];
 		const sessions = this.listableSessions(brokerState);
@@ -309,8 +325,12 @@ export class TelegramCommandRouter {
 			updatedAtMs: now(),
 		};
 		const id = routeId(message.chat.id);
-		brokerState.routes[`${id}:${session.sessionId}`] = brokerState.routes[`${id}:${session.sessionId}`] ?? { routeId: id, sessionId: session.sessionId, chatId: message.chat.id, routeMode: "single_chat_selector", topicName: session.topicName, createdAtMs: now(), updatedAtMs: now() };
-		brokerState.routes[`${id}:${session.sessionId}`].updatedAtMs = now();
+		const selectorRoute: TelegramRoute = { routeId: id, sessionId: session.sessionId, chatId: message.chat.id, routeMode: "single_chat_selector", topicName: session.topicName, createdAtMs: now(), updatedAtMs: now() };
+		const routeKey = canonicalRouteKey(selectorRoute);
+		const route = brokerState.routes[routeKey] ?? selectorRoute;
+		route.topicName = session.topicName;
+		route.updatedAtMs = now();
+		replaceRoutesForSession(brokerState, session.sessionId, route, routeKey);
 		await this.deps.persistBrokerState();
 		await this.deps.sendTextReply(message.chat.id, message.message_thread_id, `Selected ${session.topicName} for 30 minutes.`);
 	}

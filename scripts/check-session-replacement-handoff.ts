@@ -75,6 +75,21 @@ function state(): BrokerState {
 		pendingTurns: { "turn-1": { turn: turn("old-session"), updatedAtMs: 1 } },
 		pendingAssistantFinals: { "final-1": final("old-session") },
 		pendingRouteCleanups: { [oldRoute.routeId]: { route: oldRoute, createdAtMs: 1, updatedAtMs: 1 } },
+		queuedTurnControls: {
+			"control-1": {
+				token: "control-1",
+				turnId: "turn-1",
+				sessionId: "old-session",
+				routeId: oldRoute.routeId,
+				chatId: oldRoute.chatId,
+				messageThreadId: oldRoute.messageThreadId,
+				statusMessageId: 70,
+				status: "offered",
+				createdAtMs: 1,
+				updatedAtMs: 1,
+				expiresAtMs: 10_000,
+			},
+		},
 		createdAtMs: 1,
 		updatedAtMs: 1,
 	};
@@ -127,6 +142,8 @@ async function checkConsumeRetargetsBrokerState(): Promise<void> {
 		assert.equal(brokerState.routes["111:unrelated-session"].sessionId, "unrelated-session");
 		assert.equal(brokerState.pendingTurns?.["turn-1"].turn.sessionId, "new-session");
 		assert.equal(brokerState.pendingAssistantFinals?.["final-1"].turn.sessionId, "new-session");
+		assert.equal(brokerState.queuedTurnControls?.["control-1"].sessionId, "new-session");
+		assert.equal(brokerState.queuedTurnControls?.["control-1"].routeId, "111:9");
 		assert.equal(brokerState.selectorSelections?.["111"].sessionId, "new-session");
 		const secondConsume = await consumeSessionReplacementHandoffInBroker({
 			dir,

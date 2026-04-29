@@ -1,7 +1,7 @@
 import type { BrokerState, PendingTelegramTurn, SessionRegistration, TelegramConfig, TelegramMessage, TelegramRoute } from "../shared/types.js";
 import { topicNameFor } from "../shared/format.js";
 import { now } from "../shared/utils.js";
-import { ensureRouteForSessionInBroker } from "./routes.js";
+import { ensureRouteForSessionInBroker, TelegramRoutingDisabledError } from "./routes.js";
 
 export interface BrokerSessionRegistrationDeps {
 	getBrokerState: () => BrokerState | undefined;
@@ -46,6 +46,7 @@ export class BrokerSessionRegistrationCoordinator {
 		await this.deps.consumeReplacementHandoff?.(brokerState, registration);
 		previous = brokerState.sessions[registration.sessionId];
 		if (previous && isStaleSessionConnection(previous, registration)) throw new Error("stale_session_connection");
+		const previousBeforeRouteEnsure = previous;
 		const replacement = previous
 			&& (previous.connectionNonce !== registration.connectionNonce || previous.connectionStartedAtMs !== registration.connectionStartedAtMs)
 			&& !(previous.pid === registration.pid && previous.clientSocketPath === registration.clientSocketPath);
@@ -57,7 +58,13 @@ export class BrokerSessionRegistrationCoordinator {
 			staleStandDownRequestedAtMs: replacement ? now() : undefined,
 			reconnectGraceStartedAtMs: undefined,
 		};
-		const route = await this.ensureRouteForSessionLocked(brokerState.sessions[registration.sessionId]);
+		let route: TelegramRoute;
+		try {
+			route = await this.ensureRouteForSessionLocked(brokerState.sessions[registration.sessionId]);
+		} catch (error) {
+			await this.persistDisabledRouteRejection(brokerState, registration.sessionId, previousBeforeRouteEnsure, error);
+			throw error;
+		}
 		await this.deps.persistBrokerState();
 		this.deps.refreshTelegramStatus();
 		return route;
@@ -78,7 +85,13 @@ export class BrokerSessionRegistrationCoordinator {
 			topicName: topicNameFor(registration),
 			reconnectGraceStartedAtMs: undefined,
 		};
-		const route = await this.ensureRouteForSessionLocked(brokerState.sessions[registration.sessionId]);
+		let route: TelegramRoute;
+		try {
+			route = await this.ensureRouteForSessionLocked(brokerState.sessions[registration.sessionId]);
+		} catch (error) {
+			await this.persistDisabledRouteRejection(brokerState, registration.sessionId, previous, error);
+			throw error;
+		}
 		await this.deps.persistBrokerState();
 		this.deps.refreshTelegramStatus();
 		if (!fenced) {
@@ -91,7 +104,17 @@ export class BrokerSessionRegistrationCoordinator {
 	async ensureRoutesAfterPairing(): Promise<void> {
 		const brokerState = this.deps.getBrokerState();
 		if (!brokerState) return;
-		for (const session of Object.values(brokerState.sessions)) await this.ensureRouteForSessionLocked(session);
+		let disabledRoutingError: TelegramRoutingDisabledError | undefined;
+		for (const session of Object.values(brokerState.sessions)) {
+			try {
+				await this.ensureRouteForSessionLocked(session);
+			} catch (error) {
+				if (!(error instanceof TelegramRoutingDisabledError)) throw error;
+				await this.persistDisabledRouteRejection(brokerState, session.sessionId, session, error);
+				disabledRoutingError ??= error;
+			}
+		}
+		if (disabledRoutingError) throw disabledRoutingError;
 		await this.deps.persistBrokerState();
 	}
 
@@ -113,6 +136,14 @@ export class BrokerSessionRegistrationCoordinator {
 		const ensure = this.ensureRouteForSession(registration).finally(() => this.routeEnsures.delete(registration.sessionId));
 		this.routeEnsures.set(registration.sessionId, ensure);
 		return ensure;
+	}
+
+	private async persistDisabledRouteRejection(brokerState: BrokerState, sessionId: string, previous: SessionRegistration | undefined, error: unknown): Promise<void> {
+		if (!(error instanceof TelegramRoutingDisabledError)) return;
+		if (previous) brokerState.sessions[sessionId] = previous;
+		else delete brokerState.sessions[sessionId];
+		await this.deps.persistBrokerState();
+		this.deps.refreshTelegramStatus();
 	}
 
 	private async ensureRouteForSession(registration: SessionRegistration): Promise<TelegramRoute> {

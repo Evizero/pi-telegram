@@ -178,6 +178,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	let updateHandlers!: ReturnType<typeof createRuntimeUpdateHandlers>;
 	const commandRouter = new TelegramCommandRouter({
 		getBrokerState: () => brokerState,
+		getConfig: () => config,
 		persistBrokerState,
 		markOfflineSessions: () => updateHandlers.markOfflineSessions(),
 		createTelegramTurnForSession,
