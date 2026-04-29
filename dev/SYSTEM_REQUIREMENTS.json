@@ -1203,6 +1203,29 @@
           "rework-validation-suite-around"
         ]
       }
+    },
+    {
+      "id": "SyRS-behavior-check-domain-fixtures",
+      "origin": "derived",
+      "label": "Organize behavior checks by domain",
+      "statement": "The repository shall organize behavioral validation checks into focused domain-level executable check files with shared, typed, non-executable support fixtures so maintainers can extend coverage without duplicating broad harness setup or weakening existing assertions.",
+      "traces_to": [
+        "StRS-api-constrained-maintenance"
+      ],
+      "rationale": "Large all-in-one behavior checks make Telegram bridge changes harder to review and encourage duplicated weakly typed test harnesses; domain files and shared fixtures preserve coverage while lowering maintenance cost.",
+      "acceptance_criteria": "Inspection and validation confirm oversized behavior-check files are split into focused root-level check files, common fixtures live in support modules that are imported but not executed as standalone checks, fixture APIs avoid broad any/never casts where practical, all migrated assertions remain present, and npm run check discovers and executes the split checks successfully.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-29",
+      "updated": "2026-04-29",
+      "sources": {
+        "inbox": [
+          "decompose-oversized-command-router",
+          "reduce-duplicated-test-discovery"
+        ]
+      }
     }
   ]
 }
