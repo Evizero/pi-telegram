@@ -5,6 +5,20 @@ import { BROKER_LEASE_MS, LOCK_DIR, LOCK_PATH, TAKEOVER_LOCK_DIR, TOKEN_PATH } f
 import type { BrokerLease, TelegramConfig } from "../shared/types.js";
 import { now, processExists, readJson, writeJson } from "../shared/utils.js";
 
+export const STALE_BROKER_ERROR_MESSAGE = "stale_broker";
+
+export class StaleBrokerError extends Error {
+	constructor() {
+		super(STALE_BROKER_ERROR_MESSAGE);
+		this.name = "StaleBrokerError";
+	}
+}
+
+export function isStaleBrokerError(error: unknown): boolean {
+	return error instanceof StaleBrokerError
+		|| (error instanceof Error && error.message === STALE_BROKER_ERROR_MESSAGE);
+}
+
 export interface BrokerLeaseDeps {
 	ownerId: string;
 	startedAtMs: number;

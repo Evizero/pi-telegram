@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { chunkParagraphs } from "../shared/format.js";
 import { formatAssistantFailureText } from "../shared/assistant-errors.js";
 import type { AssistantFinalPayload, BrokerState, PendingAssistantFinalDelivery, QueuedAttachment } from "../shared/types.js";
+import { isStaleBrokerError } from "./lease.js";
 import { errorMessage, now } from "../shared/utils.js";
 import { getTelegramRetryAfterMs } from "../telegram/api.js";
 import { isTerminalTelegramFinalDeliveryError, terminalTelegramFinalDeliveryReason } from "../telegram/final-errors.js";
@@ -101,7 +102,13 @@ export class AssistantFinalDeliveryLedger {
 
 	kick(): void {
 		if (!this.active || this.processing) return;
-		this.processing = this.process(this.generation).finally(() => {
+		this.processing = this.process(this.generation).catch((error) => {
+			if (isStaleBrokerError(error)) {
+				this.stop();
+				return;
+			}
+			console.warn(`[pi-telegram] Assistant final delivery failed: ${errorMessage(error)}`);
+		}).finally(() => {
 			this.processing = undefined;
 		});
 	}
@@ -133,6 +140,10 @@ export class AssistantFinalDeliveryLedger {
 				await this.deliver(entry);
 				await this.complete(entry);
 			} catch (error) {
+				if (isStaleBrokerError(error)) {
+					this.stop();
+					return;
+				}
 				if (this.currentTurnId && this.cancelledTurnIds.has(this.currentTurnId)) {
 					this.cancelledTurnIds.delete(this.currentTurnId);
 					continue;

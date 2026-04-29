@@ -1,5 +1,6 @@
 import type { ActiveTelegramTurn, AssistantFinalPayload } from "../shared/types.js";
 import { isRetryableAssistantError } from "../shared/assistant-errors.js";
+import { errorMessage } from "../shared/utils.js";
 
 export interface RetryAwareTelegramTurnFinalizerDeps {
 	getActiveTelegramTurn: () => ActiveTelegramTurn | undefined;
@@ -55,7 +56,7 @@ export class RetryAwareTelegramTurnFinalizer {
 	consumeDeferredPayload(): AssistantFinalPayload | undefined {
 		const payload = this.deferred ? { ...this.deferred.payload } : undefined;
 		this.clearDeferred();
-		void this.deps.persistDeferredState?.();
+		this.persistDeferredStateBestEffort();
 		return payload;
 	}
 
@@ -64,7 +65,7 @@ export class RetryAwareTelegramTurnFinalizer {
 		const activeTurn = this.deps.getActiveTelegramTurn();
 		if (!activeTurn || activeTurn.turnId === payload.turn.turnId) this.deps.setActiveTelegramTurn(payload.turn);
 		this.scheduleDeferred(payload);
-		void this.deps.persistDeferredState?.();
+		this.persistDeferredStateBestEffort();
 	}
 
 	async flushDeferredTurn(options: { startNext?: boolean } = {}): Promise<string | undefined> {
@@ -82,19 +83,19 @@ export class RetryAwareTelegramTurnFinalizer {
 
 	onRetryMessageStart(): void {
 		this.clearDeferred();
-		void this.deps.persistDeferredState?.();
+		this.persistDeferredStateBestEffort();
 	}
 
 	cancel(): void {
 		this.clearDeferred();
-		void this.deps.persistDeferredState?.();
+		this.persistDeferredStateBestEffort();
 	}
 
 	async releaseDeferredTurn(options: { markCompleted?: boolean; startNext?: boolean; deliverAbortedFinal?: boolean; requireDelivery?: boolean } = {}): Promise<string | undefined> {
 		const deferred = this.deferred;
 		if (!deferred) return undefined;
 		this.clearDeferred();
-		void this.deps.persistDeferredState?.();
+		this.persistDeferredStateBestEffort();
 		const turnId = deferred.payload.turn.turnId;
 		const activeTurn = this.deps.getActiveTelegramTurn();
 		if (activeTurn?.turnId === turnId) {
@@ -135,7 +136,9 @@ export class RetryAwareTelegramTurnFinalizer {
 	private scheduleDeferred(payload: AssistantFinalPayload): void {
 		this.clearDeferred();
 		const timer = this.setTimeoutFn(() => {
-			void this.flushDeferred(payload.turn.turnId);
+			void this.flushDeferred(payload.turn.turnId).catch((error) => {
+				console.warn(`[pi-telegram] Deferred Telegram final flush failed: ${errorMessage(error)}`);
+			});
 		}, this.retryGraceMs);
 		this.deferred = { payload, timer };
 	}
@@ -166,5 +169,11 @@ export class RetryAwareTelegramTurnFinalizer {
 		if (!this.deferred) return;
 		if (this.deferred.timer !== undefined) this.clearTimeoutFn(this.deferred.timer);
 		this.deferred = undefined;
+	}
+
+	private persistDeferredStateBestEffort(): void {
+		void this.deps.persistDeferredState?.().catch((error) => {
+			console.warn(`[pi-telegram] Failed to persist deferred Telegram final state: ${errorMessage(error)}`);
+		});
 	}
 }

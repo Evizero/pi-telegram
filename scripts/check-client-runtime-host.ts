@@ -64,7 +64,7 @@ interface Harness {
 	setPostIpc(handler: ClientRuntimeHostDeps["postIpc"]): void;
 }
 
-function createHarness(options: { idle?: boolean; postIpc?: ClientRuntimeHostDeps["postIpc"] } = {}): Harness {
+function createHarness(options: { idle?: boolean; postIpc?: ClientRuntimeHostDeps["postIpc"]; sendUserMessage?: ExtensionAPI["sendUserMessage"] } = {}): Harness {
 	let latestCtx = ctx(options.idle ?? true);
 	let postIpc: ClientRuntimeHostDeps["postIpc"] = options.postIpc ?? (async (_socketPath, type) => {
 		if (type === "register_session") return route() as never;
@@ -109,7 +109,7 @@ function createHarness(options: { idle?: boolean; postIpc?: ClientRuntimeHostDep
 	} satisfies ClientRuntimeHostFinalHandoff & { retryPendingCalls: number; handoffPendingForShutdownCalls: number; abortedFinals: PendingTelegramTurn[]; deferFinals: boolean };
 	const pi = {
 		getSessionName: () => "session one",
-		sendUserMessage(content: PendingTelegramTurn["content"], options?: { deliverAs?: string }) { sentMessages.push({ content, deliverAs: options?.deliverAs }); },
+		sendUserMessage: options.sendUserMessage ?? ((content: PendingTelegramTurn["content"], options?: { deliverAs?: string }) => { sentMessages.push({ content, deliverAs: options?.deliverAs }); }),
 		setModel: async () => undefined,
 	} as unknown as ExtensionAPI;
 	let connectedBrokerSocketPath = "/tmp/broker.sock";
@@ -231,6 +231,19 @@ async function checkHeartbeatUpdatesRouteAndHonorsFinalDeferralGate(): Promise<v
 	await harness.host.stopClientServer();
 }
 
+async function checkStartNextTelegramTurnRestoresQueueWhenLocalDeliveryThrows(): Promise<void> {
+	const harness = createHarness({ sendUserMessage: (() => { throw new Error("pi delivery failed"); }) as ExtensionAPI["sendUserMessage"] });
+	await harness.host.startClientServer();
+	harness.host.setConnectedRoute(route());
+	const queued = turn("restore", "followUp");
+	harness.host.setQueuedTelegramTurns([queued]);
+	assert.throws(() => harness.host.startNextTelegramTurn(), /pi delivery failed/);
+	assert.equal(harness.host.getActiveTelegramTurn(), undefined);
+	assert.deepEqual(harness.host.getQueuedTelegramTurns().map((candidate) => candidate.turnId), ["restore"]);
+	assert.equal(harness.postCalls.some((call) => call.type === "turn_started"), false);
+	await harness.host.stopClientServer();
+}
+
 async function checkStaleStandDownPersistsFinalsAndClearsLocalState(): Promise<void> {
 	const harness = createHarness({ idle: false });
 	await harness.host.startClientServer();
@@ -265,6 +278,7 @@ async function main(): Promise<void> {
 	await checkIdleAndNonRoutableMirroringDoNothing();
 	await checkStaleRegistrationStopsClientServer();
 	await checkHeartbeatUpdatesRouteAndHonorsFinalDeferralGate();
+	await checkStartNextTelegramTurnRestoresQueueWhenLocalDeliveryThrows();
 	await checkStaleStandDownPersistsFinalsAndClearsLocalState();
 	await checkRouteShutdownHandoffsPendingFinalsAndClearsRouteState();
 	console.log("Client runtime host checks passed");

@@ -2,7 +2,7 @@
   "meta": {
     "title": "pi-telegram",
     "version": "0.1.0",
-    "last_updated": "2026-04-28"
+    "last_updated": "2026-04-29"
   },
   "requirements": [
     {
@@ -1150,6 +1150,30 @@
       "sources": {
         "inbox": [
           "telegram-git-status-command"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-broker-lease-loss-standdown",
+      "origin": "derived",
+      "label": "Stand down on broker lease loss",
+      "statement": "The system shall treat broker lease loss detected during broker background work or broker-state persistence as controlled broker stand-down without producing an unhandled asynchronous rejection or terminating the pi session process.",
+      "traces_to": [
+        "StRS-delivery-continuity",
+        "StRS-multi-session-supervision",
+        "StRS-session-lifecycle-control"
+      ],
+      "rationale": "Broker turnover is part of the multi-session operating model; losing a broker lease is a normal recoverable lifecycle event, but allowing stale broker persistence to escape from detached maintenance work can kill the local pi process and break remote supervision continuity.",
+      "acceptance_criteria": "Focused tests simulate broker background work, including pending-turn retry, losing the broker lease before persistence: the stale broker path stops or ignores the old broker's work without an unhandled rejection, leaves durable pending work available for the current broker, and does not terminate or destabilize the client pi session. Inspection confirms detached broker maintenance promises have terminal error handling for stale-broker conditions.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "ready",
+      "created": "2026-04-29",
+      "updated": "2026-04-29",
+      "sources": {
+        "inbox": [
+          "stale-broker-from-pending"
         ]
       }
     }

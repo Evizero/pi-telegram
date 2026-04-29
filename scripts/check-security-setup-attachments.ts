@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { lstat, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -31,7 +31,7 @@ async function checkOutboundAttachmentSecretPathGuard(): Promise<void> {
 	try {
 		const safe = join(root, "artifact.txt");
 		await writeFile(safe, "ok", "utf8");
-		assert.equal(await resolveAllowedAttachmentPath(safe, root), safe);
+		assert.equal(await resolveAllowedAttachmentPath(safe, root), await realpath(safe));
 		const blocked = [
 			join(root, ".env"),
 			join(root, ".env.local"),

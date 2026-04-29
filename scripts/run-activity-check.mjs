@@ -22,6 +22,7 @@ execFileSync(process.execPath, [join(outDir, "scripts", "check-client-final-hand
 execFileSync(process.execPath, [join(outDir, "scripts", "check-client-info.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-client-git-status.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-durable-json-loading.js")], { stdio: "inherit" });
+execFileSync(process.execPath, [join(outDir, "scripts", "check-broker-background.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-client-runtime-host.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-retry-aware-finalization.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-runtime-pi-hooks.js")], { stdio: "inherit" });

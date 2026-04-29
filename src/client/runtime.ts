@@ -86,7 +86,7 @@ export class ClientRuntime {
 		const removed = queuedIndex >= 0 ? queuedTurns.splice(queuedIndex, 1)[0] : this.deps.getManualCompactionQueue().removeDeferredTurn(request.turnId);
 		if (!removed) return { status: "not_found", text: "That queued follow-up is no longer waiting.", turnId: request.turnId };
 		try {
-			void this.deps.pi.sendUserMessage(removed.content, { deliverAs: "steer" });
+			this.deps.pi.sendUserMessage(removed.content, { deliverAs: "steer" });
 		} catch (error) {
 			if (queuedIndex >= 0) queuedTurns.splice(queuedIndex, 0, removed);
 			else this.deps.getManualCompactionQueue().enqueueDeferredTurn(removed);

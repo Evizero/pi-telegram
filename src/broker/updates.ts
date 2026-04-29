@@ -9,6 +9,7 @@ import { errorMessage, hashSecret, now } from "../shared/utils.js";
 import { getTelegramRetryAfterMs } from "../telegram/api.js";
 import { isMissingDeletedTelegramMessage, shouldPreserveTelegramMessageRefOnDeleteFailure } from "../telegram/errors.js";
 import { answerTelegramCallbackQueryBestEffort, deleteTelegramMessage } from "../telegram/message-ops.js";
+import { runBrokerBackgroundTask } from "./background.js";
 
 export interface RuntimeUpdateDeps {
 	getConfig: () => TelegramConfig;
@@ -236,7 +237,7 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 		const existing = deps.mediaGroups.get(key);
 		if (existing?.flushTimer) clearTimeout(existing.flushTimer);
 		const flushTimer = setTimeout(() => {
-			void flushMediaGroup(key, ctx);
+			runBrokerBackgroundTask(`media group flush ${key}`, () => flushMediaGroup(key, ctx), { stopBroker: deps.stopBroker });
 		}, delayMs);
 		deps.mediaGroups.set(key, { messages: [], flushTimer });
 	}
@@ -258,6 +259,7 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 				removeProcessed = false;
 				scheduleMediaGroupFlush(key, ctx, retryAfterMs + 250);
 			} else {
+				console.warn(`[pi-telegram] Failed to prepare Telegram album: ${errorMessage(error)}`);
 				const firstMessage = group.map((update) => update.message || update.edited_message).find((message): message is TelegramMessage => Boolean(message));
 				if (firstMessage) await deps.sendTextReply(firstMessage.chat.id, firstMessage.message_thread_id, `Failed to prepare Telegram album: ${errorMessage(error)}`).catch(() => undefined);
 			}

@@ -66,6 +66,11 @@ The strongest drivers come directly from the intended purpose and requirements:
   (`StRS-activity-final-feedback`, `SyRS-activity-history-rendering`,
   `SyRS-final-preview-deduplication`, `SyRS-final-delivery-fifo-retry`,
   `SyRS-retry-aware-agent-finals`, `SyRS-final-text-before-error-metadata`);
+- broker lease loss is a normal multi-session lifecycle outcome; stale broker
+  state writes must be blocked without allowing already-running broker
+  maintenance to crash the pi session process
+  (`StRS-delivery-continuity`, `StRS-multi-session-supervision`,
+  `SyRS-broker-lease-loss-standdown`);
 - Telegram update, callback-query, webhook, retry, file, draft, media, and topic
   constraints are part of the runtime contract, not optional polish
   (`StRS-api-constrained-maintenance`, `SyRS-webhook-before-polling`,
@@ -85,8 +90,9 @@ The operator should be able to connect, observe, steer, follow up, stop, and
 receive final results without caring which local session currently owns the
 broker role.
 This goal drives durable broker state, route reuse during live connections and
-bounded reconnect windows, pending-turn retry, final retry, and explicit session
-lifecycle handling.
+bounded reconnect windows, pending-turn retry, final retry, explicit session
+lifecycle handling, and controlled stand-down when an old broker discovers it no
+longer owns the lease.
 
 ### Local-first authority
 
@@ -371,6 +377,9 @@ with related code when they explain the same behavior.
   reconnect grace expires.
 - Pending turns and media groups are retryable durable broker state until
   consumed, processed, or terminally failed.
+- Broker maintenance tasks that discover lease loss must stand down or discard
+  stale in-memory work without producing unhandled asynchronous rejections or
+  persisting stale state.
 - Assistant final delivery must remain retryable durable broker state until the
   final is delivered to Telegram or terminally failed.
 - Retryable pi/provider errors are not stable assistant finals while pi may
@@ -480,6 +489,9 @@ Writes must be serialized and fenced by the current broker lease owner/epoch so
 an older or stale broker persistence operation cannot resurrect completed turns,
 regress update offsets, requeue stale cleanups, or discard newer routes or
 selections.
+A stale broker discovered by that fence is expected to stand down or ignore the
+stale in-memory operation; lease-loss detection is not itself a fatal error for
+the hosting pi session process.
 
 ### Session registration
 

@@ -403,7 +403,11 @@ export class ClientRuntimeHost {
 		if (envelope.type === "stale_client_connection") {
 			const payload = envelope.payload as { connectionNonce?: string };
 			if (!payload.connectionNonce || payload.connectionNonce !== this.clientConnectionNonce) return { ok: true, ignored: true };
-			setTimeout(() => void this.standDownStaleClientConnection({ acknowledgeBroker: true }), 0);
+			setTimeout(() => {
+				void this.standDownStaleClientConnection({ acknowledgeBroker: true }).catch((error) => {
+					console.warn(`[pi-telegram] Failed to stand down stale client connection: ${errorMessage(error)}`);
+				});
+			}, 0);
 			return { ok: true };
 		}
 		if (envelope.type === "restore_deferred_final") {
@@ -422,7 +426,11 @@ export class ClientRuntimeHost {
 		}
 		if (envelope.type === "shutdown_client_route") {
 			await this.shutdownClientRoute();
-			setTimeout(() => void this.stopClientServer(), 0);
+			setTimeout(() => {
+				void this.stopClientServer().catch((error) => {
+					console.warn(`[pi-telegram] Failed to stop client server after route shutdown: ${errorMessage(error)}`);
+				});
+			}, 0);
 			return { ok: true };
 		}
 		throw new Error(`Unsupported client IPC message: ${envelope.type}`);
@@ -457,11 +465,20 @@ export class ClientRuntimeHost {
 		if (this.manualCompactionQueue.isActive() || this.activeTelegramTurn || this.awaitingTelegramFinalTurnId || !this.connectedRoute || !this.clientServer) return;
 		const turn = this.queuedTelegramTurns.shift();
 		if (!turn) return;
-		this.activeTelegramTurn = { ...turn, queuedAttachments: [] };
+		const activeTurn = { ...turn, queuedAttachments: [] };
+		const previousAbort = this.currentAbort;
+		this.activeTelegramTurn = activeTurn;
 		const ctx = this.deps.getLatestCtx();
 		if (ctx) this.currentAbort = () => ctx.abort();
+		try {
+			this.deps.pi.sendUserMessage(turn.content, turn.deliveryMode === "followUp" ? { deliverAs: "followUp" } : undefined);
+		} catch (error) {
+			if (this.activeTelegramTurn?.turnId === turn.turnId) this.activeTelegramTurn = undefined;
+			this.currentAbort = previousAbort;
+			this.queuedTelegramTurns.unshift(turn);
+			throw error;
+		}
 		void this.deps.postIpc(this.deps.getConnectedBrokerSocketPath(), "turn_started", { turnId: turn.turnId }, this.deps.getSessionId()).catch(() => undefined);
-		void this.deps.pi.sendUserMessage(turn.content, turn.deliveryMode === "followUp" ? { deliverAs: "followUp" } : undefined);
 	}
 
 	clientStatusText(): Promise<string> {

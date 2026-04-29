@@ -8,7 +8,8 @@ import type { BrokerLease, BrokerState, IpcEnvelope, PendingTelegramTurn, Assist
 import { configureBrokerScope, readConfig, writeConfig } from "./shared/config.js";
 import { ActivityRenderer, ActivityReporter, type ActivityUpdatePayload } from "./broker/activity.js";
 import { isRouteScopedDisconnectRequest, processDisconnectRequestsInBroker, type PendingDisconnectRequest } from "./broker/disconnect-requests.js";
-import { renewBrokerLease as renewBrokerLeaseFile, tryAcquireBrokerLease } from "./broker/lease.js";
+import { handleBrokerBackgroundError, runBrokerBackgroundTask } from "./broker/background.js";
+import { isStaleBrokerError, renewBrokerLease as renewBrokerLeaseFile, StaleBrokerError, tryAcquireBrokerLease } from "./broker/lease.js";
 import { targetChatIdForRoutes as routeTargetChatIdForRoutes, usesForumSupergroupRouting as routeUsesForumSupergroupRouting } from "./broker/routes.js";
 import { honorExplicitDisconnectRequestInBroker, unregisterSessionFromBroker, markSessionOfflineInBroker, retryPendingRouteCleanupsInBroker } from "./broker/sessions.js";
 import { BrokerSessionRegistrationCoordinator, isStaleSessionConnectionError } from "./broker/session-registration.js";
@@ -168,7 +169,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		postStaleClientConnection: (registration) => { void postIpc(registration.clientSocketPath, "stale_client_connection", { sessionId: registration.sessionId, connectionNonce: registration.connectionNonce }, registration.sessionId).catch(() => undefined); },
 		honorPendingDisconnectRequest,
 		refreshTelegramStatus,
-		retryPendingTurns: () => { void retryPendingTurns(); },
+		retryPendingTurns: () => { runDetachedBrokerTask("pending turn retry", retryPendingTurns); },
 		kickAssistantFinalLedger: () => assistantFinalLedger.kick(),
 		createTelegramTurnForSession: (messages, sessionIdForTurn) => buildTelegramTurnForSession(messages, sessionIdForTurn, downloadTelegramFile),
 		consumeReplacementHandoff: (state, registration) => consumeSessionReplacementHandoffInBroker({ dir: SESSION_REPLACEMENT_HANDOFFS_DIR, brokerState: state, registration }),
@@ -218,6 +219,8 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	function pollLoop(ctx: ExtensionContext, signal: AbortSignal): Promise<void> { return updateHandlers.pollLoop(ctx, signal); }
 	function schedulePendingMediaGroups(ctx: ExtensionContext): void { updateHandlers.schedulePendingMediaGroups(ctx); }
 	function retryPendingTurns(): Promise<void> { return updateHandlers.retryPendingTurns(); }
+	function brokerBackgroundDeps() { return { stopBroker, log: (message: string) => console.warn(message) }; }
+	function runDetachedBrokerTask(label: string, task: () => Promise<void>): void { runBrokerBackgroundTask(label, task, brokerBackgroundDeps()); }
 	function logTerminalRouteCleanupFailure(route: TelegramRoute, reason: string): void {
 		console.warn(`[pi-telegram] Terminal Telegram topic cleanup failure for ${route.routeId}: ${reason}`);
 	}
@@ -497,7 +500,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	}
 	async function assertCurrentBrokerLeaseForPersist(): Promise<void> {
 		const lease = await readLease();
-		if (!isBroker || !lease || lease.ownerId !== ownerId || lease.leaseEpoch !== brokerLeaseEpoch || lease.leaseUntilMs <= now()) throw new Error("stale_broker");
+		if (!isBroker || !lease || lease.ownerId !== ownerId || lease.leaseEpoch !== brokerLeaseEpoch || lease.leaseUntilMs <= now()) throw new StaleBrokerError();
 	}
 	function persistBrokerState(): Promise<void> {
 		brokerStatePersistQueue = brokerStatePersistQueue.catch(() => undefined).then(async () => {
@@ -548,15 +551,20 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 				await retryPendingRouteCleanups();
 				await sweepOrphanedTelegramTempDirs();
 				assistantFinalLedger.kick();
-			}).catch(() => {
+			}).catch((error) => {
+				if (isStaleBrokerError(error)) {
+					void handleBrokerBackgroundError("broker heartbeat", error, brokerBackgroundDeps());
+					return;
+				}
 				brokerHeartbeatFailures += 1;
-				if (brokerHeartbeatFailures >= 2) void stopBroker();
+				console.warn(`[pi-telegram] Broker heartbeat failed: ${errorMessage(error)}`);
+				if (brokerHeartbeatFailures >= 2) runDetachedBrokerTask("broker heartbeat failure stand-down", stopBroker);
 			});
 		}, BROKER_HEARTBEAT_MS);
 		brokerPollAbort = new AbortController();
-		void pollLoop(ctx, brokerPollAbort.signal);
+		runDetachedBrokerTask("broker poll loop", () => pollLoop(ctx, brokerPollAbort!.signal));
 		schedulePendingMediaGroups(ctx);
-		void (async () => {
+		runDetachedBrokerTask("broker startup maintenance", async () => {
 			await assistantFinalHandoff.processPendingClientFinalFiles();
 			await processPendingDisconnectRequests();
 			await retryPendingTurns();
@@ -564,7 +572,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			await retryPendingRouteCleanups();
 			await sweepOrphanedTelegramTempDirs();
 			assistantFinalLedger.kick();
-		})();
+		});
 		updateStatus(ctx);
 	}
 	async function stopBroker(): Promise<void> {
@@ -623,13 +631,13 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		if (session.status === "connecting") session.status = session.activeTurnId || session.queuedTurnCount > 0 ? "busy" : "idle";
 		await persistBrokerState();
 		refreshTelegramStatus();
-		void retryPendingTurns();
+		runDetachedBrokerTask("pending turn retry after stale-client fence clear", retryPendingTurns);
 		assistantFinalLedger.kick();
 		return { ok: true };
 	}
 	async function handleBrokerIpc(envelope: IpcEnvelope): Promise<unknown> {
 		const lease = await readLease();
-		if (!isBroker || !lease || lease.ownerId !== ownerId || lease.leaseEpoch !== brokerLeaseEpoch || lease.leaseUntilMs <= now()) throw new Error("stale_broker");
+		if (!isBroker || !lease || lease.ownerId !== ownerId || lease.leaseEpoch !== brokerLeaseEpoch || lease.leaseUntilMs <= now()) throw new StaleBrokerError();
 		if (envelope.type === "reload_config") {
 			config = await readConfig();
 			applyBrokerScope();
