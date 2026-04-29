@@ -6,8 +6,9 @@ import type { BrokerLease, BrokerState, TelegramCallbackQuery, TelegramConfig, T
 import type { TelegramCommandRouter } from "./commands.js";
 import { telegramCommandName } from "./commands.js";
 import { errorMessage, hashSecret, now } from "../shared/utils.js";
-import { getTelegramRetryAfterMs, TelegramApiError } from "../telegram/api.js";
-import { answerTelegramCallbackQuery } from "../telegram/text.js";
+import { getTelegramRetryAfterMs } from "../telegram/api.js";
+import { isMissingDeletedTelegramMessage, shouldPreserveTelegramMessageRefOnDeleteFailure } from "../telegram/errors.js";
+import { answerTelegramCallbackQueryBestEffort, deleteTelegramMessage } from "../telegram/message-ops.js";
 
 export interface RuntimeUpdateDeps {
 	getConfig: () => TelegramConfig;
@@ -40,9 +41,7 @@ const ALLOWED_UPDATES = ["message", "edited_message", "callback_query"];
 
 export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 	async function tryAnswerCallback(callbackQueryId: string, text: string, showAlert = true): Promise<void> {
-		await answerTelegramCallbackQuery(deps.callTelegram, callbackQueryId, text, { showAlert }).catch((error) => {
-			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
-		});
+		await answerTelegramCallbackQueryBestEffort(deps.callTelegram, callbackQueryId, text, { showAlert });
 	}
 
 	async function tryHandleTopicSetupMessage(message: TelegramMessage): Promise<boolean> {
@@ -402,12 +401,12 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 					const preview = brokerState.assistantPreviewMessages?.[pending.turn.turnId];
 					if (preview) {
 						try {
-							await deps.callTelegram("deleteMessage", { chat_id: preview.chatId, message_id: preview.messageId });
+							await deleteTelegramMessage(deps.callTelegram, preview.chatId, preview.messageId, { ignoreMissing: true });
 							if (brokerState.assistantPreviewMessages?.[pending.turn.turnId]) delete brokerState.assistantPreviewMessages[pending.turn.turnId];
 						} catch (error) {
-							if (isMissingDeletedPreviewMessage(error)) {
+							if (isMissingDeletedTelegramMessage(error)) {
 								if (brokerState.assistantPreviewMessages?.[pending.turn.turnId]) delete brokerState.assistantPreviewMessages[pending.turn.turnId];
-							} else if (shouldPreservePreviewRefOnDeleteFailure(error)) {
+							} else if (shouldPreserveTelegramMessageRefOnDeleteFailure(error)) {
 								continue;
 							} else {
 								if (brokerState.assistantPreviewMessages?.[pending.turn.turnId]) delete brokerState.assistantPreviewMessages[pending.turn.turnId];
@@ -432,16 +431,4 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 	}
 
 	return { handleUpdate, handleUpdateGroup, queueMediaGroupUpdate, schedulePendingMediaGroups, pollLoop, markOfflineSessions, retryPendingTurns };
-}
-
-function shouldPreservePreviewRefOnDeleteFailure(error: unknown): boolean {
-	if (!(error instanceof TelegramApiError)) return true;
-	const errorCode = error.errorCode ?? 0;
-	return errorCode === 429 || errorCode >= 500;
-}
-
-function isMissingDeletedPreviewMessage(error: unknown): boolean {
-	return error instanceof TelegramApiError
-		&& error.errorCode === 400
-		&& /message to delete not found/i.test(error.description ?? error.message);
 }

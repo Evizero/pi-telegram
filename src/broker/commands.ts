@@ -3,7 +3,7 @@ import { routeId } from "../shared/format.js";
 import type { BrokerState, CancelQueuedTurnResult, ClientDeliverTurnResult, ClientGitRepositoryQueryResult, ConvertQueuedTurnToSteerResult, GitRepositoryAction, InlineKeyboardMarkup, ModelSummary, PendingTelegramTurn, QueuedTurnControlState, SessionRegistration, TelegramCallbackQuery, TelegramGitControlState, TelegramMessage, TelegramModelPickerState, TelegramRoute } from "../shared/types.js";
 import { errorMessage, now, randomId } from "../shared/utils.js";
 import { getTelegramRetryAfterMs } from "../telegram/api.js";
-import { answerTelegramCallbackQuery, editTelegramTextMessage } from "../telegram/text.js";
+import { answerTelegramCallbackQueryBestEffort, editOrSendTelegramText, editTelegramTextMessage } from "../telegram/message-ops.js";
 import { createGitControlState, isGitControlCallbackData, parseGitControlCallback, renderGitControlMenu } from "./git-controls.js";
 import { createModelPickerState, exactModelSelector, isModelPickerCallbackData, parseModelPickerCallback, renderInitialModelPicker, renderModelPicker, renderProviderPicker } from "./model-picker.js";
 import { callbackMatchesQueuedTurnControl, DEFAULT_QUEUED_CONTROL_EDIT_RETRY_MS, isQueuedTurnControlCallbackData, isTransientQueuedControlEditError, markExpiredControlVisible, markMissingPendingControlHandled, markQueuedTurnControlExpired, parseQueuedTurnControlCallback, pruneQueuedTurnControls, queuedControlBelongsToRoute, queuedControlNeedsVisibleFinalization, QUEUED_CONTROL_TEXT, queuedTurnControlCallbackData, QUEUED_TURN_CONTROL_TTL_MS, setQueuedControlTerminal, type QueuedTurnControlAction } from "./queued-controls.js";
@@ -672,24 +672,10 @@ export class TelegramCommandRouter {
 		return Boolean(selection && selection.sessionId === control.sessionId && selection.expiresAtMs > now() && selection.updatedAtMs === control.selectorSelectionUpdatedAtMs && selection.expiresAtMs === control.selectorSelectionExpiresAtMs);
 	}
 
-	private async editGitControlMessage(query: TelegramCallbackQuery, control: TelegramGitControlState, text: string, replyMarkup?: InlineKeyboardMarkup): Promise<void> {
-		const messageId = query.message?.message_id ?? control.messageId;
-		if (messageId === undefined) {
-			await this.deps.sendTextReply(control.chatId, control.messageThreadId, text, replyMarkup ? { replyMarkup } : undefined);
-			return;
-		}
-		await editTelegramTextMessage(this.deps.callTelegram, control.chatId, messageId, text, replyMarkup);
-	}
-
 	private async tryEditOrSendGitResult(query: TelegramCallbackQuery, control: TelegramGitControlState, text: string): Promise<void> {
-		try {
-			await this.editGitControlMessage(query, control, text);
-		} catch (error) {
+		await editOrSendTelegramText(this.deps.callTelegram, this.deps.sendTextReply, control.chatId, control.messageThreadId, query.message?.message_id ?? control.messageId, text, { fallbackOn: "any-non-rate-limit" }).catch((error) => {
 			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
-			await this.deps.sendTextReply(control.chatId, control.messageThreadId, text).catch((sendError) => {
-				if (getTelegramRetryAfterMs(sendError) !== undefined) throw sendError;
-			});
-		}
+		});
 	}
 
 	private async finishGitControlCallback(query: TelegramCallbackQuery, control: TelegramGitControlState, action: GitRepositoryAction): Promise<boolean> {
@@ -776,14 +762,9 @@ export class TelegramCommandRouter {
 	}
 
 	private async tryEditOrSendPickerResult(query: TelegramCallbackQuery, picker: TelegramModelPickerState, text: string): Promise<void> {
-		try {
-			await this.editPickerMessage(query, picker, text);
-		} catch (error) {
+		await editOrSendTelegramText(this.deps.callTelegram, this.deps.sendTextReply, picker.chatId, picker.messageThreadId, query.message?.message_id ?? picker.messageId, text, { fallbackOn: "any-non-rate-limit" }).catch((error) => {
 			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
-			await this.deps.sendTextReply(picker.chatId, picker.messageThreadId, text).catch((sendError) => {
-				if (getTelegramRetryAfterMs(sendError) !== undefined) throw sendError;
-			});
-		}
+		});
 	}
 
 	private async tryEditCallbackMessage(query: TelegramCallbackQuery, text: string): Promise<void> {
@@ -795,9 +776,7 @@ export class TelegramCommandRouter {
 	}
 
 	private async tryAnswerCallback(callbackQueryId: string, text?: string, showAlert = false): Promise<void> {
-		await answerTelegramCallbackQuery(this.deps.callTelegram, callbackQueryId, text, { showAlert }).catch((error) => {
-			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
-		});
+		await answerTelegramCallbackQueryBestEffort(this.deps.callTelegram, callbackQueryId, text, { showAlert });
 	}
 
 	private async trySendTextReply(chatId: number | string, messageThreadId: number | undefined, text: string, options?: { replyMarkup?: InlineKeyboardMarkup }): Promise<void> {

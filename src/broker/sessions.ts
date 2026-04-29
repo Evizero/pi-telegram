@@ -1,7 +1,14 @@
 import type { BrokerState, QueuedTurnControlState, TelegramRoute, PendingTelegramTurn } from "../shared/types.js";
 import { errorMessage, now } from "../shared/utils.js";
-import { getTelegramRetryAfterMs, TelegramApiError } from "../telegram/api.js";
-import { editTelegramTextMessage } from "../telegram/text.js";
+import { getTelegramRetryAfterMs } from "../telegram/api.js";
+import {
+	isAlreadyDeletedTelegramTopic,
+	isMissingDeletedTelegramMessage,
+	isTerminalTelegramTopicCleanupError,
+	shouldPreserveTelegramMessageRefOnDeleteFailure,
+	telegramErrorText,
+} from "../telegram/errors.js";
+import { deleteTelegramMessage, editTelegramTextMessage } from "../telegram/message-ops.js";
 import { disconnectRequestBelongsToCurrentConnection, disconnectRequestMatchesRoute, isRouteScopedDisconnectRequest, type PendingDisconnectRequest } from "./disconnect-requests.js";
 import { DEFAULT_QUEUED_CONTROL_EDIT_RETRY_MS, isTransientQueuedControlEditError, markQueuedTurnControlExpired, queuedControlBelongsToRoute, QUEUED_CONTROL_TEXT } from "./queued-controls.js";
 
@@ -243,42 +250,8 @@ function detachRoutesForDisconnectRequest(brokerState: BrokerState, request: Pen
 	return removedRoutes;
 }
 
-function shouldPreservePreviewRefOnDeleteFailure(error: unknown): boolean {
-	if (!(error instanceof TelegramApiError)) return true;
-	const errorCode = error.errorCode ?? 0;
-	return errorCode === 429 || errorCode >= 500;
-}
-
-function isMissingDeletedPreviewError(error: unknown): boolean {
-	return error instanceof TelegramApiError
-		&& error.errorCode === 400
-		&& /message to delete not found/i.test(error.description ?? error.message);
-}
-
-function isAlreadyDeletedTopicError(error: unknown): boolean {
-	if (!(error instanceof TelegramApiError)) return false;
-	const description = (error.description ?? error.message).toLowerCase();
-	if (error.errorCode !== 400) return false;
-	return /message\s+thread\s+not\s+found|thread\s+not\s+found|topic\s+not\s+found|message\s+thread\s+.*closed|topic\s+.*closed/.test(description);
-}
-
-function isTerminalTopicCleanupError(error: unknown): boolean {
-	if (!(error instanceof TelegramApiError)) return false;
-	if (getTelegramRetryAfterMs(error) !== undefined) return false;
-	const description = (error.description ?? error.message).toLowerCase();
-	if (error.errorCode === 401) return true;
-	if (error.errorCode === 403) {
-		return /forbidden|bot\s+was\s+kicked|bot\s+was\s+blocked|bot\s+is\s+not\s+a\s+member|not\s+enough\s+rights|can't\s+delete|cannot\s+delete/.test(description);
-	}
-	if (error.errorCode === 400) {
-		return /chat\s+not\s+found|bot\s+is\s+not\s+a\s+member|not\s+enough\s+rights|can't\s+delete|cannot\s+delete/.test(description);
-	}
-	return false;
-}
-
 function topicCleanupFailureReason(error: unknown): string {
-	if (error instanceof TelegramApiError) return `${error.method}: ${error.description ?? error.message}`;
-	return errorMessage(error);
+	return telegramErrorText(error);
 }
 
 async function clearVisiblePendingTurnPreviews(options: Pick<SessionCleanupOptions, "callTelegram">, brokerState: BrokerState, targetSessionId: string): Promise<void> {
@@ -287,11 +260,11 @@ async function clearVisiblePendingTurnPreviews(options: Pick<SessionCleanupOptio
 		const preview = brokerState.assistantPreviewMessages?.[turnId];
 		if (!preview) continue;
 		try {
-			await options.callTelegram("deleteMessage", { chat_id: preview.chatId, message_id: preview.messageId });
+			await deleteTelegramMessage(options.callTelegram, preview.chatId, preview.messageId, { ignoreMissing: true });
 			delete brokerState.assistantPreviewMessages?.[turnId];
 		} catch (error) {
-			if (shouldPreservePreviewRefOnDeleteFailure(error)) continue;
-			if (!isMissingDeletedPreviewError(error)) delete brokerState.assistantPreviewMessages?.[turnId];
+			if (shouldPreserveTelegramMessageRefOnDeleteFailure(error)) continue;
+			if (!isMissingDeletedTelegramMessage(error)) delete brokerState.assistantPreviewMessages?.[turnId];
 			else delete brokerState.assistantPreviewMessages?.[turnId];
 		}
 	}
@@ -346,12 +319,12 @@ export async function retryPendingRouteCleanupsInBroker(options: RouteCleanupOpt
 			delete brokerState.pendingRouteCleanups![cleanupId];
 			changed = true;
 		} catch (error) {
-			if (isAlreadyDeletedTopicError(error)) {
+			if (isAlreadyDeletedTelegramTopic(error)) {
 				delete brokerState.pendingRouteCleanups![cleanupId];
 				changed = true;
 				continue;
 			}
-			if (isTerminalTopicCleanupError(error)) {
+			if (isTerminalTelegramTopicCleanupError(error)) {
 				delete brokerState.pendingRouteCleanups![cleanupId];
 				changed = true;
 				options.logTerminalCleanupFailure?.(entry.route, topicCleanupFailureReason(error));

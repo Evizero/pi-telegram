@@ -14,9 +14,11 @@ export class TelegramApiError extends Error {
 		readonly description: string | undefined,
 		readonly errorCode: number | undefined,
 		readonly retryAfterSeconds: number | undefined,
+		readonly httpStatus?: number,
 	) {
 		const retry = retryAfterSeconds === undefined || description?.includes("retry after") ? "" : ` retry after ${retryAfterSeconds}s`;
-		super(description ? `${description}${retry}` : `Telegram API ${method} failed${retry}`);
+		const status = httpStatus === undefined || errorCode === httpStatus ? "" : ` HTTP ${httpStatus}`;
+		super(description ? `${description}${retry}` : `Telegram API ${method} failed${status}${retry}`);
 		this.name = "TelegramApiError";
 	}
 }
@@ -30,8 +32,31 @@ export function getTelegramRetryAfterMs(error: unknown): number | undefined {
 	return undefined;
 }
 
-function telegramApiError<TResponse>(method: string, data: TelegramApiResponse<TResponse>): TelegramApiError {
-	return new TelegramApiError(method, data.description, data.error_code, data.parameters?.retry_after);
+function parseRetryAfterHeader(value: string | null): number | undefined {
+	if (!value) return undefined;
+	const seconds = Number(value);
+	if (Number.isFinite(seconds)) return Math.max(0, seconds);
+	const dateMs = Date.parse(value);
+	if (!Number.isFinite(dateMs)) return undefined;
+	return Math.max(0, Math.ceil((dateMs - Date.now()) / 1000));
+}
+
+async function readTelegramApiResponse<TResponse>(response: Response): Promise<TelegramApiResponse<TResponse> | undefined> {
+	return await response.json().catch(() => undefined) as TelegramApiResponse<TResponse> | undefined;
+}
+
+function telegramApiError<TResponse>(method: string, response: Response, data?: TelegramApiResponse<TResponse>): TelegramApiError {
+	const httpStatus = response.status;
+	const retryAfterSeconds = data?.parameters?.retry_after ?? parseRetryAfterHeader(response.headers?.get("retry-after") ?? null);
+	const errorCode = data?.error_code ?? httpStatus;
+	const description = data?.description ?? `Telegram API ${method} failed with HTTP ${httpStatus}`;
+	return new TelegramApiError(method, description, errorCode, retryAfterSeconds, httpStatus);
+}
+
+async function readTelegramResult<TResponse>(method: string, response: Response): Promise<TResponse> {
+	const data = await readTelegramApiResponse<TResponse>(response);
+	if (response.ok === false || !data?.ok || data.result === undefined) throw telegramApiError(method, response, data);
+	return data.result;
 }
 
 export async function callTelegram<TResponse>(
@@ -47,9 +72,7 @@ export async function callTelegram<TResponse>(
 		body: JSON.stringify(body),
 		signal: options?.signal,
 	});
-	const data = (await response.json()) as TelegramApiResponse<TResponse>;
-	if (!data.ok || data.result === undefined) throw telegramApiError(method, data);
-	return data.result;
+	return await readTelegramResult<TResponse>(method, response);
 }
 
 export async function callTelegramMultipart<TResponse>(
@@ -74,9 +97,7 @@ export async function callTelegramMultipart<TResponse>(
 		body: form,
 		signal: options?.signal,
 	});
-	const data = (await response.json()) as TelegramApiResponse<TResponse>;
-	if (!data.ok || data.result === undefined) throw telegramApiError(method, data);
-	return data.result;
+	return await readTelegramResult<TResponse>(method, response);
 }
 
 export async function downloadTelegramFile(
@@ -97,10 +118,8 @@ export async function downloadTelegramFile(
 	const targetPath = join(dir, `${Date.now()}-${randomBytes(4).toString("hex")}-${sanitizeFileName(suggestedName)}`);
 	const response = await fetch(`https://api.telegram.org/file/bot${botToken}/${file.file_path}`);
 	if (!response.ok) {
-		const data = await response.json().catch(() => undefined) as TelegramApiResponse<unknown> | undefined;
-		const retryAfterHeader = Number(response.headers.get("retry-after"));
-		const retryAfterSeconds = data?.parameters?.retry_after ?? (Number.isFinite(retryAfterHeader) ? retryAfterHeader : undefined);
-		throw new TelegramApiError("downloadFile", data?.description ?? `Failed to download Telegram file: ${response.status}`, data?.error_code ?? response.status, retryAfterSeconds);
+		const data = await readTelegramApiResponse<unknown>(response);
+		throw telegramApiError("downloadFile", response, data);
 	}
 	const contentLength = Number(response.headers.get("content-length"));
 	if (Number.isFinite(contentLength) && contentLength > MAX_TELEGRAM_DOWNLOAD_BYTES) throw new Error(`Telegram file too large to download via Bot API: ${suggestedName}`);

@@ -25,6 +25,7 @@
     "scripts/check-manual-compaction.ts",
     "scripts/check-telegram-command-routing.ts",
     "scripts/check-model-picker.ts",
+    "scripts/check-telegram-io-policy.ts",
     "scripts/check-telegram-text-replies.ts",
     "scripts/check-session-route-cleanup.ts",
     "scripts/check-telegram-temp-cleanup.ts",

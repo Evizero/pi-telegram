@@ -28,6 +28,7 @@ execFileSync(process.execPath, [join(outDir, "scripts", "check-runtime-pi-hooks.
 execFileSync(process.execPath, [join(outDir, "scripts", "check-manual-compaction.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-telegram-command-routing.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-model-picker.js")], { stdio: "inherit" });
+execFileSync(process.execPath, [join(outDir, "scripts", "check-telegram-io-policy.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-telegram-text-replies.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-session-route-cleanup.js")], { stdio: "inherit" });
 execFileSync(process.execPath, [join(outDir, "scripts", "check-telegram-temp-cleanup.js")], { stdio: "inherit" });

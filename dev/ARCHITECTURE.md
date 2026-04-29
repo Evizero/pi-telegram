@@ -104,6 +104,13 @@ them breaks the remote control loop.
 The architecture must preserve long polling instead of webhooks, `retry_after`
 semantics, update-offset durability, file limits, text limits, draft eligibility,
 forum-topic rules, and media-group batching.
+Telegram IO policy is centralized under `src/telegram/`: low-level API calls
+preserve structured and HTTP retry metadata, `errors.ts` owns Telegram error
+classification, and `message-ops.ts` owns shared send/edit/delete/callback
+message operations. Broker and client feature modules should call those policy
+helpers instead of adding local regular-expression classifiers or fallback logic;
+in particular, fallback from Markdown, edit, or photo upload must never consume a
+rate-limit window signaled by Telegram.
 
 ### Delivery durability without duplication
 

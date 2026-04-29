@@ -1,6 +1,15 @@
 import { MAX_MESSAGE_LENGTH, PREVIEW_THROTTLE_MS, TELEGRAM_DRAFT_ID_MAX } from "../shared/config.js";
 import { chunkParagraphs } from "../shared/format.js";
-import { getTelegramRetryAfterMs, TelegramApiError } from "./api.js";
+import { getTelegramRetryAfterMs } from "./api.js";
+import {
+	isDraftMethodUnsupported,
+	isMissingDeletedTelegramMessage,
+	isMissingEditableTelegramMessage,
+	isTelegramMessageNotModified,
+	shouldPreserveTelegramMessageRefOnDeleteFailure,
+	shouldRetryTelegramMessageCleanup,
+} from "./errors.js";
+import { deleteTelegramMessage } from "./message-ops.js";
 import type { TelegramPreviewState, TelegramSentMessage } from "../shared/types.js";
 
 export class PreviewManager {
@@ -64,13 +73,13 @@ export class PreviewManager {
 		if (state.messageId !== undefined) {
 			if (options?.preserveOnFailure) {
 				try {
-					await this.callTelegram("deleteMessage", { chat_id: chatId, message_id: state.messageId });
+					await deleteTelegramMessage(this.callTelegram, chatId, state.messageId, { ignoreMissing: true });
 				} catch (error) {
-					if (shouldPreservePreviewForRetry(error)) {
+					if (shouldPreserveTelegramMessageRefOnDeleteFailure(error)) {
 						state.preserveForRetry = true;
 						return;
 					}
-					if (!isMissingDeletedPreviewMessage(error)) throw error;
+					throw error;
 				}
 			} else {
 				await this.callTelegram("deleteMessage", { chat_id: chatId, message_id: state.messageId }).catch(() => undefined);
@@ -136,31 +145,6 @@ export class PreviewManager {
 		return true;
 	}
 
-	private async editMessageText(chatId: number | string, messageId: number, text: string): Promise<boolean> {
-		try {
-			await this.callTelegram("editMessageText", { chat_id: chatId, message_id: messageId, text, parse_mode: "Markdown" });
-			return true;
-		} catch (error) {
-			if (this.isMessageNotModified(error)) return true;
-			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
-			try {
-				await this.callTelegram("editMessageText", { chat_id: chatId, message_id: messageId, text });
-				return true;
-			} catch (fallbackError) {
-				if (getTelegramRetryAfterMs(fallbackError) !== undefined) throw fallbackError;
-				return this.isMessageNotModified(fallbackError);
-			}
-		}
-	}
-
-	private isMessageNotModified(error: unknown): boolean {
-		return error instanceof TelegramApiError && /message is not modified/i.test(error.description ?? error.message);
-	}
-
-	private isDraftMethodUnsupported(error: unknown): boolean {
-		return error instanceof TelegramApiError && (error.errorCode === 404 || /method\s+not\s+found|not\s+found\s+method/i.test(error.description ?? error.message));
-	}
-
 	private allocateDraftId(): number {
 		this.nextDraftId = this.nextDraftId >= TELEGRAM_DRAFT_ID_MAX ? 1 : this.nextDraftId + 1;
 		return this.nextDraftId;
@@ -197,7 +181,7 @@ export class PreviewManager {
 			this.setFlushTimer(turnId, chatId, messageThreadId, Math.max(retryAfterMs + 250, PREVIEW_THROTTLE_MS));
 			return;
 		}
-		if (this.isMessageNotModified(error)) {
+		if (isTelegramMessageNotModified(error)) {
 			const text = state.pendingText.trim();
 			state.lastSentText = text.length > MAX_MESSAGE_LENGTH ? text.slice(0, MAX_MESSAGE_LENGTH) : text;
 			state.mode = "message";
@@ -210,8 +194,8 @@ export class PreviewManager {
 		try {
 			await this.callTelegram("deleteMessage", { chat_id: chatId, message_id: messageId });
 		} catch (error) {
-			if (isMissingDeletedPreviewMessage(error)) return;
-			if (shouldRetryPreviewFinalCleanup(error)) throw error;
+			if (isMissingDeletedTelegramMessage(error)) return;
+			if (shouldRetryTelegramMessageCleanup(error)) throw error;
 		}
 	}
 
@@ -236,7 +220,7 @@ export class PreviewManager {
 				return;
 			} catch (error) {
 				if (getTelegramRetryAfterMs(error) !== undefined) throw error;
-				if (this.isDraftMethodUnsupported(error)) this.draftSupport = "unsupported";
+				if (isDraftMethodUnsupported(error)) this.draftSupport = "unsupported";
 				state.mode = "message";
 			}
 		}
@@ -253,12 +237,12 @@ export class PreviewManager {
 		try {
 			await this.callTelegram("editMessageText", { chat_id: chatId, message_id: state.messageId, text: truncated });
 		} catch (error) {
-			if (this.isMessageNotModified(error)) {
+			if (isTelegramMessageNotModified(error)) {
 				state.mode = "message";
 				state.lastSentText = truncated;
 				return;
 			}
-			if (isMissingEditablePreviewMessage(error)) {
+			if (isMissingEditableTelegramMessage(error)) {
 				const body: Record<string, unknown> = { chat_id: chatId, text: truncated };
 				if (messageThreadId !== undefined) body.message_thread_id = messageThreadId;
 				const sent = await this.callTelegram<TelegramSentMessage>("sendMessage", body);
@@ -273,29 +257,4 @@ export class PreviewManager {
 		state.mode = "message";
 		state.lastSentText = truncated;
 	}
-}
-
-function shouldPreservePreviewForRetry(error: unknown): boolean {
-	if (!(error instanceof TelegramApiError)) return true;
-	const errorCode = error.errorCode ?? 0;
-	return errorCode === 429 || errorCode >= 500;
-}
-
-function isMissingEditablePreviewMessage(error: unknown): boolean {
-	return error instanceof TelegramApiError
-		&& error.errorCode === 400
-		&& /message to edit not found|message can't be edited|message cannot be edited/i.test(error.description ?? error.message);
-}
-
-function isMissingDeletedPreviewMessage(error: unknown): boolean {
-	return error instanceof TelegramApiError
-		&& error.errorCode === 400
-		&& /message to delete not found/i.test(error.description ?? error.message);
-}
-
-function shouldRetryPreviewFinalCleanup(error: unknown): boolean {
-	if (!(error instanceof TelegramApiError)) return true;
-	if (getTelegramRetryAfterMs(error) !== undefined) return true;
-	const errorCode = error.errorCode ?? 0;
-	return errorCode >= 500;
 }

@@ -1,7 +1,7 @@
 import type { BrokerState, QueuedTurnControlState, TelegramCallbackQuery, TelegramRoute } from "../shared/types.js";
 import { QUEUED_CONTROL_TEXT } from "../shared/queued-control-text.js";
 import { now } from "../shared/utils.js";
-import { TelegramApiError } from "../telegram/api.js";
+import { isTransientTelegramMessageEditError } from "../telegram/errors.js";
 
 export { QUEUED_CONTROL_TEXT } from "../shared/queued-control-text.js";
 
@@ -30,8 +30,7 @@ export function parseQueuedTurnControlCallback(data: string | undefined): { acti
 }
 
 export function isTransientQueuedControlEditError(error: unknown): boolean {
-	if (!(error instanceof TelegramApiError)) return true;
-	return error.errorCode === undefined || error.errorCode >= 500;
+	return isTransientTelegramMessageEditError(error);
 }
 
 export function queuedControlBelongsToRoute(control: QueuedTurnControlState, route: TelegramRoute): boolean {
