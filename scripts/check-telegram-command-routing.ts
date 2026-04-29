@@ -1136,6 +1136,32 @@ async function checkModelListNumberCompatibilityRemains(): Promise<void> {
 	assert.deepEqual(setModelCall.payload, { selector: "openai-codex-2/gpt-5.5", exact: true });
 }
 
+async function checkModelSelectorCallbackRejectsOldSelection(): Promise<void> {
+	const brokerState = state();
+	const secondSession = { ...session(), sessionId: "session-2", clientSocketPath: "/tmp/client-2.sock", topicName: "other" };
+	brokerState.sessions[secondSession.sessionId] = secondSession;
+	brokerState.selectorSelections = { "123": { chatId: 123, sessionId: "session-1", expiresAtMs: Date.now() + 60_000, updatedAtMs: Date.now() } };
+	brokerState.routes["123:session-1"] = { routeId: "123", sessionId: "session-1", chatId: 123, routeMode: "single_chat_selector", topicName: "project · main", createdAtMs: Date.now(), updatedAtMs: Date.now() };
+	brokerState.routes["123:session-2"] = { routeId: "123", sessionId: "session-2", chatId: 123, routeMode: "single_chat_selector", topicName: "other", createdAtMs: Date.now(), updatedAtMs: Date.now() };
+	const ipcCalls: IpcCall[] = [];
+	const sentReplies: string[] = [];
+	const telegramCalls: TelegramCall[] = [];
+	const router = createRouter(brokerState, ipcCalls, sentReplies, telegramCalls);
+	const selectorMessage: TelegramMessage = { ...message("/model", 77), message_thread_id: undefined };
+
+	await router.dispatch([selectorMessage]);
+	const providerKeyboard = telegramCalls[0]!.body.reply_markup as { inline_keyboard: Array<Array<{ callback_data: string }>> };
+	const providerData = providerKeyboard.inline_keyboard[1]![0]!.callback_data;
+	brokerState.selectorSelections["123"] = { chatId: 123, sessionId: "session-2", expiresAtMs: Date.now() + 60_000, updatedAtMs: Date.now() };
+	await router.dispatchCallback(callbackQueryForMessage(providerData, { ...selectorMessage, message_id: 99 }));
+
+	brokerState.selectorSelections["123"] = { chatId: 123, sessionId: "session-1", expiresAtMs: Date.now() + 120_000, updatedAtMs: Date.now() + 1 };
+	await router.dispatchCallback(callbackQueryForMessage(providerData, { ...selectorMessage, message_id: 99 }));
+
+	assert.equal(ipcCalls.filter((call) => call.type === "set_model").length, 0);
+	assert.equal(telegramCalls.some((call) => call.method === "answerCallbackQuery" && call.body.show_alert === true && String(call.body.text).includes("no longer matches")), true);
+}
+
 async function checkProviderCallbackUiFailuresAreNonCritical(): Promise<void> {
 	const brokerState = state();
 	const ipcCalls: IpcCall[] = [];
@@ -1329,6 +1355,7 @@ await checkGitSelectorCallbackRejectsOldSelection();
 await checkGitRetryAfterPropagatesWithoutClientQueryReplay();
 await checkBareModelUsesTwoStageInlinePickerAndExactSelection();
 await checkModelListNumberCompatibilityRemains();
+await checkModelSelectorCallbackRejectsOldSelection();
 await checkProviderCallbackUiFailuresAreNonCritical();
 await checkTelegramUiFailureAfterSuccessfulSelectionDoesNotMarkOffline();
 await checkRetryAfterAfterSuccessfulSelectionRetriesConfirmationWithoutRepeatingSetModel();

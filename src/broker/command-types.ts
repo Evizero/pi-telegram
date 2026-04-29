@@ -1,0 +1,16 @@
+import type { BrokerState, InlineKeyboardMarkup, PendingTelegramTurn, TelegramMessage } from "../shared/types.js";
+
+export interface TelegramCommandRouterDeps {
+	getBrokerState: () => BrokerState | undefined;
+	persistBrokerState: () => Promise<void>;
+	markOfflineSessions: () => Promise<void>;
+	createTelegramTurnForSession: (messages: TelegramMessage[], sessionIdForTurn: string) => Promise<PendingTelegramTurn>;
+	durableTelegramTurn: (turn: PendingTelegramTurn) => PendingTelegramTurn;
+	sendTextReply: (chatId: number | string, messageThreadId: number | undefined, text: string, options?: { disableNotification?: boolean; replyMarkup?: InlineKeyboardMarkup }) => Promise<number | undefined>;
+	callTelegram: <TResponse>(method: string, body: Record<string, unknown>) => Promise<TResponse>;
+	callTelegramForQueuedControlCleanup?: <TResponse>(method: string, body: Record<string, unknown>) => Promise<TResponse>;
+	postIpc: <TResponse>(socketPath: string, type: string, payload: unknown, targetSessionId?: string) => Promise<TResponse>;
+	stopTypingLoop: (turnId: string) => void;
+	unregisterSession: (targetSessionId: string) => Promise<unknown>;
+	brokerInfo: () => string;
+}

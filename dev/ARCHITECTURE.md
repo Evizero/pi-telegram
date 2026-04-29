@@ -547,9 +547,15 @@ boundaries.
 media-group batching, polling offset initialization, webhook removal before
 polling, offline marking, and retrying pending turns.
 
-`broker/commands.ts` owns Telegram command dispatch and command semantics such
-as session selection, status, model control, compact, follow-up, stop, broker
-status, and disconnect.
+`broker/commands.ts` is the thin Telegram command/callback dispatcher and route-aware
+composition point for operator controls. Focused command/control modules own the
+cohesive semantics behind that dispatcher: `broker/model-command.ts` owns `/model`
+and model-picker callbacks, `broker/git-command.ts` owns `/git` menus and Git
+action callbacks, `broker/queued-turn-control-handler.ts` owns queued follow-up
+steer/cancel control lifecycle, and `broker/inline-controls.ts` centralizes common
+tokenized inline-control message binding, route/session validation, callback
+acknowledgement, and edit-or-send policy. These broker modules must continue to
+use `src/telegram/` IO policy helpers rather than local Telegram error classifiers.
 
 `broker/activity.ts` separates activity collection from Telegram rendering.
 `ActivityReporter` sends ordered activity updates to the broker; `ActivityRenderer`
@@ -1035,7 +1041,8 @@ ownership.
 - `src/extension.ts` — runtime composition root, broker/client orchestration,
   state wiring, config setup, lease coordination, and cross-boundary callbacks.
 - `src/broker/activity.ts` — activity model and Telegram activity rendering.
-- `src/broker/commands.ts` — Telegram command router and command semantics.
+- `src/broker/commands.ts` — thin Telegram command/callback dispatcher and route-aware control composition.
+- `src/broker/model-command.ts`, `src/broker/git-command.ts`, `src/broker/queued-turn-control-handler.ts`, and `src/broker/inline-controls.ts` — focused command/control semantics and shared inline-control lifecycle helpers.
 - `src/broker/sessions.ts` — broker-side offline/unregister cleanup.
 - `src/broker/updates.ts` — Telegram polling, authorization gate, update offset,
   media groups, offline marking, and pending-turn retry.

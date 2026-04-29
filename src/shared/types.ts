@@ -362,6 +362,8 @@ export interface TelegramModelPickerState {
 	chatId: number | string;
 	messageThreadId?: number;
 	messageId?: number;
+	selectorSelectionUpdatedAtMs?: number;
+	selectorSelectionExpiresAtMs?: number;
 	current?: string;
 	models: ModelSummary[];
 	groups: TelegramModelPickerGroup[];
