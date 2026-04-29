@@ -929,9 +929,15 @@ It is acceptable only as a transitional composition root; it should shrink as
 future work extracts cohesive broker lease/state/session lifecycle, client turn
 lifecycle, and client final-handoff modules.
 Extraction should preserve dependency injection and ownership boundaries rather
-than merely moving a god file to another name. The first planned maintainability
-slice is to remove duplicated assistant-final handoff policy from
-`src/extension.ts` while keeping broker final delivery in `src/broker/finals.ts`.
+than merely moving a god file to another name.
+
+The next planned maintainability slice is to extract an explicit client runtime
+host under `src/client/` for client server lifecycle, broker registration and
+heartbeat, route state, stale-client stand-down, client IPC dispatch, and
+start-next-turn gating. That slice should leave broker polling/election, broker
+IPC routing, Telegram command semantics, route cleanup, and broker-owned final
+delivery behavior unchanged. Later slices may extract broker runtime hosting,
+broker IPC routing, and state-store concerns after client ownership is clearer.
 
 ### Limited automated test surface
 

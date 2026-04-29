@@ -7,18 +7,15 @@ import { answerTelegramCallbackQuery, editTelegramTextMessage } from "../telegra
 import { createGitControlState, isGitControlCallbackData, parseGitControlCallback, renderGitControlMenu } from "./git-controls.js";
 import { createModelPickerState, exactModelSelector, isModelPickerCallbackData, parseModelPickerCallback, renderInitialModelPicker, renderModelPicker, renderProviderPicker } from "./model-picker.js";
 import { callbackMatchesQueuedTurnControl, DEFAULT_QUEUED_CONTROL_EDIT_RETRY_MS, isQueuedTurnControlCallbackData, isTransientQueuedControlEditError, markExpiredControlVisible, markMissingPendingControlHandled, markQueuedTurnControlExpired, parseQueuedTurnControlCallback, pruneQueuedTurnControls, queuedControlBelongsToRoute, queuedControlNeedsVisibleFinalization, QUEUED_CONTROL_TEXT, queuedTurnControlCallbackData, QUEUED_TURN_CONTROL_TTL_MS, setQueuedControlTerminal, type QueuedTurnControlAction } from "./queued-controls.js";
-
 export function telegramCommandName(text: string): string {
 	const command = text.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
 	return command.includes("@") ? command.slice(0, command.indexOf("@")) : command;
 }
-
 function telegramCommandArgs(text: string): string {
 	const trimmed = text.trim();
 	const match = trimmed.match(/^\S+\s+([\s\S]*)$/);
 	return match?.[1]?.trim() ?? "";
 }
-
 function messagesWithFirstText(messages: TelegramMessage[], text: string): TelegramMessage[] {
 	return messages.map((message, index) => {
 		if (index !== 0) return message;
@@ -26,7 +23,6 @@ function messagesWithFirstText(messages: TelegramMessage[], text: string): Teleg
 		return { ...message, text };
 	});
 }
-
 interface TelegramCommandRouterDeps {
 	getBrokerState: () => BrokerState | undefined;
 	persistBrokerState: () => Promise<void>;
@@ -41,12 +37,9 @@ interface TelegramCommandRouterDeps {
 	unregisterSession: (targetSessionId: string) => Promise<unknown>;
 	brokerInfo: () => string;
 }
-
 const COMPLETED_MODEL_PICKER_TTL_MS = 24 * 60 * 60 * 1000;
-
 export class TelegramCommandRouter {
 	private readonly modelListCache = new Map<string, { expiresAt: number; models: ModelSummary[] }>();
-
 	constructor(private readonly deps: TelegramCommandRouterDeps) {}
 
 	routeForMessage(message: TelegramMessage): TelegramRoute | undefined {

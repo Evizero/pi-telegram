@@ -4,5 +4,30 @@
     "rootDir": ".",
     "noEmit": false
   },
-  "include": ["index.ts", "src/**/*.ts", "scripts/check-callback-updates.ts", "scripts/check-activity-rendering.ts", "scripts/check-pairing-and-format.ts", "scripts/check-final-delivery.ts", "scripts/check-preview-manager.ts", "scripts/check-client-compact.ts", "scripts/check-client-turn-delivery.ts", "scripts/check-client-abort-turn.ts", "scripts/check-client-final-handoff.ts", "scripts/check-client-info.ts", "scripts/check-client-git-status.ts", "scripts/check-retry-aware-finalization.ts", "scripts/check-runtime-pi-hooks.ts", "scripts/check-manual-compaction.ts", "scripts/check-telegram-command-routing.ts", "scripts/check-model-picker.ts", "scripts/check-telegram-text-replies.ts", "scripts/check-session-route-cleanup.ts", "scripts/check-telegram-temp-cleanup.ts", "scripts/check-security-setup-attachments.ts", "scripts/check-session-replacement-handoff.ts"]
+  "include": [
+    "index.ts",
+    "src/**/*.ts",
+    "scripts/check-callback-updates.ts",
+    "scripts/check-activity-rendering.ts",
+    "scripts/check-pairing-and-format.ts",
+    "scripts/check-final-delivery.ts",
+    "scripts/check-preview-manager.ts",
+    "scripts/check-client-compact.ts",
+    "scripts/check-client-turn-delivery.ts",
+    "scripts/check-client-abort-turn.ts",
+    "scripts/check-client-final-handoff.ts",
+    "scripts/check-client-info.ts",
+    "scripts/check-client-git-status.ts",
+    "scripts/check-client-runtime-host.ts",
+    "scripts/check-retry-aware-finalization.ts",
+    "scripts/check-runtime-pi-hooks.ts",
+    "scripts/check-manual-compaction.ts",
+    "scripts/check-telegram-command-routing.ts",
+    "scripts/check-model-picker.ts",
+    "scripts/check-telegram-text-replies.ts",
+    "scripts/check-session-route-cleanup.ts",
+    "scripts/check-telegram-temp-cleanup.ts",
+    "scripts/check-security-setup-attachments.ts",
+    "scripts/check-session-replacement-handoff.ts"
+  ]
 }
