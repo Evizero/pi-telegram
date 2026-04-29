@@ -968,15 +968,19 @@ IPC routing, Telegram command semantics, route cleanup, and broker-owned final
 delivery behavior unchanged. Later slices may extract broker runtime hosting,
 broker IPC routing, and state-store concerns after client ownership is clearer.
 
-### Limited automated test surface
+### Behavior-check harness pressure
 
-The repository currently has TypeScript checking as the reliable local
-validation command.
-Many SyRS acceptance criteria are test-shaped, but dedicated behavioral tests
-are not yet present.
-Future implementation tasks should add tests around broker persistence, preview
-finalization, retry handling, attachment safety, and route lifecycle where
-practical.
+The repository's reliable local validation command is `npm run check`, which
+must type-check the extension and execute the behavior-check suite. Those checks
+now cover many important broker, client, Telegram, final-delivery, route
+lifecycle, pi-hook, setup, and attachment behaviors, but the harness remains a
+migration pressure point.
+
+Future validation-suite work should preserve existing behavioral coverage while
+making check discovery, typed fixtures, and behavior-domain organization more
+explicit. The validation harness should support maintainability and future
+runtime refactors; it should not become a parallel runtime architecture or a
+reason to change broker/client/Telegram behavior in validation-only slices.
 
 ### Runtime state in closures
 

@@ -527,19 +527,24 @@
     {
       "id": "SyRS-runtime-validation-check",
       "origin": "derived",
-      "label": "Provide local validation command",
-      "statement": "The repository shall provide a local validation command that type-checks the extension package before changes are reported complete.",
+      "label": "Typecheck and run behavior checks",
+      "statement": "The repository shall provide a local validation command that type-checks the extension package and executes the repository's behavioral validation checks before changes are reported complete.",
       "traces_to": [
         "StRS-api-constrained-maintenance"
       ],
-      "rationale": "Maintainers and coding agents need a repeatable sanity check for a TypeScript extension that spans broker, pi, shared, and Telegram modules.",
-      "acceptance_criteria": "Inspection confirms package scripts expose npm run check, the command runs TypeScript typechecking for the package, and AGENTS.md names it as required validation.",
+      "rationale": "Maintainers and coding agents need a repeatable validation gate for a TypeScript extension whose correctness depends on broker, client, pi-hook, shared, and Telegram behavior. The source inbox item showed that the existing command already runs meaningful behavior checks but the requirement only named typechecking.",
+      "acceptance_criteria": "Executing `npm run check` runs TypeScript typechecking and the repository behavior-check runner, behavior-check failures cause a non-zero command result, and AGENTS.md continues to identify `npm run check` as the required validation command.",
       "verification": {
-        "method": "inspection"
+        "method": "test"
       },
       "status": "draft",
       "created": "2026-04-25",
-      "updated": "2026-04-25"
+      "updated": "2026-04-29",
+      "sources": {
+        "inbox": [
+          "rework-validation-suite-around"
+        ]
+      }
     },
     {
       "id": "SyRS-explicit-artifact-return",
@@ -1174,6 +1179,28 @@
       "sources": {
         "inbox": [
           "stale-broker-from-pending"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-behavior-check-discovery",
+      "origin": "derived",
+      "label": "Synchronize behavior check discovery",
+      "statement": "The repository shall keep behavioral validation check discovery and execution synchronized so behavior checks compiled for validation are also executed by the local validation command.",
+      "traces_to": [
+        "StRS-api-constrained-maintenance"
+      ],
+      "rationale": "The current validation setup has two handwritten check lists: one in the TypeScript activity-check project and one in the execution runner. A single inventory, automatic discovery mechanism, or explicit mismatch guard is needed so future behavior checks cannot drift between compiled and executed coverage.",
+      "acceptance_criteria": "Inspection or a targeted harness test confirms that the compile set and execution set for behavior checks share one source of truth or fail loudly on mismatch; `npm run check` still executes every existing behavior check after the change.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-29",
+      "updated": "2026-04-29",
+      "sources": {
+        "inbox": [
+          "rework-validation-suite-around"
         ]
       }
     }
