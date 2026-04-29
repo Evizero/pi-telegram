@@ -1,20 +1,12 @@
 import assert from "node:assert/strict";
 
 import { clientSetModel } from "../src/client/info.js";
-
-function ctxWithModels(models: Array<{ provider: string; id: string; name: string }>, current?: { provider: string; id: string }) {
-	return {
-		model: current,
-		modelRegistry: {
-			getAvailable: () => models.map((model) => ({ ...model, input: ["text"], reasoning: true })),
-		},
-	};
-}
+import { contextWithModels, modelFixture } from "./support/model-fixtures.js";
 
 async function checkExactModelSelectionDoesNotFallbackToFuzzyMatch(): Promise<void> {
 	const selected: string[] = [];
 	const result = await clientSetModel(
-		ctxWithModels([{ provider: "openai", id: "gpt-5-mini", name: "GPT 5 mini" }]) as any,
+		contextWithModels([modelFixture({ provider: "openai", id: "gpt-5-mini", name: "GPT 5 mini" })]),
 		async (model) => {
 			selected.push(`${model.provider}/${model.id}`);
 			return true;
@@ -29,7 +21,7 @@ async function checkExactModelSelectionDoesNotFallbackToFuzzyMatch(): Promise<vo
 async function checkTextSelectorStillAllowsFuzzyMatch(): Promise<void> {
 	const selected: string[] = [];
 	const result = await clientSetModel(
-		ctxWithModels([{ provider: "openai", id: "gpt-5-mini", name: "GPT 5 mini" }], { provider: "openai", id: "gpt-4" }) as any,
+		contextWithModels([modelFixture({ provider: "openai", id: "gpt-5-mini", name: "GPT 5 mini" })], modelFixture({ provider: "openai", id: "gpt-4", name: "GPT 4" })),
 		async (model) => {
 			selected.push(`${model.provider}/${model.id}`);
 			return true;

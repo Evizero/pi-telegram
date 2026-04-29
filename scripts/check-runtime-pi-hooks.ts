@@ -3,23 +3,13 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-
 import { ActivityRenderer, ActivityReporter } from "../src/broker/activity.js";
-import { registerRuntimePiHooks, type RuntimePiHooksDeps } from "../src/pi/hooks.js";
-import type { ActiveTelegramTurn, PendingTelegramTurn, TelegramRoute } from "../src/shared/types.js";
+import { registerRuntimePiHooks } from "../src/pi/hooks.js";
+import type { ActiveTelegramTurn, TelegramRoute } from "../src/shared/types.js";
+import { activeTurn, baseDeps, buildPiHarness, noopActivityReporter, recordingActivityReporter, route, testExtensionContext } from "./support/pi-hook-fixtures.js";
 
-function activeTurn(id = "turn-1"): ActiveTelegramTurn {
-	return {
-		turnId: id,
-		sessionId: "session-1",
-		chatId: 123,
-		messageThreadId: 9,
-		replyToMessageId: 0,
-		queuedAttachments: [],
-		content: [],
-		historyText: "",
-	};
+function activityId(payload: unknown): unknown {
+	return typeof payload === "object" && payload !== null ? (payload as { activityId?: unknown }).activityId : undefined;
 }
 
 async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
@@ -27,85 +17,6 @@ async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
 		promise,
 		new Promise<T>((_resolve, reject) => setTimeout(() => reject(new Error(`${label} timed out`)), 50)),
 	]);
-}
-
-function route(): TelegramRoute {
-	return {
-		routeId: "123:9",
-		sessionId: "session-1",
-		chatId: 123,
-		messageThreadId: 9,
-		routeMode: "forum_supergroup_topic",
-		topicName: "topic",
-		createdAtMs: 1,
-		updatedAtMs: 1,
-	};
-}
-
-function buildPiHarness(): {
-	handlers: Map<string, Array<(event: any, ctx?: ExtensionContext) => Promise<unknown>>>;
-	tools: any[];
-	pi: ExtensionAPI;
-} {
-	const handlers = new Map<string, Array<(event: any, ctx?: ExtensionContext) => Promise<unknown>>>();
-	const tools: any[] = [];
-	const pi = {
-		registerTool: (tool: any) => { tools.push(tool); },
-		registerCommand: () => undefined,
-		on: (event: string, handler: (event: any, ctx?: ExtensionContext) => Promise<unknown>) => {
-			const list = handlers.get(event) ?? [];
-			list.push(handler);
-			handlers.set(event, list);
-		},
-	} as unknown as ExtensionAPI;
-	return { handlers, tools, pi };
-}
-
-function baseDeps(overrides: Partial<RuntimePiHooksDeps> = {}): RuntimePiHooksDeps {
-	return {
-		getConfig: () => ({}),
-		setLatestCtx: () => undefined,
-		getConnectedRoute: () => route(),
-		setConnectedRoute: () => undefined,
-		getActiveTelegramTurn: () => undefined,
-		hasDeferredTelegramTurn: () => false,
-		hasAwaitingTelegramFinalTurn: () => false,
-		hasLiveAgentRun: () => false,
-		flushDeferredTelegramTurn: async () => undefined,
-		setActiveTelegramTurn: () => undefined,
-		setQueuedTelegramTurns: () => undefined,
-		setCurrentAbort: () => undefined,
-		getSessionId: () => "session-1",
-		getOwnerId: () => "owner-1",
-		getIsBroker: () => false,
-		getBrokerState: () => undefined,
-		getConnectedBrokerSocketPath: () => "/tmp/broker.sock",
-		activityReporter: { post: () => undefined, flush: async () => undefined } as never,
-		isRoutableRoute: (candidate): candidate is TelegramRoute => Boolean(candidate),
-		resolveAllowedAttachmentPath: async () => undefined,
-		postIpc: async <TResponse>() => undefined as TResponse,
-		promptForConfig: async () => false,
-		connectTelegram: async () => undefined,
-		unregisterSession: async () => undefined,
-		markSessionOffline: async () => undefined,
-		disconnectSessionRoute: async () => undefined,
-		prepareSessionReplacementHandoff: async () => false,
-		stopClientServer: async () => undefined,
-		shutdownClientRoute: () => undefined,
-		stopBroker: async () => undefined,
-		hideTelegramStatus: () => undefined,
-		updateStatus: () => undefined,
-		readLease: async () => undefined,
-		sendAssistantFinalToBroker: async () => true,
-		finalizeActiveTelegramTurn: async () => "completed",
-		onAgentRetryStart: () => undefined,
-		onRetryMessageStart: () => undefined,
-		startNextTelegramTurn: () => undefined,
-		drainDeferredCompactionTurns: () => undefined,
-		onSessionStart: async () => undefined,
-		clearMediaGroups: () => undefined,
-		...overrides,
-	};
 }
 
 async function checkDeferredAgentEndClearsAbortCallback(): Promise<void> {
@@ -131,7 +42,7 @@ async function checkDeferredAgentEndClearsAbortCallback(): Promise<void> {
 		getIsBroker: () => false,
 		getBrokerState: () => undefined,
 		getConnectedBrokerSocketPath: () => "/tmp/broker.sock",
-		activityReporter: { post: () => undefined, flush: async () => undefined } as never,
+		activityReporter: noopActivityReporter(),
 		isRoutableRoute: (candidate): candidate is TelegramRoute => Boolean(candidate),
 		resolveAllowedAttachmentPath: async () => undefined,
 		postIpc: async <TResponse>() => undefined as TResponse,
@@ -157,7 +68,7 @@ async function checkDeferredAgentEndClearsAbortCallback(): Promise<void> {
 		clearMediaGroups: () => undefined,
 	});
 
-	const ctx = { abort: () => undefined, ui: { theme: {} } } as unknown as ExtensionContext;
+	const ctx = testExtensionContext();
 	await (handlers.get("agent_start")?.[0]?.({}, ctx) ?? Promise.resolve());
 	assert.ok(currentAbort);
 	await (handlers.get("agent_end")?.[0]?.({ messages: [] }, ctx) ?? Promise.resolve());
@@ -191,7 +102,7 @@ async function checkLocalInputFlushesDeferredWithoutStartingQueuedTelegramTurn()
 		getIsBroker: () => false,
 		getBrokerState: () => undefined,
 		getConnectedBrokerSocketPath: () => "/tmp/broker.sock",
-		activityReporter: { post: () => undefined, flush: async () => undefined } as never,
+		activityReporter: noopActivityReporter(),
 		isRoutableRoute: (candidate): candidate is TelegramRoute => Boolean(candidate),
 		resolveAllowedAttachmentPath: async () => undefined,
 		postIpc: async <TResponse>(_socketPath: string, type: string, payload: unknown) => {
@@ -251,7 +162,7 @@ async function checkLocalInputDuringLiveRetryDoesNotFlushDeferredTurn(): Promise
 		getIsBroker: () => false,
 		getBrokerState: () => undefined,
 		getConnectedBrokerSocketPath: () => "/tmp/broker.sock",
-		activityReporter: { post: () => undefined, flush: async () => undefined } as never,
+		activityReporter: noopActivityReporter(),
 		isRoutableRoute: (candidate): candidate is TelegramRoute => Boolean(candidate),
 		resolveAllowedAttachmentPath: async () => undefined,
 		postIpc: async <TResponse>() => undefined as TResponse,
@@ -285,14 +196,11 @@ async function checkLocalInputDuringLiveRetryDoesNotFlushDeferredTurn(): Promise
 async function checkAssistantTextDoesNotCloseActivityOrPostPreview(): Promise<void> {
 	const { handlers, pi } = buildPiHarness();
 	const active = activeTurn("turn-final-only");
-	const ipcCalls: Array<{ type: string; payload: any }> = [];
-	const activityReporter = {
-		post: (payload: any) => { ipcCalls.push({ type: "activity_update", payload }); },
-		flush: async () => undefined,
-	};
+	const ipcCalls: Array<{ type: string; payload: unknown }> = [];
+	const activityReporter = recordingActivityReporter(ipcCalls);
 	registerRuntimePiHooks(pi, baseDeps({
 		getActiveTelegramTurn: () => active,
-		activityReporter: activityReporter as never,
+		activityReporter,
 		postIpc: async <TResponse>(_socketPath: string, type: string, payload: unknown) => {
 			ipcCalls.push({ type, payload });
 			return undefined as TResponse;
@@ -307,14 +215,14 @@ async function checkAssistantTextDoesNotCloseActivityOrPostPreview(): Promise<vo
 	await (handlers.get("tool_call")?.[0]?.({ toolName: "bash", input: { command: "npm test" } }) ?? Promise.resolve());
 
 	assert.deepEqual(ipcCalls.map((call) => call.type), ["activity_update", "activity_update"]);
-	assert.equal(ipcCalls[0]?.payload.activityId, undefined);
-	assert.equal(ipcCalls[1]?.payload.activityId, undefined);
+	assert.equal(activityId(ipcCalls[0]?.payload), undefined);
+	assert.equal(activityId(ipcCalls[1]?.payload), undefined);
 }
 
 async function checkAssistantTextWithoutPriorActivityPostsNoPreview(): Promise<void> {
 	const { handlers, pi } = buildPiHarness();
 	const active = activeTurn("turn-text-first");
-	const ipcCalls: Array<{ type: string; payload: any }> = [];
+	const ipcCalls: Array<{ type: string; payload: unknown }> = [];
 	registerRuntimePiHooks(pi, baseDeps({
 		getActiveTelegramTurn: () => active,
 		postIpc: async <TResponse>(_socketPath: string, type: string, payload: unknown) => {
@@ -334,14 +242,11 @@ async function checkAssistantTextWithoutPriorActivityPostsNoPreview(): Promise<v
 async function checkDeferredRetryContinuesActivityWithoutTextSegmentation(): Promise<void> {
 	const { handlers, pi } = buildPiHarness();
 	const active = activeTurn("turn-retry-segment");
-	const ipcCalls: Array<{ type: string; payload: any }> = [];
-	const activityReporter = {
-		post: (payload: any) => { ipcCalls.push({ type: "activity_update", payload }); },
-		flush: async () => undefined,
-	};
+	const ipcCalls: Array<{ type: string; payload: unknown }> = [];
+	const activityReporter = recordingActivityReporter(ipcCalls);
 	registerRuntimePiHooks(pi, baseDeps({
 		getActiveTelegramTurn: () => active,
-		activityReporter: activityReporter as never,
+		activityReporter,
 		postIpc: async <TResponse>(_socketPath: string, type: string, payload: unknown) => {
 			ipcCalls.push({ type, payload });
 			return undefined as TResponse;
@@ -354,24 +259,21 @@ async function checkDeferredRetryContinuesActivityWithoutTextSegmentation(): Pro
 		message: { role: "assistant", content: [{ type: "text", text: "Text before retry" }] },
 		assistantMessageEvent: { type: "text_delta", delta: "Text before retry" },
 	}) ?? Promise.resolve());
-	await (handlers.get("agent_end")?.[0]?.({ messages: [{ role: "assistant", content: [], stopReason: "error", errorMessage: "fetch failed" }] }, { ui: { theme: {} } } as ExtensionContext) ?? Promise.resolve());
+	await (handlers.get("agent_end")?.[0]?.({ messages: [{ role: "assistant", content: [], stopReason: "error", errorMessage: "fetch failed" }] }, testExtensionContext()) ?? Promise.resolve());
 	await (handlers.get("tool_call")?.[0]?.({ toolName: "bash", input: { command: "npm test" } }) ?? Promise.resolve());
 
 	assert.equal(ipcCalls.at(-1)?.type, "activity_update");
-	assert.equal(ipcCalls.at(-1)?.payload.activityId, undefined);
+	assert.equal(activityId(ipcCalls.at(-1)?.payload), undefined);
 }
 
 async function checkAssistantTextDoesNotAttemptActivityCompletionOrPreview(): Promise<void> {
 	const { handlers, pi } = buildPiHarness();
 	const active = activeTurn("turn-no-complete");
-	const ipcCalls: Array<{ type: string; payload: any }> = [];
-	const activityReporter = {
-		post: (payload: any) => { ipcCalls.push({ type: "activity_update", payload }); },
-		flush: async () => undefined,
-	};
+	const ipcCalls: Array<{ type: string; payload: unknown }> = [];
+	const activityReporter = recordingActivityReporter(ipcCalls);
 	registerRuntimePiHooks(pi, baseDeps({
 		getActiveTelegramTurn: () => active,
-		activityReporter: activityReporter as never,
+		activityReporter,
 		postIpc: async <TResponse>(_socketPath: string, type: string, payload: unknown) => {
 			ipcCalls.push({ type, payload });
 			if (type === "activity_complete") throw new Error("assistant text should not complete activity");
@@ -388,20 +290,17 @@ async function checkAssistantTextDoesNotAttemptActivityCompletionOrPreview(): Pr
 	await (handlers.get("tool_call")?.[0]?.({ toolName: "bash", input: { command: "same-activity-message" } }) ?? Promise.resolve());
 
 	assert.deepEqual(ipcCalls.map((call) => call.type), ["activity_update", "activity_update"]);
-	assert.equal(ipcCalls.at(-1)?.payload.activityId, undefined);
+	assert.equal(activityId(ipcCalls.at(-1)?.payload), undefined);
 }
 
 async function checkAwaitingFinalHandoffKeepsActivityStateForSameActiveTurn(): Promise<void> {
 	const { handlers, pi } = buildPiHarness();
 	let active: ActiveTelegramTurn | undefined = activeTurn("turn-awaiting-final");
-	const ipcCalls: Array<{ type: string; payload: any }> = [];
-	const activityReporter = {
-		post: (payload: any) => { ipcCalls.push({ type: "activity_update", payload }); },
-		flush: async () => undefined,
-	};
+	const ipcCalls: Array<{ type: string; payload: unknown }> = [];
+	const activityReporter = recordingActivityReporter(ipcCalls);
 	registerRuntimePiHooks(pi, baseDeps({
 		getActiveTelegramTurn: () => active,
-		activityReporter: activityReporter as never,
+		activityReporter,
 		postIpc: async <TResponse>(_socketPath: string, type: string, payload: unknown) => {
 			ipcCalls.push({ type, payload });
 			return undefined as TResponse;
@@ -415,17 +314,17 @@ async function checkAwaitingFinalHandoffKeepsActivityStateForSameActiveTurn(): P
 		message: { role: "assistant", content: [{ type: "text", text: "Text before awaiting handoff" }] },
 		assistantMessageEvent: { type: "text_delta", delta: "Text before awaiting handoff" },
 	}) ?? Promise.resolve());
-	await (handlers.get("agent_end")?.[0]?.({ messages: [{ role: "assistant", content: [{ type: "text", text: "final" }], stopReason: "stop" }] }, { ui: { theme: {} } } as ExtensionContext) ?? Promise.resolve());
+	await (handlers.get("agent_end")?.[0]?.({ messages: [{ role: "assistant", content: [{ type: "text", text: "final" }], stopReason: "stop" }] }, testExtensionContext()) ?? Promise.resolve());
 	await (handlers.get("tool_call")?.[0]?.({ toolName: "bash", input: { command: "late-awaiting" } }) ?? Promise.resolve());
 
 	assert.equal(ipcCalls.at(-1)?.type, "activity_update");
-	assert.equal(ipcCalls.at(-1)?.payload.activityId, undefined);
+	assert.equal(activityId(ipcCalls.at(-1)?.payload), undefined);
 }
 
 async function checkAssistantTextDoesNotWaitForBlockedTypingStartup(): Promise<void> {
 	const { handlers, pi } = buildPiHarness();
 	const active = activeTurn("turn-preview-blocked-typing");
-	const ipcCalls: Array<{ type: string; payload: any }> = [];
+	const ipcCalls: Array<{ type: string; payload: unknown }> = [];
 	const telegramCalls: Array<{ method: string; body: Record<string, unknown> }> = [];
 	const renderer = new ActivityRenderer(
 		async <TResponse>(method: string, body: Record<string, unknown>): Promise<TResponse> => {
@@ -481,7 +380,7 @@ async function checkTelegramAttachIsAtomicOnValidationFailure(): Promise<void> {
 			getIsBroker: () => false,
 			getBrokerState: () => undefined,
 			getConnectedBrokerSocketPath: () => "/tmp/broker.sock",
-			activityReporter: { post: () => undefined, flush: async () => undefined } as never,
+			activityReporter: noopActivityReporter(),
 			isRoutableRoute: (candidate): candidate is TelegramRoute => Boolean(candidate),
 			resolveAllowedAttachmentPath: async (inputPath) => inputPath === goodPath ? goodPath : undefined,
 			postIpc: async <TResponse>() => undefined as TResponse,
@@ -508,7 +407,7 @@ async function checkTelegramAttachIsAtomicOnValidationFailure(): Promise<void> {
 		});
 		const attachTool = tools.find((tool) => tool.name === "telegram_attach");
 		assert.ok(attachTool);
-		await assert.rejects(() => attachTool.execute("call-1", { paths: [goodPath, join(tempDir, "missing.txt")] }), /Attachment path is not allowed/);
+		await assert.rejects(() => attachTool.execute("call-1", { paths: [goodPath, join(tempDir, "missing.txt")] }, undefined, undefined, testExtensionContext()), /Attachment path is not allowed/);
 		assert.deepEqual(active?.queuedAttachments ?? [], []);
 	} finally {
 		rmSync(tempDir, { recursive: true, force: true });
@@ -539,7 +438,7 @@ async function checkSessionShutdownLetsRouteTeardownOwnQueueDrainingAndStillStop
 		getIsBroker: () => false,
 		getBrokerState: () => undefined,
 		getConnectedBrokerSocketPath: () => "/tmp/broker.sock",
-		activityReporter: { post: () => undefined, flush: async () => undefined } as never,
+		activityReporter: noopActivityReporter(),
 		isRoutableRoute: (candidate): candidate is TelegramRoute => Boolean(candidate),
 		resolveAllowedAttachmentPath: async () => undefined,
 		postIpc: async <TResponse>() => undefined as TResponse,
@@ -594,7 +493,7 @@ async function checkReplacementShutdownUsesHandoffInsteadOfRouteCleanup(): Promi
 		stopBroker: async () => { stopBrokerCalls += 1; },
 	}));
 
-	await (handlers.get("session_shutdown")?.[0]?.({ reason: "new", targetSessionFile: "/tmp/new-session.jsonl" }, { ui: { theme: {} } } as ExtensionContext) ?? Promise.resolve());
+	await (handlers.get("session_shutdown")?.[0]?.({ reason: "new", targetSessionFile: "/tmp/new-session.jsonl" }, testExtensionContext()) ?? Promise.resolve());
 	assert.equal(handoffCalls, 1);
 	assert.equal(shutdownClientCalls, 1);
 	assert.equal(stopClientCalls, 1);
@@ -613,7 +512,7 @@ async function checkReplacementShutdownStopsClientWhenRouteShutdownFails(): Prom
 		stopBroker: async () => { stopBrokerCalls += 1; },
 	}));
 
-	await assert.rejects(() => handlers.get("session_shutdown")?.[0]?.({ reason: "resume" }, { ui: { theme: {} } } as ExtensionContext) as Promise<unknown>, /route shutdown failed/);
+	await assert.rejects(() => handlers.get("session_shutdown")?.[0]?.({ reason: "resume" }, testExtensionContext()) as Promise<unknown>, /route shutdown failed/);
 	assert.equal(stopClientCalls, 1);
 	assert.equal(stopBrokerCalls, 1);
 }
@@ -631,7 +530,7 @@ async function checkReplacementShutdownFallsBackWhenNoHandoff(): Promise<void> {
 		shutdownClientRoute: async () => { shutdownClientCalls += 1; },
 	}));
 
-	await (handlers.get("session_shutdown")?.[0]?.({ reason: "fork" }, { ui: { theme: {} } } as ExtensionContext) ?? Promise.resolve());
+	await (handlers.get("session_shutdown")?.[0]?.({ reason: "fork" }, testExtensionContext()) ?? Promise.resolve());
 	assert.equal(disconnectCalls, 1);
 	assert.equal(shutdownClientCalls, 0);
 }
@@ -658,7 +557,7 @@ async function checkImageOnlyLocalInputStillMirrorsToTelegram(): Promise<void> {
 		getIsBroker: () => false,
 		getBrokerState: () => undefined,
 		getConnectedBrokerSocketPath: () => "/tmp/broker.sock",
-		activityReporter: { post: () => undefined, flush: async () => undefined } as never,
+		activityReporter: noopActivityReporter(),
 		isRoutableRoute: (candidate): candidate is TelegramRoute => Boolean(candidate),
 		resolveAllowedAttachmentPath: async () => undefined,
 		postIpc: async <TResponse>(_socketPath: string, type: string, payload: unknown) => {

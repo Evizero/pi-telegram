@@ -5,6 +5,7 @@ import { createRuntimeUpdateHandlers } from "../src/broker/updates.js";
 import { SESSION_OFFLINE_MS, SESSION_RECONNECT_GRACE_MS } from "../src/shared/config.js";
 import type { BrokerState } from "../src/shared/types.js";
 import { session, state, topicRoute } from "./support/session-route-fixtures.js";
+import { noopCommandRouter, testExtensionContext } from "./support/runtime-update-fixtures.js";
 
 
 async function checkTopicSetupFailureRestoresRoutesAndQueuesNewOrphanCleanup(): Promise<void> {
@@ -20,7 +21,7 @@ async function checkTopicSetupFailureRestoresRoutesAndQueuesNewOrphanCleanup(): 
 		setBrokerState: () => undefined,
 		getBrokerLeaseEpoch: () => 1,
 		getOwnerId: () => "owner",
-		commandRouter: { dispatch: async () => undefined } as never,
+		commandRouter: noopCommandRouter(() => brokerState),
 		mediaGroups: new Map(),
 		callTelegram: async <TResponse>() => [] as unknown as TResponse,
 		writeConfig: async () => undefined,
@@ -52,7 +53,7 @@ async function checkTopicSetupFailureRestoresRoutesAndQueuesNewOrphanCleanup(): 
 			from: { id: 1, is_bot: false, first_name: "User" },
 			text: "/topicsetup",
 		},
-	}, {} as never);
+	}, testExtensionContext());
 
 	assert.deepEqual(brokerState.routes[oldRoute.routeId], oldRoute);
 	assert.equal(brokerState.routes[orphanRoute.routeId], undefined);
@@ -90,7 +91,7 @@ async function checkOfflineMarkingUsesReconnectGraceBeforeCleanup(): Promise<voi
 		setBrokerState: () => undefined,
 		getBrokerLeaseEpoch: () => 1,
 		getOwnerId: () => "owner",
-		commandRouter: { dispatch: async () => undefined } as never,
+		commandRouter: noopCommandRouter(() => brokerState),
 		mediaGroups: new Map(),
 		callTelegram: async <TResponse>() => [] as unknown as TResponse,
 		writeConfig: async () => undefined,

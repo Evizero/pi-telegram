@@ -5,6 +5,7 @@ import { retryPendingRouteCleanupsInBroker, markSessionOfflineInBroker } from ".
 import { createRuntimeUpdateHandlers } from "../src/broker/updates.js";
 import type { BrokerState, QueuedTurnControlState, SessionRegistration } from "../src/shared/types.js";
 import { session, state, topicRoute } from "./support/session-route-fixtures.js";
+import { noopCommandRouter } from "./support/runtime-update-fixtures.js";
 
 
 async function checkMarkOfflinePreservesPendingWorkAndQueuesRouteCleanup(): Promise<void> {
@@ -150,7 +151,7 @@ async function checkRetryPendingTurnRehomesToCurrentRoute(): Promise<void> {
 		setBrokerState: () => undefined,
 		getBrokerLeaseEpoch: () => 1,
 		getOwnerId: () => "owner",
-		commandRouter: { dispatch: async () => undefined } as never,
+		commandRouter: noopCommandRouter(() => brokerState),
 		mediaGroups: new Map(),
 		callTelegram: async <TResponse>(method: string, body: Record<string, unknown>) => {
 			if (method === "deleteMessage") deletedPreviewBodies.push(body);
@@ -219,7 +220,7 @@ async function checkRetryPendingTurnWaitsForPreviewDeleteBeforeRehome(): Promise
 		setBrokerState: () => undefined,
 		getBrokerLeaseEpoch: () => 1,
 		getOwnerId: () => "owner",
-		commandRouter: { dispatch: async () => undefined } as never,
+		commandRouter: noopCommandRouter(() => brokerState),
 		mediaGroups: new Map(),
 		callTelegram: async <TResponse>(method: string) => {
 			if (method === "deleteMessage") throw new TelegramApiError(method, "Too Many Requests", 429, 2);
@@ -283,7 +284,7 @@ async function checkRetryPendingTurnDropsPreviewRefOnPermanentDeleteFailure(): P
 		setBrokerState: () => undefined,
 		getBrokerLeaseEpoch: () => 1,
 		getOwnerId: () => "owner",
-		commandRouter: { dispatch: async () => undefined } as never,
+		commandRouter: noopCommandRouter(() => brokerState),
 		mediaGroups: new Map(),
 		callTelegram: async <TResponse>(method: string) => {
 			if (method === "deleteMessage") throw new TelegramApiError(method, "Bad Request: message can't be deleted", 400, undefined);

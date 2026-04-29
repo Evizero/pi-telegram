@@ -4,9 +4,10 @@ import { runBrokerBackgroundTask } from "../src/broker/background.js";
 import { AssistantFinalDeliveryLedger } from "../src/broker/finals.js";
 import { StaleBrokerError } from "../src/broker/lease.js";
 import { createRuntimeUpdateHandlers, type RuntimeUpdateDeps } from "../src/broker/updates.js";
-import type { BrokerLease, BrokerState, PendingAssistantFinalDelivery, PendingTelegramTurn } from "../src/shared/types.js";
+import type { BrokerState, PendingAssistantFinalDelivery, PendingTelegramTurn } from "../src/shared/types.js";
 import { now } from "../src/shared/utils.js";
 import type { PreviewManager } from "../src/telegram/previews.js";
+import { liveLease, runtimeUpdateDeps } from "./support/runtime-update-fixtures.js";
 
 function turn(id: string): PendingTelegramTurn {
 	return { turnId: id, sessionId: "s1", chatId: 123, messageThreadId: 9, replyToMessageId: 0, queuedAttachments: [], content: [{ type: "text", text: "hello" }], historyText: "" };
@@ -42,38 +43,8 @@ function stateWithPendingTurn(): BrokerState {
 	};
 }
 
-function liveLease(): BrokerLease {
-	return { schemaVersion: 1, ownerId: "owner", pid: process.pid, startedAtMs: now(), leaseEpoch: 1, socketPath: "/tmp/broker.sock", leaseUntilMs: now() + 60_000, updatedAtMs: now() };
-}
-
 function depsForState(state: BrokerState, overrides: Partial<RuntimeUpdateDeps>): RuntimeUpdateDeps {
-	return {
-		getConfig: () => ({ allowedUserId: 111, allowedChatId: 123 }),
-		setConfig: () => undefined,
-		getBrokerState: () => state,
-		setBrokerState: () => undefined,
-		getBrokerLeaseEpoch: () => 1,
-		getOwnerId: () => "owner",
-		commandRouter: { dispatch: async () => undefined, dispatchCallback: async () => false } as any,
-		mediaGroups: new Map(),
-		callTelegram: async <TResponse>() => ({}) as TResponse,
-		writeConfig: async () => undefined,
-		persistBrokerState: async () => undefined,
-		loadBrokerState: async () => state,
-		readLease: async () => liveLease(),
-		stopBroker: async () => undefined,
-		updateStatus: () => undefined,
-		refreshTelegramStatus: () => undefined,
-		sendTextReply: async () => undefined,
-		ensureRoutesAfterPairing: async () => undefined,
-		isAllowedTelegramChat: () => true,
-		stopTypingLoop: () => undefined,
-		dropAssistantPreviewState: async () => undefined,
-		postIpc: async <TResponse>() => ({}) as TResponse,
-		unregisterSession: async () => undefined,
-		markSessionOffline: async () => undefined,
-		...overrides,
-	};
+	return runtimeUpdateDeps({ brokerState: state, lease: liveLease(), overrides });
 }
 
 async function waitForDetachedWork(): Promise<void> {

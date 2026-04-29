@@ -1,7 +1,9 @@
+import type { Theme } from "@mariozechner/pi-coding-agent";
+
 import type { BrokerState, TelegramConfig, TelegramRoute } from "./types.js";
 
 export function telegramStatusText(options: {
-	theme: any;
+	theme: Theme;
 	visible: boolean;
 	config: TelegramConfig;
 	isBroker: boolean;

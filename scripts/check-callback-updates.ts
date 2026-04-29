@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 
 import { createRuntimeUpdateHandlers, type RuntimeUpdateDeps } from "../src/broker/updates.js";
 import { TelegramApiError } from "../src/telegram/api.js";
-import type { BrokerLease, BrokerState, TelegramConfig, TelegramMessage, TelegramUpdate } from "../src/shared/types.js";
+import type { TelegramMessage, TelegramUpdate } from "../src/shared/types.js";
+import { brokerState, liveLease, runtimeUpdateDeps, testExtensionContext } from "./support/runtime-update-fixtures.js";
 
 function callbackUpdate(): TelegramUpdate {
 	return {
@@ -21,51 +22,13 @@ function callbackUpdate(): TelegramUpdate {
 }
 
 function deps(callTelegram: RuntimeUpdateDeps["callTelegram"]): RuntimeUpdateDeps {
-	const config: TelegramConfig = { allowedUserId: 111, allowedChatId: 123 };
-	const brokerState: BrokerState = {
-		schemaVersion: 1,
-		recentUpdateIds: [],
-		sessions: {},
-		routes: {},
-		createdAtMs: Date.now(),
-		updatedAtMs: Date.now(),
-	};
-	const lease: BrokerLease = {
-		schemaVersion: 1,
-		ownerId: "owner",
-		pid: process.pid,
-		startedAtMs: Date.now(),
-		leaseEpoch: 1,
-		socketPath: "/tmp/broker.sock",
-		leaseUntilMs: Date.now() + 60_000,
-		updatedAtMs: Date.now(),
-	};
-	return {
-		getConfig: () => config,
-		setConfig: () => undefined,
-		getBrokerState: () => brokerState,
-		setBrokerState: () => undefined,
-		getBrokerLeaseEpoch: () => 1,
-		getOwnerId: () => "owner",
-		commandRouter: { dispatch: async () => undefined, dispatchCallback: async () => false } as any,
-		mediaGroups: new Map(),
-		callTelegram,
-		writeConfig: async () => undefined,
-		persistBrokerState: async () => undefined,
-		loadBrokerState: async () => brokerState,
-		readLease: async () => lease,
-		stopBroker: async () => undefined,
-		updateStatus: () => undefined,
-		refreshTelegramStatus: () => undefined,
-		sendTextReply: async () => undefined,
-		ensureRoutesAfterPairing: async () => undefined,
-		isAllowedTelegramChat: () => true,
-		stopTypingLoop: () => undefined,
-		dropAssistantPreviewState: async () => undefined,
-		postIpc: async <TResponse>() => ({}) as TResponse,
-		unregisterSession: async () => undefined,
-		markSessionOffline: async () => undefined,
-	};
+	const state = brokerState();
+	return runtimeUpdateDeps({
+		brokerState: state,
+		config: { allowedUserId: 111, allowedChatId: 123 },
+		lease: liveLease(),
+		overrides: { callTelegram },
+	});
 }
 
 async function checkNonRetryCallbackAnswerFailureIsHandled(): Promise<void> {
@@ -74,7 +37,7 @@ async function checkNonRetryCallbackAnswerFailureIsHandled(): Promise<void> {
 		calls.push(method);
 		throw new Error("callback query is too old");
 	}));
-	await handlers.handleUpdate(callbackUpdate(), {} as any);
+	await handlers.handleUpdate(callbackUpdate(), testExtensionContext());
 	assert.deepEqual(calls, ["answerCallbackQuery"]);
 }
 
@@ -82,7 +45,7 @@ async function checkRetryAfterCallbackAnswerFailurePropagates(): Promise<void> {
 	const handlers = createRuntimeUpdateHandlers(deps(async () => {
 		throw new TelegramApiError("answerCallbackQuery", "Too Many Requests", 429, 2);
 	}));
-	await assert.rejects(() => handlers.handleUpdate(callbackUpdate(), {} as any), /Too Many Requests/);
+	await assert.rejects(() => handlers.handleUpdate(callbackUpdate(), testExtensionContext()), /Too Many Requests/);
 }
 
 await checkNonRetryCallbackAnswerFailureIsHandled();

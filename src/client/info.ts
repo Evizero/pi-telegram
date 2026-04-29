@@ -1,4 +1,5 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { Api, Model } from "@mariozechner/pi-ai";
 import { formatTokens } from "../shared/format.js";
 import type { ActiveTelegramTurn, BrokerLease, ModelSummary, TelegramRoute } from "../shared/types.js";
 
@@ -73,7 +74,7 @@ export function clientQueryModels(ctx: ExtensionContext | undefined, filter?: st
 	return { current: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined, models: filtered };
 }
 
-export async function clientSetModel(ctx: ExtensionContext | undefined, setModel: (model: any) => Promise<boolean>, selector: string, options?: { exact?: boolean }): Promise<{ text: string }> {
+export async function clientSetModel(ctx: ExtensionContext | undefined, setModel: (model: Model<Api>) => Promise<boolean>, selector: string, options?: { exact?: boolean }): Promise<{ text: string }> {
 	if (!ctx) return { text: "Model catalog unavailable." };
 	const models = ctx.modelRegistry.getAvailable();
 	let matches = models.filter((model) => `${model.provider}/${model.id}` === selector);
