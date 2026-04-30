@@ -13,6 +13,27 @@ export interface PiAttachmentHookDeps {
 	resolveAllowedAttachmentPath: (inputPath: string) => Promise<string | undefined>;
 }
 
+export async function executeTelegramAttachmentTool(params: { paths?: string[] }, deps: PiAttachmentHookDeps) {
+	if (!params.paths?.length) throw new Error("At least one attachment path is required");
+	const validated: Array<{ path: string; fileName: string }> = [];
+	for (const inputPath of params.paths) {
+		const attachmentPath = await deps.resolveAllowedAttachmentPath(inputPath);
+		if (!attachmentPath) throw new Error(`Attachment path is not allowed: ${inputPath}`);
+		const stats = await stat(attachmentPath);
+		if (!stats.isFile()) throw new Error(`Not a file: ${inputPath}`);
+		if (stats.size > MAX_FILE_BYTES) throw new Error(`File too large: ${inputPath}`);
+		validated.push({ path: attachmentPath, fileName: basename(attachmentPath) });
+	}
+	if (deps.queueActiveTelegramAttachments) deps.queueActiveTelegramAttachments(validated, MAX_ATTACHMENTS_PER_TURN);
+	else {
+		const activeTelegramTurn = deps.getActiveTelegramTurn();
+		if (!activeTelegramTurn) throw new Error("telegram_attach can only be used while replying to an active Telegram turn");
+		if (activeTelegramTurn.queuedAttachments.length + validated.length > MAX_ATTACHMENTS_PER_TURN) throw new Error(`Attachment limit reached (${MAX_ATTACHMENTS_PER_TURN})`);
+		activeTelegramTurn.queuedAttachments.push(...validated);
+	}
+	return { content: [{ type: "text" as const, text: `Queued ${validated.length} Telegram attachment(s).` }], details: { paths: validated.map((entry) => entry.path) } };
+}
+
 export function registerTelegramAttachmentTool(pi: ExtensionAPI, deps: PiAttachmentHookDeps): void {
 	pi.registerTool({
 		name: "telegram_attach",
@@ -25,25 +46,6 @@ export function registerTelegramAttachmentTool(pi: ExtensionAPI, deps: PiAttachm
 		parameters: Type.Object({
 			paths: Type.Array(Type.String({ description: "Local file path to attach" }), { minItems: 1, maxItems: MAX_ATTACHMENTS_PER_TURN }),
 		}),
-		async execute(_toolCallId, params) {
-			if (!params.paths?.length) throw new Error("At least one attachment path is required");
-			const validated: Array<{ path: string; fileName: string }> = [];
-			for (const inputPath of params.paths) {
-				const attachmentPath = await deps.resolveAllowedAttachmentPath(inputPath);
-				if (!attachmentPath) throw new Error(`Attachment path is not allowed: ${inputPath}`);
-				const stats = await stat(attachmentPath);
-				if (!stats.isFile()) throw new Error(`Not a file: ${inputPath}`);
-				if (stats.size > MAX_FILE_BYTES) throw new Error(`File too large: ${inputPath}`);
-				validated.push({ path: attachmentPath, fileName: basename(attachmentPath) });
-			}
-			if (deps.queueActiveTelegramAttachments) deps.queueActiveTelegramAttachments(validated, MAX_ATTACHMENTS_PER_TURN);
-			else {
-				const activeTelegramTurn = deps.getActiveTelegramTurn();
-				if (!activeTelegramTurn) throw new Error("telegram_attach can only be used while replying to an active Telegram turn");
-				if (activeTelegramTurn.queuedAttachments.length + validated.length > MAX_ATTACHMENTS_PER_TURN) throw new Error(`Attachment limit reached (${MAX_ATTACHMENTS_PER_TURN})`);
-				activeTelegramTurn.queuedAttachments.push(...validated);
-			}
-			return { content: [{ type: "text", text: `Queued ${validated.length} Telegram attachment(s).` }], details: { paths: validated.map((entry) => entry.path) } };
-		},
+		execute: async (_toolCallId, params) => await executeTelegramAttachmentTool(params, deps),
 	});
 }

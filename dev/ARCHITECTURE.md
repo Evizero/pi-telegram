@@ -80,7 +80,11 @@ The strongest drivers come directly from the intended purpose and requirements:
 - Telegram files and local artifacts cross a trust boundary and must remain
   bounded, private, and explicit (`StRS-attachment-exchange`,
   `SyRS-inbound-attachment-untrusted`, `SyRS-outbound-attachment-safety`,
-  `SyRS-explicit-artifact-return`, `SyRS-bridge-secret-privacy`).
+  `SyRS-explicit-artifact-return`, `SyRS-bridge-secret-privacy`);
+- installing the extension should not make ordinary unconnected pi startup pay
+  the cost of broker/client/Telegram runtime construction; the heavy runtime is
+  justified when Telegram is invoked or a valid recovery handoff exists
+  (`StRS-inactive-startup-overhead`, `SyRS-lazy-inactive-runtime`).
 
 ## Quality goals
 
@@ -162,7 +166,26 @@ Reliability code should prefer one explicit owner per lifecycle concern over
 parallel retry, replay, cleanup, or preview mechanisms that are almost but not
 quite the same feature.
 
+### Low inactive footprint
+
+The extension should be cheap to keep installed when Telegram is not connected.
+Ordinary pi startup may register command names, tool schemas, prompt guidance,
+and lightweight lifecycle sentinels, but it should not import or construct the
+broker/client/Telegram runtime graph unless Telegram is invoked or a valid
+session-replacement handoff must be recovered. This goal preserves the extension
+as a passive capability until the operator actually needs remote supervision.
+
 ## Quality scenarios
+
+### Inactive startup stays light
+
+A user starts pi in a repository where pi-telegram is installed but does not run
+setup, connect, attach, or recover a previous Telegram-supervised session. The
+extension registers the pi-visible command/tool/prompt surface and enough
+lifecycle hooks to delegate later, but broker polling, client IPC, Telegram API
+helpers, activity/final delivery, and background timers remain unloaded and
+unconstructed. The important property is that installing the bridge does not
+make every local pi session pay the full remote-supervision runtime cost.
 
 ### Mid-turn mobile takeover
 
@@ -398,19 +421,30 @@ with related code when they explain the same behavior.
   explicit pi attachment intent and allowlisted paths.
 - No TypeScript source file should grow beyond 1,000 lines; responsibility
   boundaries should be maintained by extraction, not by renaming a god file.
+- The pi-visible registration surface belongs to a lightweight bootstrap layer;
+  the broker/client/Telegram runtime should be demand-loaded and must not
+  register duplicate pi commands, tools, or event hooks after loading.
 
 ## Runtime surfaces
 
 ### pi extension surface
 
 `index.ts` is the package entrypoint and should stay tiny.
-It imports `registerTelegramExtension` from `src/extension.ts` and gives pi the
-extension factory.
+The target architecture is that it imports only a lightweight bootstrap facade
+that gives pi the extension factory and registers the pi-visible surface.
 
-The extension registers pi commands such as setup, connect, disconnect, and
-status; registers the `telegram_attach` tool; observes pi session and assistant
-events; and injects a Telegram-specific prompt suffix that explains attachment
-and trust-boundary rules to the agent.
+The bootstrap registers pi commands such as setup, connect, disconnect, and
+status; registers the `telegram_attach` tool definition; observes pi session and
+assistant events through lightweight delegating hooks; and injects a
+Telegram-specific prompt suffix that explains attachment and trust-boundary
+rules to the agent. The heavy broker/client/Telegram runtime is loaded through a
+memoized dynamic import only when a command/tool/event actually requires runtime
+state or when session-replacement recovery has a matching handoff.
+
+Current-state clarification: the implementation still imports
+`registerTelegramExtension` from `src/extension.ts` eagerly. Planned lazy-loading
+work should split this into bootstrap-owned registration and runtime-owned
+behavior without changing the public command/tool surface.
 
 ### Telegram surface
 
@@ -554,17 +588,25 @@ already-recorded visible output.
 
 ## Architectural decomposition
 
-### Composition root: `src/extension.ts`
+### Bootstrap facade and runtime composition
 
-`src/extension.ts` is the runtime composition root.
-It wires pi, broker, client, Telegram, previews, activity, config, IPC, and
-state together.
-It may own cross-cutting orchestration that genuinely spans those boundaries,
-but it should not become the permanent home for every concern.
+The target entrypoint shape separates eager registration from heavy runtime
+composition. A lightweight bootstrap module owns command/tool/hook registration,
+prompt suffix injection, lazy-load policy, and cheap lifecycle sentinels. It must
+not import broker polling, client runtime hosting, Telegram API IO, local IPC, or
+final-delivery machinery on ordinary startup.
 
-Current-state note: this file is under the 1,000-line guard rail. Future work
-should continue extracting cohesive broker lease/state/session lifecycle pieces
-without changing the product boundaries when orchestration pressure grows.
+The heavy runtime composition root, currently `src/extension.ts` and potentially
+a future `src/runtime/extension-runtime.ts`, wires pi, broker, client, Telegram,
+previews, activity, config, IPC, and state together after bootstrap loads it. It
+owns behavior, not pi surface registration, so lazy loading cannot create
+second copies of commands, tools, or event handlers.
+
+Current-state note: `src/extension.ts` is under the 1,000-line guard rail but is
+still both the eager import target and the runtime composition root. Planned
+lazy-loading work should extract the bootstrap/runtime seam while continuing to
+extract cohesive broker lease/state/session lifecycle pieces where orchestration
+pressure grows.
 
 ### Broker modules: `src/broker/`
 
@@ -688,9 +730,12 @@ They should not grow broker policy or Telegram command semantics.
 
 The intended dependency direction is:
 
-- `index.ts` depends only on the extension composition root.
-- `src/extension.ts` composes all runtime modules and may depend on each
-  responsibility folder.
+- `index.ts` depends only on the lightweight bootstrap facade.
+- The bootstrap facade may depend on pi extension types, small prompt/tool
+  schema helpers, and a cheap handoff sentinel, but not on broker/client/Telegram
+  runtime policy modules.
+- The runtime composition root composes all heavy runtime modules after demand
+  loading and may depend on each responsibility folder.
 - Responsibility modules should depend on `shared/*` and on narrower peer
   interfaces passed in as dependency objects.
 - Telegram API mechanics live under `telegram/*` and should not depend on pi
@@ -701,11 +746,15 @@ The intended dependency direction is:
   Telegram or mutate broker lease files directly.
 - Shared modules must not import broker, client, pi, or Telegram policy modules.
 
-Allowed exceptions are narrow composition conveniences in `src/extension.ts`.
-Because the extension is a single-process plugin, the composition root may hold
-closure state and dependency injection glue that would be over-abstracted if
-forced into a framework.
+Allowed exceptions are narrow composition conveniences in the runtime
+composition root.
+Because the extension is a single-process plugin, the runtime composition root
+may hold closure state and dependency injection glue that would be over-abstracted
+if forced into a framework.
 When that glue becomes cohesive policy, it should move into the owning folder.
+Bootstrap exceptions must stay smaller: they may detect whether runtime loading
+is necessary, but they should not grow broker polling, Telegram IO, route
+lifecycle, or final-delivery policy.
 
 Current-state clarification: shared activity-line presentation now lives under
 `src/shared/activity-lines.ts`. `src/pi/` constructs activity lines through that
@@ -991,13 +1040,28 @@ requirements, and guidance together when the API contract changes.
 
 ## Migration notes and pressure points
 
+### Lazy startup seam
+
+Current implementation eagerly imports the full runtime graph from `index.ts` via
+`src/extension.ts`, which makes ordinary pi startup pay the TypeScript/Jiti cost
+of broker, client, Telegram, IPC, and delivery modules even when Telegram is not
+connected. Planned lazy-loading work should introduce a bootstrap/runtime seam:
+bootstrap keeps the pi-visible surface available, while the heavy runtime is
+demand-loaded for explicit Telegram use or valid session-replacement recovery.
+
+The seam is a migration architecture concern, not a change to product authority:
+it must preserve mid-turn connect, replacement handoff, attachment safety,
+shutdown cleanup, and no-external-daemon operation. The main design risk is
+allowing runtime to load too late for active-turn finalization or registering pi
+surfaces twice after dynamic import.
+
 ### Composition root size
 
 `src/extension.ts` remains the largest file, but it is now below the 1,000-line
 guard rail after the client runtime host and turn-lifecycle extractions. It is
-still a transitional composition root; future work should keep shrinking it by
-extracting cohesive broker lease/state/session lifecycle and client final-handoff
-composition where those seams become clear.
+still a transitional runtime composition root; future work should keep shrinking
+it by extracting cohesive broker lease/state/session lifecycle and client
+final-handoff composition where those seams become clear.
 Extraction should preserve dependency injection and ownership boundaries rather
 than merely moving a god file to another name.
 
@@ -1094,9 +1158,14 @@ ownership.
 
 ## Repository mapping
 
-- `index.ts` — package entrypoint; should only register the extension.
-- `src/extension.ts` — runtime composition root, broker/client orchestration,
-  state wiring, config setup, lease coordination, and cross-boundary callbacks.
+- `index.ts` — package entrypoint; should only register the extension through
+  the lightweight bootstrap facade.
+- `src/bootstrap.ts` or equivalent — planned eager registration facade for pi
+  commands, tool definitions, prompt guidance, lifecycle sentinels, and lazy-load
+  policy.
+- `src/extension.ts` / future `src/runtime/extension-runtime.ts` — runtime
+  composition root, broker/client orchestration, state wiring, config setup,
+  lease coordination, and cross-boundary callbacks after demand loading.
 - `src/broker/activity.ts` — broker-side Telegram activity rendering and debouncing.
 - `src/broker/commands.ts` — thin Telegram command/callback dispatcher and route-aware control composition.
 - `src/broker/model-command.ts`, `src/broker/git-command.ts`, `src/broker/queued-turn-control-handler.ts`, and `src/broker/inline-controls.ts` — focused command/control semantics and shared inline-control lifecycle helpers.

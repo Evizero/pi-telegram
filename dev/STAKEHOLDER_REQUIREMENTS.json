@@ -2,7 +2,7 @@
   "meta": {
     "title": "pi-telegram",
     "version": "0.1.0",
-    "last_updated": "2026-04-28"
+    "last_updated": "2026-04-30"
   },
   "requirements": [
     {
@@ -414,6 +414,29 @@
       "sources": {
         "inbox": [
           "telegram-git-status-command"
+        ]
+      }
+    },
+    {
+      "id": "StRS-inactive-startup-overhead",
+      "origin": "derived",
+      "label": "Start pi quickly when inactive",
+      "statement": "Remote pi operators shall be able to keep pi-telegram installed without materially slowing ordinary pi startup when they are not connecting or recovering a Telegram-supervised session.",
+      "rationale": "The project owner observed a noticeable pi startup regression even when Telegram was not being invoked. The bridge should remain installable as a passive extension without imposing the heavy runtime cost until Telegram supervision is actually needed or a valid recovery handoff requires it.",
+      "stakeholders": [
+        "remote-pi-operator"
+      ],
+      "priority": 2,
+      "validation": {
+        "method": "manual",
+        "criteria": "Manual startup profiling and review confirm that ordinary pi startup with pi-telegram installed but not connected no longer pays the full broker/client/Telegram runtime import cost, while invoking Telegram connection or valid recovery still works."
+      },
+      "status": "draft",
+      "created": "2026-04-30",
+      "updated": "2026-04-30",
+      "sources": {
+        "inbox": [
+          "pi-telegram-slows-pi"
         ]
       }
     }

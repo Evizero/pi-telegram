@@ -35,10 +35,15 @@ import { PreviewManager } from "./telegram/previews.js";
 import { cleanupDownloadedTelegramSessionTempDirIfUnused, sweepOrphanedDownloadedTelegramSessionTempDirs } from "./telegram/temp-files.js";
 import { createTypingLoopController } from "./telegram/typing.js";
 import { createPiDiagnosticReporter } from "./pi/diagnostics.js";
-import { registerRuntimePiHooks } from "./pi/hooks.js";
+import { registerRuntimePiHooks, type RuntimePiHooksDeps } from "./pi/hooks.js";
 import { promptForTelegramConfig } from "./telegram/setup.js";
 import { pairingInstructions, telegramStatusText } from "./shared/ui-status.js";
-export function registerTelegramExtension(pi: ExtensionAPI) {
+export interface TelegramRuntime {
+	hooks: RuntimePiHooksDeps;
+	isConnected: () => boolean;
+}
+
+export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 	const ownerId = randomId("own");
 	const startedAtMs = now();
 	let sessionId = randomId("pis");
@@ -838,7 +843,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	function sendAssistantFinalToBroker(payload: AssistantFinalPayload, fromRetryQueue = false): Promise<boolean> {
 		return assistantFinalHandoff.send(payload, fromRetryQueue);
 	}
-	registerRuntimePiHooks(pi, {
+	const hooks: RuntimePiHooksDeps = {
 		getConfig: () => config,
 		setLatestCtx: setLatestContext,
 		getConnectedRoute: () => clientHost.getConnectedRoute(),
@@ -896,5 +901,14 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			for (const state of mediaGroups.values()) if (state.flushTimer) clearTimeout(state.flushTimer);
 			mediaGroups.clear();
 		},
-	});
+	};
+	return {
+		hooks,
+		isConnected: () => clientHost.getConnectedRoute() !== undefined,
+	};
+}
+
+export function registerTelegramExtension(pi: ExtensionAPI) {
+	const runtime = createTelegramRuntime(pi);
+	registerRuntimePiHooks(pi, runtime.hooks);
 }

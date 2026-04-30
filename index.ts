@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { registerTelegramExtension } from "./src/extension.js";
+import { registerTelegramBootstrap } from "./src/bootstrap.js";
 
 export default function (pi: ExtensionAPI) {
-	registerTelegramExtension(pi);
+	registerTelegramBootstrap(pi);
 }

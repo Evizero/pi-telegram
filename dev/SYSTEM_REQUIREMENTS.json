@@ -1274,6 +1274,30 @@
           "broker-heartbeat-logs-takeover"
         ]
       }
+    },
+    {
+      "id": "SyRS-lazy-inactive-runtime",
+      "origin": "derived",
+      "label": "Defer inactive runtime loading",
+      "statement": "The system shall register pi-visible Telegram commands, the telegram_attach tool, prompt guidance, and lightweight lifecycle sentinels at ordinary startup without importing or constructing broker, client, Telegram API, IPC, polling, or delivery runtime modules unless Telegram is invoked or a valid session-replacement handoff requires recovery.",
+      "traces_to": [
+        "StRS-inactive-startup-overhead",
+        "StRS-no-inbound-server-operation",
+        "StRS-session-lifecycle-control"
+      ],
+      "rationale": "Profiling showed the inactive startup regression comes from eager TypeScript/Jiti import of the full runtime graph rather than from network polling or timers. A demand-loaded bootstrap should preserve the visible extension surface while deferring heavy runtime work to explicit connection, setup, tool use, or recovery conditions.",
+      "acceptance_criteria": "Tests or profiling harnesses show importing the package entrypoint and handling a normal startup session_start leave broker/client/Telegram API modules unloaded, start no polling/IPC/timers/network work, and still register the expected commands/tool/prompt hook. Invoking /telegram-connect, setup, telegram_attach execution, or a matching session-replacement handoff loads the runtime exactly once and delegates to existing behavior.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-30",
+      "updated": "2026-04-30",
+      "sources": {
+        "inbox": [
+          "pi-telegram-slows-pi"
+        ]
+      }
     }
   ]
 }
