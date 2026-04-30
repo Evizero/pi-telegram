@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { BROKER_LEASE_MS, LOCK_DIR, LOCK_PATH, TAKEOVER_LOCK_DIR, TOKEN_PATH } from "../shared/config.js";
 import type { BrokerLease, TelegramConfig } from "../shared/types.js";
-import { now, processExists, readJson, writeJson } from "../shared/utils.js";
+import { invalidDurableJson, isRecord, now, processExists, readJson, writeJson } from "../shared/utils.js";
 
 export const STALE_BROKER_ERROR_MESSAGE = "stale_broker";
 export const BROKER_RENEWAL_CONTENTION_MESSAGE = "broker_renewal_contention";
@@ -50,6 +50,30 @@ function isFileExistsError(error: unknown): boolean {
 	return error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "EEXIST";
 }
 
+function validateLeaseArtifact(value: BrokerLease | undefined, path: string): BrokerLease | undefined {
+	if (value === undefined) return undefined;
+	if (!isRecord(value)) invalidDurableJson(path, "root value must be an object");
+	if (value.schemaVersion !== 1) invalidDurableJson(path, "schemaVersion must be 1");
+	if (typeof value.ownerId !== "string") invalidDurableJson(path, "ownerId must be a string");
+	if (typeof value.pid !== "number" || !Number.isFinite(value.pid)) invalidDurableJson(path, "pid must be a finite number");
+	if (typeof value.startedAtMs !== "number" || !Number.isFinite(value.startedAtMs)) invalidDurableJson(path, "startedAtMs must be a finite number");
+	if (typeof value.leaseEpoch !== "number" || !Number.isFinite(value.leaseEpoch)) invalidDurableJson(path, "leaseEpoch must be a finite number");
+	if (typeof value.socketPath !== "string") invalidDurableJson(path, "socketPath must be a string");
+	if (typeof value.leaseUntilMs !== "number" || !Number.isFinite(value.leaseUntilMs)) invalidDurableJson(path, "leaseUntilMs must be a finite number");
+	if (typeof value.updatedAtMs !== "number" || !Number.isFinite(value.updatedAtMs)) invalidDurableJson(path, "updatedAtMs must be a finite number");
+	if (value.botId !== undefined && (typeof value.botId !== "number" || !Number.isFinite(value.botId))) invalidDurableJson(path, "botId must be a finite number when present");
+	return value as BrokerLease;
+}
+
+function validateTakeoverLockArtifact(value: unknown, path: string): { pid?: number; updatedAtMs?: number } | undefined {
+	if (value === undefined) return undefined;
+	if (!isRecord(value)) invalidDurableJson(path, "root value must be an object");
+	if (value.pid !== undefined && (typeof value.pid !== "number" || !Number.isFinite(value.pid))) invalidDurableJson(path, "pid must be a finite number when present");
+	if (value.updatedAtMs !== undefined && (typeof value.updatedAtMs !== "number" || !Number.isFinite(value.updatedAtMs))) invalidDurableJson(path, "updatedAtMs must be a finite number when present");
+	if (value.pid === undefined && value.updatedAtMs === undefined) invalidDurableJson(path, "pid or updatedAtMs must be present");
+	return { pid: value.pid, updatedAtMs: value.updatedAtMs };
+}
+
 async function acquireTakeoverLock(ownerId: string, purpose?: "renew"): Promise<boolean> {
 	try {
 		await mkdir(TAKEOVER_LOCK_DIR);
@@ -57,7 +81,8 @@ async function acquireTakeoverLock(ownerId: string, purpose?: "renew"): Promise<
 		return true;
 	} catch (error) {
 		if (!isFileExistsError(error)) throw error;
-		const takeover = await readJson<{ pid?: number; updatedAtMs?: number }>(join(TAKEOVER_LOCK_DIR, "lock.json"));
+		const takeoverLockPath = join(TAKEOVER_LOCK_DIR, "lock.json");
+		const takeover = validateTakeoverLockArtifact(await readJson<unknown>(takeoverLockPath), takeoverLockPath);
 		const takeoverStats = await stat(TAKEOVER_LOCK_DIR).catch(() => undefined);
 		const staleEmptyTakeover = !takeover && takeoverStats && now() - takeoverStats.mtimeMs > BROKER_LEASE_MS;
 		const staleOwnedTakeover = takeover && ((takeover.pid && !processExists(takeover.pid)) || (takeover.updatedAtMs && now() - takeover.updatedAtMs > BROKER_LEASE_MS));
@@ -75,11 +100,11 @@ async function acquireTakeoverLock(ownerId: string, purpose?: "renew"): Promise<
 }
 
 export async function tryAcquireBrokerLease(deps: BrokerLeaseDeps): Promise<boolean> {
-	const existing = await deps.readLease();
+	const existing = validateLeaseArtifact(await deps.readLease(), LOCK_PATH);
 	if (await deps.isLeaseLive(existing)) return false;
 	if (!(await acquireTakeoverLock(deps.ownerId))) return false;
 	try {
-		const current = await deps.readLease();
+		const current = validateLeaseArtifact(await deps.readLease(), LOCK_PATH);
 		if (await deps.isLeaseLive(current)) return false;
 		await rm(LOCK_DIR, { recursive: true, force: true }).catch(() => undefined);
 		try {
@@ -114,7 +139,7 @@ export async function renewBrokerLease(deps: BrokerLeaseDeps): Promise<void> {
 	let locked = false;
 	try {
 		locked = await acquireTakeoverLock(deps.ownerId, "renew");
-		const lease = await deps.readLease();
+		const lease = validateLeaseArtifact(await deps.readLease(), LOCK_PATH);
 		if (!lease || lease.ownerId !== deps.ownerId || lease.leaseEpoch !== deps.getBrokerLeaseEpoch() || lease.leaseUntilMs <= now()) {
 			await deps.stopBroker();
 			return;

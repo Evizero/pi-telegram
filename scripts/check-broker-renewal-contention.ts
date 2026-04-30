@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,7 +7,7 @@ import { createBrokerHeartbeatState, BROKER_RENEWAL_CONTENTION_DIAGNOSTIC_THRESH
 import { BrokerRenewalContentionError, isBrokerRenewalContentionError, renewBrokerLease } from "../src/broker/lease.js";
 import { BROKER_DIR, BROKER_LEASE_MS, LOCK_PATH, TAKEOVER_LOCK_DIR, configureBrokerScope, configureBrokerScopeForBase } from "../src/shared/config.js";
 import type { BrokerLease, TelegramConfig } from "../src/shared/types.js";
-import { ensurePrivateDir, now, readJson, writeJson } from "../src/shared/utils.js";
+import { InvalidDurableJsonError, ensurePrivateDir, now, readJson, writeJson } from "../src/shared/utils.js";
 
 const ownerId = "owner-renew";
 const leaseEpoch = 7;
@@ -118,6 +118,32 @@ async function checkStaleTakeoverLockRecoveryStillRenews(): Promise<void> {
 		assert.equal(lease?.leaseEpoch, leaseEpoch);
 		assert.ok((lease?.updatedAtMs ?? 0) > now() - 1000, "stale takeover lock should not prevent renewal");
 		assert.equal(await readJson(join(TAKEOVER_LOCK_DIR, "lock.json")), undefined, "renewal should release the takeover lock it recovered");
+	});
+}
+
+async function checkInvalidBrokerLeaseDoesNotGetOverwritten(): Promise<void> {
+	await withBrokerDir(async () => {
+		await writeJson(LOCK_PATH, { schemaVersion: 1, ownerId: ownerId, pid: process.pid, startedAtMs: now(), socketPath: "/tmp/broker.sock", leaseUntilMs: now() - 1, updatedAtMs: now() });
+		await assert.rejects(
+			() => renewBrokerLease(leaseDeps()),
+			(error: unknown) => error instanceof InvalidDurableJsonError && error.message.includes(LOCK_PATH),
+		);
+		const raw = await readFile(LOCK_PATH, "utf8");
+		assert.match(raw, /socketPath/);
+		assert.doesNotMatch(raw, /leaseEpoch/);
+	});
+}
+
+async function checkInvalidTakeoverLockIsReportedAndPreserved(): Promise<void> {
+	await withBrokerDir(async () => {
+		await writeCurrentLease(liveLease({ leaseUntilMs: now() - 1 }));
+		await writeJson(join(TAKEOVER_LOCK_DIR, "lock.json"), { ownerId: "contender" });
+		await assert.rejects(
+			() => renewBrokerLease(leaseDeps()),
+			(error: unknown) => error instanceof InvalidDurableJsonError && error.message.includes(join(TAKEOVER_LOCK_DIR, "lock.json")),
+		);
+		const takeover = await readJson<Record<string, unknown>>(join(TAKEOVER_LOCK_DIR, "lock.json"));
+		assert.deepEqual(takeover, { ownerId: "contender" });
 	});
 }
 
@@ -259,6 +285,8 @@ async function checkHeartbeatCyclesDoNotOverlap(): Promise<void> {
 await checkLiveTakeoverContentionIsClassifiedWithoutStandDown();
 await checkTrueLeaseLossStillStandsDown();
 await checkStaleTakeoverLockRecoveryStillRenews();
+await checkInvalidBrokerLeaseDoesNotGetOverwritten();
+await checkInvalidTakeoverLockIsReportedAndPreserved();
 await checkHeartbeatOneOffContentionDoesNotAdvanceFailureOrStandDown();
 await checkRepeatedContentionReportsPiSafeDiagnosticOnce();
 await checkGenericHeartbeatFailuresUseDiagnosticsAndStandDownAfterTwo();

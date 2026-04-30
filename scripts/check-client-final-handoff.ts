@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -28,7 +28,7 @@ async function exists(path: string): Promise<boolean> {
 	return await stat(path).then(() => true, () => false);
 }
 
-function makeHandoff(options?: { brokerState?: BrokerState; postAssistantFinal?: (finalPayload: AssistantFinalPayload) => Promise<void>; postSucceeds?: () => boolean; accepted?: AssistantFinalPayload[]; connectionNonce?: string; connectionStartedAtMs?: number; disconnectedTurns?: Set<string>; deferredPayload?: AssistantFinalPayload }) {
+function makeHandoff(options?: { brokerState?: BrokerState; postAssistantFinal?: (finalPayload: AssistantFinalPayload) => Promise<void>; postSucceeds?: () => boolean; accepted?: AssistantFinalPayload[]; connectionNonce?: string; connectionStartedAtMs?: number; disconnectedTurns?: Set<string>; deferredPayload?: AssistantFinalPayload; reportInvalidDurableState?: (path: string, error: unknown) => void }) {
 	const accepted = options?.accepted ?? [];
 	let connectedBrokerSocketPath = "broker-a";
 	const handoff = new ClientAssistantFinalHandoff({
@@ -66,6 +66,7 @@ function makeHandoff(options?: { brokerState?: BrokerState; postAssistantFinal?:
 		setActiveTelegramTurn: () => undefined,
 		rememberCompletedLocalTurn: () => undefined,
 		startNextTelegramTurn: () => undefined,
+		reportInvalidDurableState: options?.reportInvalidDurableState,
 	});
 	return { handoff, accepted, connectedBrokerSocketPath: () => connectedBrokerSocketPath };
 }
@@ -189,6 +190,25 @@ async function run(): Promise<void> {
 		await handoff.processPendingClientFinalFiles();
 		assert(accepted.length === 0, "replacement without stale stand-down fence must not mutate broker final state");
 		assert(!(await exists(join(handoff.pendingFinalsDir(), "session-1.json"))), "unfenced stale pending-final file should be discarded");
+	}
+	{
+		const brokerState = state();
+		const accepted: AssistantFinalPayload[] = [];
+		const invalidPaths: string[] = [];
+		const { handoff } = makeHandoff({ brokerState, accepted, reportInvalidDurableState: (path) => { invalidPaths.push(path); } });
+		await mkdir(handoff.pendingFinalsDir(), { recursive: true });
+		const invalidPath = join(handoff.pendingFinalsDir(), "bad-session.json");
+		const malformedPath = join(handoff.pendingFinalsDir(), "malformed-session.json");
+		const validPath = join(handoff.pendingFinalsDir(), "session-1.json");
+		await writeFile(invalidPath, JSON.stringify({ schemaVersion: 2, sessionId: "bad-session", connectionNonce: "conn-current", connectionStartedAtMs: 10, payloads: [{ turn: { turnId: "bad-turn" }, attachments: [] }] }));
+		await writeFile(malformedPath, "{not-json}\n");
+		await writeFile(validPath, JSON.stringify({ schemaVersion: 2, sessionId: "session-1", connectionNonce: "conn-current", connectionStartedAtMs: 10, payloads: [payload()] }));
+		await handoff.processPendingClientFinalFiles();
+		assert(accepted.some((candidate) => candidate.turn.turnId === "turn-1"), "valid pending-final file should still be processed when other files are bad");
+		assert(await exists(invalidPath), "schema-invalid pending-final file should be preserved");
+		assert(await exists(malformedPath), "malformed pending-final file should be preserved");
+		assert(!(await exists(validPath)), "valid pending-final file should be removed after processing");
+		assert(invalidPaths.includes(invalidPath) && invalidPaths.includes(malformedPath), "bad pending-final files should be reported with their paths");
 	}
 	{
 		const brokerState = state();

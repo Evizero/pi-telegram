@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 
 import type { TelegramConfig } from "./types.js";
-import { ensurePrivateDir, readJson, writeJson } from "./utils.js";
+import { ensurePrivateDir, invalidDurableJson, isRecord, readJson, writeJson } from "./utils.js";
 
 export const CONFIG_PATH = join(homedir(), ".pi", "agent", "telegram.json");
 const BASE_BROKER_DIR = join(homedir(), ".pi", "agent", "telegram-broker");
@@ -66,24 +66,119 @@ Telegram bridge extension is active.
 
 type RawTelegramConfig = TelegramConfig & Record<string, unknown>;
 
+function configValue(raw: RawTelegramConfig, camel: keyof TelegramConfig, snake: string): unknown {
+	if (Object.prototype.hasOwnProperty.call(raw, camel)) return raw[camel];
+	if (Object.prototype.hasOwnProperty.call(raw, snake)) return raw[snake];
+	return undefined;
+}
+
+function validateRawField(path: string, raw: RawTelegramConfig, key: string, kind: "string" | "number" | "boolean" | "chatId" | "topicMode" | "fallbackMode"): void {
+	if (!Object.prototype.hasOwnProperty.call(raw, key)) return;
+	const value = raw[key];
+	if (value === undefined) return;
+	if (kind === "string" && typeof value !== "string") invalidDurableJson(path, `${key} must be a string when present`);
+	if (kind === "number" && (typeof value !== "number" || !Number.isFinite(value))) invalidDurableJson(path, `${key} must be a finite number when present`);
+	if (kind === "boolean" && typeof value !== "boolean") invalidDurableJson(path, `${key} must be a boolean when present`);
+	if (kind === "chatId" && typeof value !== "number" && typeof value !== "string") invalidDurableJson(path, `${key} must be a number or string when present`);
+	if (kind === "chatId" && typeof value === "number" && !Number.isFinite(value)) invalidDurableJson(path, `${key} must be finite when numeric`);
+	if (kind === "topicMode" && !validTopicMode(value)) invalidDurableJson(path, `${key} must be a known topic mode when present`);
+	if (kind === "fallbackMode" && !validFallbackMode(value)) invalidDurableJson(path, `${key} must be a known fallback mode when present`);
+}
+
+function readOptionalString(raw: RawTelegramConfig, camel: keyof TelegramConfig, snake: string, context = "telegram config"): string | undefined {
+	const value = configValue(raw, camel, snake);
+	if (value === undefined) return undefined;
+	if (typeof value !== "string") invalidDurableJson(context, `${String(camel)} must be a string when present`);
+	return value;
+}
+
+function readOptionalNumber(raw: RawTelegramConfig, camel: keyof TelegramConfig, snake: string, context = "telegram config"): number | undefined {
+	const value = configValue(raw, camel, snake);
+	if (value === undefined) return undefined;
+	if (typeof value !== "number" || !Number.isFinite(value)) invalidDurableJson(context, `${String(camel)} must be a finite number when present`);
+	return value;
+}
+
+function readOptionalBoolean(raw: RawTelegramConfig, camel: keyof TelegramConfig, snake: string, context = "telegram config"): boolean | undefined {
+	const value = configValue(raw, camel, snake);
+	if (value === undefined) return undefined;
+	if (typeof value !== "boolean") invalidDurableJson(context, `${String(camel)} must be a boolean when present`);
+	return value;
+}
+
+function validateRawTelegramConfig(path: string, value: unknown): RawTelegramConfig | undefined {
+	if (value === undefined) return undefined;
+	if (!isRecord(value)) invalidDurableJson(path, "root value must be an object");
+	const raw = value as RawTelegramConfig;
+	for (const key of ["botToken", "bot_token", "botUsername", "bot_username", "pairingCodeHash", "pairing_code_hash"]) validateRawField(path, raw, key, "string");
+	for (const key of ["botId", "bot_id", "allowedUserId", "allowed_user_id", "allowedChatId", "allowed_chat_id", "pairingCreatedAtMs", "pairing_created_at_ms", "pairingExpiresAtMs", "pairing_expires_at_ms", "pairingFailedAttempts", "pairing_failed_attempts", "version", "lastUpdateId", "last_update_id"]) validateRawField(path, raw, key, "number");
+	for (const key of ["topicsEnabled", "topics_enabled"]) validateRawField(path, raw, key, "boolean");
+	for (const key of ["fallbackSupergroupChatId", "fallback_supergroup_chat_id"]) validateRawField(path, raw, key, "chatId");
+	for (const key of ["topicMode", "topic_mode"]) validateRawField(path, raw, key, "topicMode");
+	for (const key of ["fallbackMode", "fallback_mode"]) validateRawField(path, raw, key, "fallbackMode");
+	return raw;
+}
+
+function validTopicMode(value: unknown): value is TelegramConfig["topicMode"] {
+	return value === "auto" || value === "private_topics" || value === "forum_supergroup" || value === "single_chat_selector" || value === "disabled";
+}
+
+function validFallbackMode(value: unknown): value is TelegramConfig["fallbackMode"] {
+	return value === "forum_supergroup" || value === "single_chat_selector" || value === "disabled";
+}
+
+function readOptionalTopicMode(raw: RawTelegramConfig, context = "telegram config"): TelegramConfig["topicMode"] | undefined {
+	const value = configValue(raw, "topicMode", "topic_mode");
+	if (value === undefined) return undefined;
+	if (!validTopicMode(value)) invalidDurableJson(context, "topicMode must be a known topic mode when present");
+	return value;
+}
+
+function readOptionalFallbackMode(raw: RawTelegramConfig, context = "telegram config"): TelegramConfig["fallbackMode"] | undefined {
+	const value = configValue(raw, "fallbackMode", "fallback_mode");
+	if (value === undefined) return undefined;
+	if (!validFallbackMode(value)) invalidDurableJson(context, "fallbackMode must be a known fallback mode when present");
+	return value;
+}
+
+function readOptionalChatId(raw: RawTelegramConfig, context = "telegram config"): number | string | undefined {
+	const value = configValue(raw, "fallbackSupergroupChatId", "fallback_supergroup_chat_id");
+	if (value === undefined) return undefined;
+	if (typeof value !== "number" && typeof value !== "string") invalidDurableJson(context, "fallbackSupergroupChatId must be a number or string when present");
+	if (typeof value === "number" && !Number.isFinite(value)) invalidDurableJson(context, "fallbackSupergroupChatId must be finite when numeric");
+	return value;
+}
+
+function normalizeRawTelegramConfig(raw: RawTelegramConfig): TelegramConfig {
+	const config: TelegramConfig = {};
+	function assign<TKey extends keyof TelegramConfig>(key: TKey, value: TelegramConfig[TKey] | undefined): void {
+		if (value !== undefined) config[key] = value;
+	}
+	assign("botToken", readOptionalString(raw, "botToken", "bot_token"));
+	assign("botUsername", readOptionalString(raw, "botUsername", "bot_username"));
+	assign("botId", readOptionalNumber(raw, "botId", "bot_id"));
+	assign("allowedUserId", readOptionalNumber(raw, "allowedUserId", "allowed_user_id"));
+	assign("allowedChatId", readOptionalNumber(raw, "allowedChatId", "allowed_chat_id"));
+	assign("fallbackSupergroupChatId", readOptionalChatId(raw));
+	assign("pairingCodeHash", readOptionalString(raw, "pairingCodeHash", "pairing_code_hash"));
+	assign("pairingCreatedAtMs", readOptionalNumber(raw, "pairingCreatedAtMs", "pairing_created_at_ms"));
+	assign("pairingExpiresAtMs", readOptionalNumber(raw, "pairingExpiresAtMs", "pairing_expires_at_ms"));
+	assign("pairingFailedAttempts", readOptionalNumber(raw, "pairingFailedAttempts", "pairing_failed_attempts"));
+	assign("topicsEnabled", readOptionalBoolean(raw, "topicsEnabled", "topics_enabled"));
+	assign("topicMode", readOptionalTopicMode(raw));
+	assign("fallbackMode", readOptionalFallbackMode(raw));
+	assign("version", readOptionalNumber(raw, "version", "version"));
+	assign("lastUpdateId", readOptionalNumber(raw, "lastUpdateId", "last_update_id"));
+	return config;
+}
+
 export async function readConfig(): Promise<TelegramConfig> {
-	const brokerRaw = (await readJson<RawTelegramConfig>(join(BASE_BROKER_DIR, "config.json"))) ?? {};
-	const raw = { ...brokerRaw, ...((await readJson<RawTelegramConfig>(CONFIG_PATH)) ?? {}) };
+	const brokerRaw = validateRawTelegramConfig(join(BASE_BROKER_DIR, "config.json"), await readJson<unknown>(join(BASE_BROKER_DIR, "config.json")));
+	const userRaw = validateRawTelegramConfig(CONFIG_PATH, await readJson<unknown>(CONFIG_PATH));
+	const raw = { ...(brokerRaw ? normalizeRawTelegramConfig(brokerRaw) : {}), ...(userRaw ? normalizeRawTelegramConfig(userRaw) : {}) };
 	const config: TelegramConfig = {
 		...raw,
-		botToken: raw.botToken ?? (raw.bot_token as string | undefined) ?? process.env.PI_TELEGRAM_BOT_TOKEN,
-		botUsername: raw.botUsername ?? (raw.bot_username as string | undefined),
-		botId: raw.botId ?? (raw.bot_id as number | undefined),
-		allowedUserId: raw.allowedUserId ?? (raw.allowed_user_id as number | undefined),
-		allowedChatId: raw.allowedChatId ?? (raw.allowed_chat_id as number | undefined),
-		fallbackSupergroupChatId: raw.fallbackSupergroupChatId ?? (raw.fallback_supergroup_chat_id as number | string | undefined),
-		pairingCodeHash: raw.pairingCodeHash ?? (raw.pairing_code_hash as string | undefined),
-		pairingCreatedAtMs: raw.pairingCreatedAtMs ?? (raw.pairing_created_at_ms as number | undefined),
-		pairingExpiresAtMs: raw.pairingExpiresAtMs ?? (raw.pairing_expires_at_ms as number | undefined),
-		pairingFailedAttempts: raw.pairingFailedAttempts ?? (raw.pairing_failed_attempts as number | undefined),
-		topicsEnabled: raw.topicsEnabled ?? (raw.topics_enabled as boolean | undefined),
-		topicMode: raw.topicMode ?? (raw.topic_mode as TelegramConfig["topicMode"] | undefined),
-		fallbackMode: raw.fallbackMode ?? (raw.fallback_mode as TelegramConfig["fallbackMode"] | undefined),
+		botToken: raw.botToken ?? process.env.PI_TELEGRAM_BOT_TOKEN,
 	};
 	if (config.allowedUserId !== undefined && config.allowedChatId === undefined) {
 		config.allowedChatId = config.allowedUserId;

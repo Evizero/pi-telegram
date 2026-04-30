@@ -1,13 +1,13 @@
 import type { Server } from "node:http";
 import { randomBytes } from "node:crypto";
-import { readdir, rm } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { BROKER_DIR, BROKER_HEARTBEAT_MS, CLIENT_HEARTBEAT_MS, DISCONNECT_REQUESTS_DIR, LOCK_DIR, LOCK_PATH, SESSION_REPLACEMENT_HANDOFFS_DIR, STATE_PATH, TEMP_DIR } from "./shared/config.js";
 import type { BrokerLease, BrokerState, IpcEnvelope, PendingTelegramTurn, AssistantFinalPayload, SessionRegistration, TelegramConfig, TelegramMediaGroupState, TelegramMessage, TelegramRoute } from "./shared/types.js";
 import { configureBrokerScope, readConfig, writeConfig } from "./shared/config.js";
 import { ActivityRenderer, ActivityReporter, type ActivityUpdatePayload } from "./broker/activity.js";
-import { isRouteScopedDisconnectRequest, processDisconnectRequestsInBroker, type PendingDisconnectRequest } from "./broker/disconnect-requests.js";
+import { isRouteScopedDisconnectRequest, processDisconnectRequestsInBroker, readPendingDisconnectRequestFromPath, readPendingDisconnectRequestsFromDir, type PendingDisconnectRequest } from "./broker/disconnect-requests.js";
 import { handleBrokerBackgroundError, runBrokerBackgroundTask } from "./broker/background.js";
 import { createBrokerHeartbeatState, runBrokerHeartbeatCycle } from "./broker/heartbeat.js";
 import { renewBrokerLease as renewBrokerLeaseFile, StaleBrokerError, tryAcquireBrokerLease } from "./broker/lease.js";
@@ -25,7 +25,7 @@ import { TelegramCommandRouter } from "./broker/commands.js";
 import { QUEUED_CONTROL_TEXT } from "./shared/queued-control-text.js";
 import { AssistantFinalDeliveryLedger } from "./broker/finals.js";
 import { handleLocalUserMirrorMessage } from "./broker/local-user-message.js";
-import { ensurePrivateDir, errorMessage, now, processExists, randomId, readJson, writeJson } from "./shared/utils.js";
+import { ensurePrivateDir, errorMessage, invalidDurableJson, isRecord, now, processExists, randomId, readJson, writeJson } from "./shared/utils.js";
 import { createIpcServer as createIpcServerBase, postIpc as postIpcBase } from "./shared/ipc.js";
 import { callTelegram as callTelegramBase, callTelegramMultipart as callTelegramMultipartBase, downloadTelegramFile as downloadTelegramFileBase, getTelegramRetryAfterMs } from "./telegram/api.js";
 import { withTelegramRetry } from "./telegram/retry.js";
@@ -98,6 +98,7 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 		setActiveTelegramTurn: (turn) => { clientHost.setActiveTelegramTurn(turn); },
 		rememberCompletedLocalTurn: (turnId) => clientHost.rememberCompletedLocalTurn(turnId),
 		startNextTelegramTurn: () => clientHost.startNextTelegramTurn(),
+		reportInvalidDurableState,
 	});
 	activeTurnFinalizer = new RetryAwareTelegramTurnFinalizer({
 		getActiveTelegramTurn: () => clientHost.getActiveTelegramTurn(),
@@ -189,7 +190,7 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 		retryPendingTurns: () => { runDetachedBrokerTask("pending turn retry", retryPendingTurns); },
 		kickAssistantFinalLedger: () => assistantFinalLedger.kick(),
 		createTelegramTurnForSession: (messages, sessionIdForTurn) => buildTelegramTurnForSession(messages, sessionIdForTurn, downloadTelegramFile),
-		consumeReplacementHandoff: (state, registration) => consumeSessionReplacementHandoffInBroker({ dir: SESSION_REPLACEMENT_HANDOFFS_DIR, brokerState: state, registration }),
+		consumeReplacementHandoff: (state, registration) => consumeSessionReplacementHandoffInBroker({ dir: SESSION_REPLACEMENT_HANDOFFS_DIR, brokerState: state, registration, onInvalidHandoff: reportInvalidDurableState }),
 		staleStandDownGraceMs: CLIENT_HEARTBEAT_MS * 2 + 500,
 	});
 	let updateHandlers!: ReturnType<typeof createRuntimeUpdateHandlers>;
@@ -399,19 +400,333 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 		await ensurePrivateDir(DISCONNECT_REQUESTS_DIR);
 		await writeJson(disconnectRequestPath(request.sessionId), { schemaVersion: 1, ...request });
 	}
-	async function readDisconnectRequest(targetSessionId: string): Promise<PendingDisconnectRequest | undefined> {
-		const request = await readJson<PendingDisconnectRequest & { schemaVersion?: number }>(disconnectRequestPath(targetSessionId));
-		if (!request?.sessionId || request.requestedAtMs === undefined) return undefined;
+	function validateBrokerLease(path: string, value: unknown): BrokerLease | undefined {
+		if (value === undefined) return undefined;
+		if (!isRecord(value)) invalidDurableJson(path, "root value must be an object");
+		if (value.schemaVersion !== 1) invalidDurableJson(path, "schemaVersion must be 1");
+		if (typeof value.ownerId !== "string") invalidDurableJson(path, "ownerId must be a string");
+		if (typeof value.pid !== "number" || !Number.isFinite(value.pid)) invalidDurableJson(path, "pid must be a finite number");
+		if (typeof value.startedAtMs !== "number" || !Number.isFinite(value.startedAtMs)) invalidDurableJson(path, "startedAtMs must be a finite number");
+		if (typeof value.leaseEpoch !== "number" || !Number.isFinite(value.leaseEpoch)) invalidDurableJson(path, "leaseEpoch must be a finite number");
+		if (typeof value.socketPath !== "string") invalidDurableJson(path, "socketPath must be a string");
+		if (typeof value.leaseUntilMs !== "number" || !Number.isFinite(value.leaseUntilMs)) invalidDurableJson(path, "leaseUntilMs must be a finite number");
+		if (typeof value.updatedAtMs !== "number" || !Number.isFinite(value.updatedAtMs)) invalidDurableJson(path, "updatedAtMs must be a finite number");
+		if (value.botId !== undefined && (typeof value.botId !== "number" || !Number.isFinite(value.botId))) invalidDurableJson(path, "botId must be a finite number when present");
+		return value as unknown as BrokerLease;
+	}
+
+	function validateFiniteNumber(path: string, value: unknown, field: string): number {
+		if (typeof value !== "number" || !Number.isFinite(value)) invalidDurableJson(path, `${field} must be a finite number`);
+		return value;
+	}
+
+	function validateOptionalFiniteNumber(path: string, value: unknown, field: string): number | undefined {
+		if (value === undefined) return undefined;
+		return validateFiniteNumber(path, value, field);
+	}
+
+	function validateOptionalString(path: string, value: unknown, field: string): string | undefined {
+		if (value === undefined) return undefined;
+		if (typeof value !== "string") invalidDurableJson(path, `${field} must be a string when present`);
+		return value;
+	}
+
+	function validateChatId(path: string, value: unknown, field: string): number | string {
+		if (typeof value !== "number" && typeof value !== "string") invalidDurableJson(path, `${field} must be a number or string`);
+		if (typeof value === "number" && !Number.isFinite(value)) invalidDurableJson(path, `${field} must be finite when numeric`);
+		return value;
+	}
+
+	function validateQueuedAttachment(path: string, value: unknown, field: string): { path: string; fileName: string } {
+		if (!isRecord(value)) invalidDurableJson(path, `${field} must be an object`);
+		if (typeof value.path !== "string") invalidDurableJson(path, `${field}.path must be a string`);
+		if (typeof value.fileName !== "string") invalidDurableJson(path, `${field}.fileName must be a string`);
+		return { path: value.path, fileName: value.fileName };
+	}
+
+	function validatePendingTurn(path: string, value: unknown, field: string): PendingTelegramTurn {
+		if (!isRecord(value)) invalidDurableJson(path, `${field} must be an object`);
+		if (typeof value.turnId !== "string") invalidDurableJson(path, `${field}.turnId must be a string`);
+		if (typeof value.sessionId !== "string") invalidDurableJson(path, `${field}.sessionId must be a string`);
+		const chatId = validateChatId(path, value.chatId, `${field}.chatId`);
+		const messageThreadId = validateOptionalFiniteNumber(path, value.messageThreadId, `${field}.messageThreadId`);
+		const replyToMessageId = validateFiniteNumber(path, value.replyToMessageId, `${field}.replyToMessageId`);
+		if (!Array.isArray(value.queuedAttachments)) invalidDurableJson(path, `${field}.queuedAttachments must be an array`);
+		if (!Array.isArray(value.content)) invalidDurableJson(path, `${field}.content must be an array`);
+		if (typeof value.historyText !== "string") invalidDurableJson(path, `${field}.historyText must be a string`);
+		const routeId = validateOptionalString(path, value.routeId, `${field}.routeId`);
+		const deliveryMode = value.deliveryMode;
+		if (deliveryMode !== undefined && deliveryMode !== "steer" && deliveryMode !== "followUp") invalidDurableJson(path, `${field}.deliveryMode must be steer or followUp when present`);
+		const blockedByManualCompactionOperationId = validateOptionalString(path, value.blockedByManualCompactionOperationId, `${field}.blockedByManualCompactionOperationId`);
 		return {
-			sessionId: request.sessionId,
-			requestedAtMs: request.requestedAtMs,
-			connectionNonce: request.connectionNonce,
-			connectionStartedAtMs: request.connectionStartedAtMs,
-			routeId: request.routeId,
-			chatId: request.chatId,
-			messageThreadId: request.messageThreadId,
-			routeCreatedAtMs: request.routeCreatedAtMs,
+			turnId: value.turnId,
+			sessionId: value.sessionId,
+			routeId,
+			chatId,
+			messageThreadId,
+			replyToMessageId,
+			queuedAttachments: value.queuedAttachments.map((attachment, index) => validateQueuedAttachment(path, attachment, `${field}.queuedAttachments[${index}]`)),
+			content: value.content as PendingTelegramTurn["content"],
+			historyText: value.historyText,
+			deliveryMode,
+			blockedByManualCompactionOperationId,
 		};
+	}
+
+	function validateBrokerRoute(path: string, value: unknown, field: string): TelegramRoute {
+		if (!isRecord(value)) invalidDurableJson(path, `${field} must be an object`);
+		if (typeof value.routeId !== "string") invalidDurableJson(path, `${field}.routeId must be a string`);
+		if (typeof value.sessionId !== "string") invalidDurableJson(path, `${field}.sessionId must be a string`);
+		const chatId = validateChatId(path, value.chatId, `${field}.chatId`);
+		const messageThreadId = validateOptionalFiniteNumber(path, value.messageThreadId, `${field}.messageThreadId`);
+		if (value.routeMode !== "private_topic" && value.routeMode !== "forum_supergroup_topic" && value.routeMode !== "single_chat_selector") invalidDurableJson(path, `${field}.routeMode must be a known route mode`);
+		if (typeof value.topicName !== "string") invalidDurableJson(path, `${field}.topicName must be a string`);
+		const createdAtMs = validateFiniteNumber(path, value.createdAtMs, `${field}.createdAtMs`);
+		const updatedAtMs = validateFiniteNumber(path, value.updatedAtMs, `${field}.updatedAtMs`);
+		return { routeId: value.routeId, sessionId: value.sessionId, chatId, messageThreadId, routeMode: value.routeMode, topicName: value.topicName, createdAtMs, updatedAtMs };
+	}
+
+	function validateNumberArray(path: string, value: unknown, field: string): void {
+		if (value === undefined) return;
+		if (!Array.isArray(value)) invalidDurableJson(path, `${field} must be an array when present`);
+		value.forEach((entry, index) => validateFiniteNumber(path, entry, `${field}[${index}]`));
+	}
+
+	function validateStringArray(path: string, value: unknown, field: string): void {
+		if (value === undefined) return;
+		if (!Array.isArray(value)) invalidDurableJson(path, `${field} must be an array when present`);
+		value.forEach((entry, index) => {
+			if (typeof entry !== "string") invalidDurableJson(path, `${field}[${index}] must be a string`);
+		});
+	}
+
+	function validateOptionalBoolean(path: string, value: unknown, field: string): void {
+		if (value !== undefined && typeof value !== "boolean") invalidDurableJson(path, `${field} must be a boolean when present`);
+	}
+
+	function validateTelegramUpdate(path: string, value: unknown, field: string): void {
+		if (!isRecord(value)) invalidDurableJson(path, `${field} must be an object`);
+		validateFiniteNumber(path, value.update_id, `${field}.update_id`);
+		for (const messageField of ["message", "edited_message"]) {
+			const message = value[messageField];
+			if (message === undefined) continue;
+			if (!isRecord(message)) invalidDurableJson(path, `${field}.${messageField} must be an object when present`);
+			validateFiniteNumber(path, message.message_id, `${field}.${messageField}.message_id`);
+			if (!isRecord(message.chat)) invalidDurableJson(path, `${field}.${messageField}.chat must be an object`);
+			validateChatId(path, message.chat.id, `${field}.${messageField}.chat.id`);
+			if (typeof message.chat.type !== "string") invalidDurableJson(path, `${field}.${messageField}.chat.type must be a string`);
+		}
+		if (value.callback_query !== undefined && !isRecord(value.callback_query)) invalidDurableJson(path, `${field}.callback_query must be an object when present`);
+	}
+
+	function validateFinalProgress(path: string, value: unknown, field: string): void {
+		if (!isRecord(value)) invalidDurableJson(path, `${field} must be an object`);
+		for (const key of ["activityCompleted", "typingStopped", "previewDetached", "previewCleared", "previewCleanupDone", "legacyPreviewEditedFinalReset"]) validateOptionalBoolean(path, value[key], `${field}.${key}`);
+		if (value.previewCleanupTerminalReason !== undefined && typeof value.previewCleanupTerminalReason !== "string") invalidDurableJson(path, `${field}.previewCleanupTerminalReason must be a string when present`);
+		if (value.previewMode !== undefined && value.previewMode !== "draft" && value.previewMode !== "message") invalidDurableJson(path, `${field}.previewMode must be draft or message when present`);
+		validateOptionalFiniteNumber(path, value.previewMessageId, `${field}.previewMessageId`);
+		if (value.textHash !== undefined && typeof value.textHash !== "string") invalidDurableJson(path, `${field}.textHash must be a string when present`);
+		validateStringArray(path, value.chunks, `${field}.chunks`);
+		validateNumberArray(path, value.sentChunkIndexes, `${field}.sentChunkIndexes`);
+		if (value.sentChunkMessageIds !== undefined) {
+			if (!isRecord(value.sentChunkMessageIds)) invalidDurableJson(path, `${field}.sentChunkMessageIds must be an object when present`);
+			for (const [key, messageId] of Object.entries(value.sentChunkMessageIds)) validateFiniteNumber(path, messageId, `${field}.sentChunkMessageIds.${key}`);
+		}
+		validateNumberArray(path, value.sentAttachmentIndexes, `${field}.sentAttachmentIndexes`);
+	}
+
+	function validateBrokerSession(path: string, value: unknown, field: string): void {
+		if (!isRecord(value)) invalidDurableJson(path, `${field} must be an object`);
+		for (const key of ["sessionId", "ownerId", "cwd", "projectName", "connectionNonce", "clientSocketPath", "topicName"]) validateOptionalString(path, value[key], `${field}.${key}`) ?? invalidDurableJson(path, `${field}.${key} must be a string`);
+		validateFiniteNumber(path, value.pid, `${field}.pid`);
+		if (value.status !== "connecting" && value.status !== "idle" && value.status !== "busy" && value.status !== "offline" && value.status !== "error") invalidDurableJson(path, `${field}.status must be a known session status`);
+		for (const key of ["queuedTurnCount", "lastHeartbeatMs", "connectedAtMs", "connectionStartedAtMs"]) validateFiniteNumber(path, value[key], `${field}.${key}`);
+		for (const key of ["activeTurnId", "gitBranch", "gitRoot", "gitHead", "piSessionName", "model", "staleStandDownConnectionNonce"]) validateOptionalString(path, value[key], `${field}.${key}`);
+		for (const key of ["staleStandDownRequestedAtMs", "reconnectGraceStartedAtMs"]) validateOptionalFiniteNumber(path, value[key], `${field}.${key}`);
+	}
+
+	function validateBrokerState(path: string, value: unknown): BrokerState | undefined {
+		if (value === undefined) return undefined;
+		if (!isRecord(value)) invalidDurableJson(path, "root value must be an object");
+		if (value.schemaVersion !== 1) invalidDurableJson(path, "schemaVersion must be 1");
+		validateOptionalFiniteNumber(path, value.lastProcessedUpdateId, "lastProcessedUpdateId");
+		if (!Array.isArray(value.recentUpdateIds)) invalidDurableJson(path, "recentUpdateIds must be an array");
+		value.recentUpdateIds.forEach((updateId, index) => validateFiniteNumber(path, updateId, `recentUpdateIds[${index}]`));
+		if (!isRecord(value.sessions)) invalidDurableJson(path, "sessions must be an object");
+		if (!isRecord(value.routes)) invalidDurableJson(path, "routes must be an object");
+		for (const [key, session] of Object.entries(value.sessions)) validateBrokerSession(path, session, `sessions.${key}`);
+		for (const [key, route] of Object.entries(value.routes)) validateBrokerRoute(path, route, `routes.${key}`);
+		if (typeof value.createdAtMs !== "number" || !Number.isFinite(value.createdAtMs)) invalidDurableJson(path, "createdAtMs must be a finite number");
+		if (typeof value.updatedAtMs !== "number" || !Number.isFinite(value.updatedAtMs)) invalidDurableJson(path, "updatedAtMs must be a finite number");
+		for (const [key, field] of Object.entries({ pendingMediaGroups: value.pendingMediaGroups, pendingTurns: value.pendingTurns, pendingAssistantFinals: value.pendingAssistantFinals, pendingRouteCleanups: value.pendingRouteCleanups, telegramOutbox: value.telegramOutbox, assistantPreviewMessages: value.assistantPreviewMessages, selectorSelections: value.selectorSelections, modelPickers: value.modelPickers, gitControls: value.gitControls, queuedTurnControls: value.queuedTurnControls, pendingManualCompactions: value.pendingManualCompactions })) {
+			if (field !== undefined && !isRecord(field)) invalidDurableJson(path, `${key} must be an object when present`);
+		}
+		if (isRecord(value.pendingTurns)) {
+			for (const [key, entry] of Object.entries(value.pendingTurns)) {
+				if (!isRecord(entry)) invalidDurableJson(path, `pendingTurns.${key} must be an object`);
+				validatePendingTurn(path, entry.turn, `pendingTurns.${key}.turn`);
+				validateFiniteNumber(path, entry.updatedAtMs, `pendingTurns.${key}.updatedAtMs`);
+			}
+		}
+		if (isRecord(value.pendingAssistantFinals)) {
+			for (const [key, final] of Object.entries(value.pendingAssistantFinals)) {
+				if (!isRecord(final)) invalidDurableJson(path, `pendingAssistantFinals.${key} must be an object`);
+				validatePendingTurn(path, final.turn, `pendingAssistantFinals.${key}.turn`);
+				if (final.text !== undefined && typeof final.text !== "string") invalidDurableJson(path, `pendingAssistantFinals.${key}.text must be a string when present`);
+				if (final.stopReason !== undefined && typeof final.stopReason !== "string") invalidDurableJson(path, `pendingAssistantFinals.${key}.stopReason must be a string when present`);
+				if (final.errorMessage !== undefined && typeof final.errorMessage !== "string") invalidDurableJson(path, `pendingAssistantFinals.${key}.errorMessage must be a string when present`);
+				if (!Array.isArray(final.attachments)) invalidDurableJson(path, `pendingAssistantFinals.${key}.attachments must be an array`);
+				final.attachments.forEach((attachment, index) => validateQueuedAttachment(path, attachment, `pendingAssistantFinals.${key}.attachments[${index}]`));
+				if (final.status !== "pending" && final.status !== "delivering" && final.status !== "terminal") invalidDurableJson(path, `pendingAssistantFinals.${key}.status must be a known final status`);
+				validateFiniteNumber(path, final.createdAtMs, `pendingAssistantFinals.${key}.createdAtMs`);
+				validateFiniteNumber(path, final.updatedAtMs, `pendingAssistantFinals.${key}.updatedAtMs`);
+				validateOptionalFiniteNumber(path, final.retryAtMs, `pendingAssistantFinals.${key}.retryAtMs`);
+				if (final.terminalReason !== undefined && typeof final.terminalReason !== "string") invalidDurableJson(path, `pendingAssistantFinals.${key}.terminalReason must be a string when present`);
+				validateFinalProgress(path, final.progress, `pendingAssistantFinals.${key}.progress`);
+			}
+		}
+		if (isRecord(value.pendingRouteCleanups)) {
+			for (const [key, cleanup] of Object.entries(value.pendingRouteCleanups)) {
+				if (!isRecord(cleanup)) invalidDurableJson(path, `pendingRouteCleanups.${key} must be an object`);
+				validateBrokerRoute(path, cleanup.route, `pendingRouteCleanups.${key}.route`);
+				validateFiniteNumber(path, cleanup.createdAtMs, `pendingRouteCleanups.${key}.createdAtMs`);
+				validateFiniteNumber(path, cleanup.updatedAtMs, `pendingRouteCleanups.${key}.updatedAtMs`);
+				validateOptionalFiniteNumber(path, cleanup.retryAtMs, `pendingRouteCleanups.${key}.retryAtMs`);
+			}
+		}
+		if (isRecord(value.pendingMediaGroups)) {
+			for (const [key, group] of Object.entries(value.pendingMediaGroups)) {
+				if (!isRecord(group)) invalidDurableJson(path, `pendingMediaGroups.${key} must be an object`);
+				if (!Array.isArray(group.updates)) invalidDurableJson(path, `pendingMediaGroups.${key}.updates must be an array`);
+				group.updates.forEach((update, index) => validateTelegramUpdate(path, update, `pendingMediaGroups.${key}.updates[${index}]`));
+				validateFiniteNumber(path, group.updatedAtMs, `pendingMediaGroups.${key}.updatedAtMs`);
+			}
+		}
+		if (isRecord(value.assistantPreviewMessages)) {
+			for (const [key, preview] of Object.entries(value.assistantPreviewMessages)) {
+				if (!isRecord(preview)) invalidDurableJson(path, `assistantPreviewMessages.${key} must be an object`);
+				validateChatId(path, preview.chatId, `assistantPreviewMessages.${key}.chatId`);
+				validateOptionalFiniteNumber(path, preview.messageThreadId, `assistantPreviewMessages.${key}.messageThreadId`);
+				validateFiniteNumber(path, preview.messageId, `assistantPreviewMessages.${key}.messageId`);
+				validateFiniteNumber(path, preview.updatedAtMs, `assistantPreviewMessages.${key}.updatedAtMs`);
+			}
+		}
+		if (isRecord(value.selectorSelections)) {
+			for (const [key, selection] of Object.entries(value.selectorSelections)) {
+				if (!isRecord(selection)) invalidDurableJson(path, `selectorSelections.${key} must be an object`);
+				validateChatId(path, selection.chatId, `selectorSelections.${key}.chatId`);
+				if (typeof selection.sessionId !== "string") invalidDurableJson(path, `selectorSelections.${key}.sessionId must be a string`);
+				validateFiniteNumber(path, selection.expiresAtMs, `selectorSelections.${key}.expiresAtMs`);
+				validateFiniteNumber(path, selection.updatedAtMs, `selectorSelections.${key}.updatedAtMs`);
+			}
+		}
+		if (isRecord(value.telegramOutbox)) {
+			for (const [key, job] of Object.entries(value.telegramOutbox)) {
+				if (!isRecord(job)) invalidDurableJson(path, `telegramOutbox.${key} must be an object`);
+				if (typeof job.id !== "string") invalidDurableJson(path, `telegramOutbox.${key}.id must be a string`);
+				if (job.kind !== "queued_control_status_edit" && job.kind !== "route_topic_delete") invalidDurableJson(path, `telegramOutbox.${key}.kind must be a known outbox kind`);
+				if (job.status !== "pending" && job.status !== "delivering" && job.status !== "completed" && job.status !== "terminal") invalidDurableJson(path, `telegramOutbox.${key}.status must be a known outbox status`);
+				validateFiniteNumber(path, job.createdAtMs, `telegramOutbox.${key}.createdAtMs`);
+				validateFiniteNumber(path, job.updatedAtMs, `telegramOutbox.${key}.updatedAtMs`);
+				validateOptionalFiniteNumber(path, job.retryAtMs, `telegramOutbox.${key}.retryAtMs`);
+				validateFiniteNumber(path, job.attempts, `telegramOutbox.${key}.attempts`);
+				validateOptionalString(path, job.terminalReason, `telegramOutbox.${key}.terminalReason`);
+				validateOptionalFiniteNumber(path, job.completedAtMs, `telegramOutbox.${key}.completedAtMs`);
+				if (job.kind === "queued_control_status_edit") {
+					if (typeof job.controlToken !== "string") invalidDurableJson(path, `telegramOutbox.${key}.controlToken must be a string`);
+					validateChatId(path, job.chatId, `telegramOutbox.${key}.chatId`);
+					validateOptionalFiniteNumber(path, job.messageThreadId, `telegramOutbox.${key}.messageThreadId`);
+					validateFiniteNumber(path, job.messageId, `telegramOutbox.${key}.messageId`);
+					if (typeof job.text !== "string") invalidDurableJson(path, `telegramOutbox.${key}.text must be a string`);
+				} else {
+					if (typeof job.cleanupId !== "string") invalidDurableJson(path, `telegramOutbox.${key}.cleanupId must be a string`);
+					validateBrokerRoute(path, job.route, `telegramOutbox.${key}.route`);
+				}
+			}
+		}
+		if (isRecord(value.pendingManualCompactions)) {
+			for (const [key, operation] of Object.entries(value.pendingManualCompactions)) {
+				if (!isRecord(operation)) invalidDurableJson(path, `pendingManualCompactions.${key} must be an object`);
+				for (const required of ["operationId", "sessionId"]) if (typeof operation[required] !== "string") invalidDurableJson(path, `pendingManualCompactions.${key}.${required} must be a string`);
+				validateOptionalString(path, operation.routeId, `pendingManualCompactions.${key}.routeId`);
+				validateChatId(path, operation.chatId, `pendingManualCompactions.${key}.chatId`);
+				validateOptionalFiniteNumber(path, operation.messageThreadId, `pendingManualCompactions.${key}.messageThreadId`);
+				validateOptionalFiniteNumber(path, operation.commandMessageId, `pendingManualCompactions.${key}.commandMessageId`);
+				if (operation.status !== "queued" && operation.status !== "running") invalidDurableJson(path, `pendingManualCompactions.${key}.status must be queued or running`);
+				validateFiniteNumber(path, operation.createdAtMs, `pendingManualCompactions.${key}.createdAtMs`);
+				validateFiniteNumber(path, operation.updatedAtMs, `pendingManualCompactions.${key}.updatedAtMs`);
+			}
+		}
+		if (isRecord(value.queuedTurnControls)) {
+			for (const [key, control] of Object.entries(value.queuedTurnControls)) {
+				if (!isRecord(control)) invalidDurableJson(path, `queuedTurnControls.${key} must be an object`);
+				for (const required of ["token", "turnId", "sessionId"]) if (typeof control[required] !== "string") invalidDurableJson(path, `queuedTurnControls.${key}.${required} must be a string`);
+				validateOptionalString(path, control.routeId, `queuedTurnControls.${key}.routeId`);
+				validateChatId(path, control.chatId, `queuedTurnControls.${key}.chatId`);
+				validateOptionalFiniteNumber(path, control.messageThreadId, `queuedTurnControls.${key}.messageThreadId`);
+				validateOptionalFiniteNumber(path, control.statusMessageId, `queuedTurnControls.${key}.statusMessageId`);
+				if (control.status !== "offered" && control.status !== "converting" && control.status !== "cancelling" && control.status !== "converted" && control.status !== "cancelled" && control.status !== "expired") invalidDurableJson(path, `queuedTurnControls.${key}.status must be a known queued-control status`);
+				validateFiniteNumber(path, control.createdAtMs, `queuedTurnControls.${key}.createdAtMs`);
+				validateFiniteNumber(path, control.updatedAtMs, `queuedTurnControls.${key}.updatedAtMs`);
+				validateFiniteNumber(path, control.expiresAtMs, `queuedTurnControls.${key}.expiresAtMs`);
+			}
+		}
+		for (const [sectionName, section] of Object.entries({ modelPickers: value.modelPickers, gitControls: value.gitControls })) {
+			if (!isRecord(section)) continue;
+			for (const [key, record] of Object.entries(section)) {
+				if (!isRecord(record)) invalidDurableJson(path, `${sectionName}.${key} must be an object`);
+				for (const required of ["token", "sessionId", "routeId"]) if (typeof record[required] !== "string") invalidDurableJson(path, `${sectionName}.${key}.${required} must be a string`);
+				validateChatId(path, record.chatId, `${sectionName}.${key}.chatId`);
+				validateOptionalFiniteNumber(path, record.messageThreadId, `${sectionName}.${key}.messageThreadId`);
+				validateOptionalFiniteNumber(path, record.messageId, `${sectionName}.${key}.messageId`);
+				validateOptionalFiniteNumber(path, record.selectorSelectionUpdatedAtMs, `${sectionName}.${key}.selectorSelectionUpdatedAtMs`);
+				validateOptionalFiniteNumber(path, record.selectorSelectionExpiresAtMs, `${sectionName}.${key}.selectorSelectionExpiresAtMs`);
+				validateOptionalString(path, record.completedText, `${sectionName}.${key}.completedText`);
+				validateFiniteNumber(path, record.createdAtMs, `${sectionName}.${key}.createdAtMs`);
+				validateFiniteNumber(path, record.updatedAtMs, `${sectionName}.${key}.updatedAtMs`);
+				validateFiniteNumber(path, record.expiresAtMs, `${sectionName}.${key}.expiresAtMs`);
+				if (sectionName === "modelPickers") {
+					validateOptionalString(path, record.current, `${sectionName}.${key}.current`);
+					validateOptionalFiniteNumber(path, record.selectedAtMs, `${sectionName}.${key}.selectedAtMs`);
+					if (!Array.isArray(record.models)) invalidDurableJson(path, `${sectionName}.${key}.models must be an array`);
+					record.models.forEach((model, index) => {
+						if (!isRecord(model)) invalidDurableJson(path, `${sectionName}.${key}.models[${index}] must be an object`);
+						for (const required of ["provider", "id", "name", "label"]) if (typeof model[required] !== "string") invalidDurableJson(path, `${sectionName}.${key}.models[${index}].${required} must be a string`);
+						if (!Array.isArray(model.input)) invalidDurableJson(path, `${sectionName}.${key}.models[${index}].input must be an array`);
+						model.input.forEach((entry, inputIndex) => {
+							if (typeof entry !== "string") invalidDurableJson(path, `${sectionName}.${key}.models[${index}].input[${inputIndex}] must be a string`);
+						});
+						if (typeof model.reasoning !== "boolean") invalidDurableJson(path, `${sectionName}.${key}.models[${index}].reasoning must be a boolean`);
+					});
+					if (!Array.isArray(record.groups)) invalidDurableJson(path, `${sectionName}.${key}.groups must be an array`);
+					record.groups.forEach((group, index) => {
+						if (!isRecord(group)) invalidDurableJson(path, `${sectionName}.${key}.groups[${index}] must be an object`);
+						for (const required of ["provider", "label"]) if (typeof group[required] !== "string") invalidDurableJson(path, `${sectionName}.${key}.groups[${index}].${required} must be a string`);
+						if (!Array.isArray(group.modelIndexes)) invalidDurableJson(path, `${sectionName}.${key}.groups[${index}].modelIndexes must be an array`);
+						validateNumberArray(path, group.modelIndexes, `${sectionName}.${key}.groups[${index}].modelIndexes`);
+					});
+				} else {
+					if (record.completedAction !== undefined && record.completedAction !== "status" && record.completedAction !== "diffstat") invalidDurableJson(path, `${sectionName}.${key}.completedAction must be status or diffstat when present`);
+					validateOptionalFiniteNumber(path, record.resultDeliveredAtMs, `${sectionName}.${key}.resultDeliveredAtMs`);
+				}
+			}
+		}
+		if (value.telegramOutboxRetryAtMs !== undefined) validateFiniteNumber(path, value.telegramOutboxRetryAtMs, "telegramOutboxRetryAtMs");
+		if (value.queuedTurnControlCleanupRetryAtMs !== undefined) validateFiniteNumber(path, value.queuedTurnControlCleanupRetryAtMs, "queuedTurnControlCleanupRetryAtMs");
+		if (value.completedTurnIds !== undefined && !Array.isArray(value.completedTurnIds)) invalidDurableJson(path, "completedTurnIds must be an array when present");
+		if (Array.isArray(value.completedTurnIds)) value.completedTurnIds.forEach((turnId, index) => {
+			if (typeof turnId !== "string") invalidDurableJson(path, `completedTurnIds[${index}] must be a string`);
+		});
+		return value as unknown as BrokerState;
+	}
+
+	function reportInvalidDurableState(path: string, error: unknown): void {
+		const message = `Invalid durable Telegram state at ${path}: ${errorMessage(error)}`;
+		reportPiDiagnostic({ message, severity: "warning", statusDetail: message });
+	}
+
+	async function readDisconnectRequest(targetSessionId: string): Promise<PendingDisconnectRequest | undefined> {
+		return readPendingDisconnectRequestFromPath(disconnectRequestPath(targetSessionId));
 	}
 	async function clearDisconnectRequest(targetSessionId: string): Promise<void> {
 		await rm(disconnectRequestPath(targetSessionId), { force: true }).catch(() => undefined);
@@ -436,7 +751,13 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 		});
 	}
 	async function honorPendingDisconnectRequest(targetSessionId: string): Promise<void> {
-		const request = await readDisconnectRequest(targetSessionId);
+		let request: PendingDisconnectRequest | undefined;
+		try {
+			request = await readDisconnectRequest(targetSessionId);
+		} catch (error) {
+			reportInvalidDurableState(disconnectRequestPath(targetSessionId), error);
+			return;
+		}
 		if (!request) return;
 		if (!isRouteScopedDisconnectRequest(request)) {
 			await clearDisconnectRequest(targetSessionId);
@@ -447,14 +768,7 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 	}
 	async function processPendingDisconnectRequests(): Promise<void> {
 		if (!brokerState) return;
-		const names = await readdir(DISCONNECT_REQUESTS_DIR).catch(() => [] as string[]);
-		const requests: PendingDisconnectRequest[] = [];
-		for (const name of names) {
-			if (!name.endsWith(".json")) continue;
-			const request = await readJson<PendingDisconnectRequest & { schemaVersion?: number }>(join(DISCONNECT_REQUESTS_DIR, name));
-			if (!request?.sessionId || request.requestedAtMs === undefined) continue;
-			requests.push({ sessionId: request.sessionId, requestedAtMs: request.requestedAtMs, connectionNonce: request.connectionNonce, connectionStartedAtMs: request.connectionStartedAtMs, routeId: request.routeId, chatId: request.chatId, messageThreadId: request.messageThreadId, routeCreatedAtMs: request.routeCreatedAtMs });
-		}
+		const requests = await readPendingDisconnectRequestsFromDir({ dir: DISCONNECT_REQUESTS_DIR, onInvalidRequest: reportInvalidDurableState });
 		await processDisconnectRequestsInBroker({
 			brokerState,
 			requests,
@@ -527,7 +841,7 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 	function usesForumSupergroupRouting(): boolean { return routeUsesForumSupergroupRouting(config); }
 	function targetChatIdForRoutes(): number | string | undefined { return routeTargetChatIdForRoutes(config); }
 	function selectedChatIdForSession(targetSessionId: string): number | string | undefined { return Object.values(brokerState?.selectorSelections ?? {}).find((selection) => selection.sessionId === targetSessionId && selection.expiresAtMs > now())?.chatId; }
-	async function readLease(): Promise<BrokerLease | undefined> { return await readJson<BrokerLease>(LOCK_PATH); }
+	async function readLease(): Promise<BrokerLease | undefined> { return validateBrokerLease(LOCK_PATH, await readJson<unknown>(LOCK_PATH)); }
 	async function isBrokerActive(): Promise<boolean> {
 		const lease = await readLease();
 		return Boolean(isBroker && lease && lease.ownerId === ownerId && lease.leaseEpoch === brokerLeaseEpoch && lease.leaseUntilMs > now());
@@ -538,7 +852,7 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 		return lease.leaseUntilMs > now() && processExists(lease.pid);
 	}
 	async function loadBrokerState(): Promise<BrokerState> {
-		const existing = await readJson<BrokerState>(STATE_PATH);
+		const existing = validateBrokerState(STATE_PATH, await readJson<unknown>(STATE_PATH));
 		if (existing) {
 			delete (existing as BrokerState & { reloadIntents?: unknown }).reloadIntents;
 			existing.telegramOutbox ??= {};
@@ -918,7 +1232,7 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 				? { reason: event.reason, previousSessionFile: event.previousSessionFile, sessionFile: ctx.sessionManager.getSessionFile() }
 				: undefined;
 			sessionReplacementContext = replacementContext;
-			if (replacementContext && config.botToken && await hasMatchingSessionReplacementHandoff({ dir: SESSION_REPLACEMENT_HANDOFFS_DIR, context: replacementContext })) {
+			if (replacementContext && config.botToken && await hasMatchingSessionReplacementHandoff({ dir: SESSION_REPLACEMENT_HANDOFFS_DIR, context: replacementContext, onInvalidHandoff: reportInvalidDurableState })) {
 				await connectTelegram(ctx, false);
 			}
 		},

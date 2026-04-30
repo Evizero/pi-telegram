@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -118,6 +118,38 @@ async function checkMatchingAndMismatchedHandoff(): Promise<void> {
 	}
 }
 
+async function exists(path: string): Promise<boolean> {
+	return await stat(path).then(() => true, () => false);
+}
+
+async function checkInvalidHandoffFilesDoNotBlockValidMatch(): Promise<void> {
+	const dir = await mkdtemp(join(tmpdir(), "pi-telegram-handoff-"));
+	try {
+		const invalidPath = join(dir, "bad.json");
+		const malformedPath = join(dir, "malformed.json");
+		await writeFile(invalidPath, JSON.stringify({ schemaVersion: 1, reason: "new", oldSessionId: "old-session", createdAtMs: 1, expiresAtMs: 10_000 }));
+		await writeFile(malformedPath, "{not-json}\n");
+		await writeSessionReplacementHandoff({
+			dir,
+			reason: "new",
+			oldSessionId: "old-session",
+			oldSessionFile: "/sessions/old.jsonl",
+			targetSessionFile: "/sessions/new.jsonl",
+			route: route("old-session"),
+			nowMs: 1,
+		});
+		const invalidPaths: string[] = [];
+		const match = await findMatchingSessionReplacementHandoff({ dir, context: { reason: "new", previousSessionFile: "/sessions/old.jsonl", sessionFile: "/sessions/new.jsonl" }, nowMs: 2, onInvalidHandoff: (path) => { invalidPaths.push(path); } });
+		assert.ok(match, "valid replacement handoff should still be found when other files are bad");
+		assert(invalidPaths.includes(invalidPath));
+		assert(invalidPaths.includes(malformedPath));
+		assert(await exists(invalidPath), "schema-invalid handoff should be preserved");
+		assert(await exists(malformedPath), "malformed handoff should be preserved");
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+}
+
 async function checkConsumeRetargetsBrokerState(): Promise<void> {
 	const dir = await mkdtemp(join(tmpdir(), "pi-telegram-handoff-"));
 	try {
@@ -163,5 +195,6 @@ async function checkConsumeRetargetsBrokerState(): Promise<void> {
 }
 
 await checkMatchingAndMismatchedHandoff();
+await checkInvalidHandoffFilesDoNotBlockValidMatch();
 await checkConsumeRetargetsBrokerState();
 console.log("Session replacement handoff checks passed");

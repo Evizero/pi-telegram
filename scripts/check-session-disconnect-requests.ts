@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { TelegramApiError } from "../src/telegram/api.js";
 import { AssistantFinalRetryQueue } from "../src/client/final-delivery.js";
 import { shutdownTelegramClientRoute } from "../src/client/route-shutdown.js";
-import { processDisconnectRequestsInBroker, type PendingDisconnectRequest } from "../src/broker/disconnect-requests.js";
+import { processDisconnectRequestsInBroker, readPendingDisconnectRequestsFromDir, type PendingDisconnectRequest } from "../src/broker/disconnect-requests.js";
 import { honorExplicitDisconnectRequestInBroker } from "../src/broker/sessions.js";
 import type { QueuedTurnControlState, TelegramRoute } from "../src/shared/types.js";
 import { honorScopedDisconnect, selectorRoute, session, state, topicRoute } from "./support/session-route-fixtures.js";
@@ -156,6 +159,31 @@ async function checkRouteScopedStaleRequestCannotDeleteNewSelectorRoute(): Promi
 	assert.deepEqual(cleared, [currentSession.sessionId]);
 }
 
+async function exists(path: string): Promise<boolean> {
+	return await stat(path).then(() => true, () => false);
+}
+
+async function checkInvalidDisconnectRequestFilesDoNotBlockValidOnes(): Promise<void> {
+	const dir = await mkdtemp(join(tmpdir(), "pi-telegram-disconnect-"));
+	try {
+		const invalidPath = join(dir, "bad.json");
+		const malformedPath = join(dir, "malformed.json");
+		const validPath = join(dir, "session-1.json");
+		await writeFile(invalidPath, JSON.stringify({ schemaVersion: 1, sessionId: "session-bad" }));
+		await writeFile(malformedPath, "{not-json}\n");
+		await writeFile(validPath, JSON.stringify({ schemaVersion: 1, sessionId: "session-1", requestedAtMs: 123 }));
+		const invalidPaths: string[] = [];
+		const requests = await readPendingDisconnectRequestsFromDir({ dir, onInvalidRequest: (path) => { invalidPaths.push(path); } });
+		assert.deepEqual(requests, [{ sessionId: "session-1", requestedAtMs: 123, connectionNonce: undefined, connectionStartedAtMs: undefined, routeId: undefined, chatId: undefined, messageThreadId: undefined, routeCreatedAtMs: undefined }]);
+		assert(invalidPaths.includes(invalidPath));
+		assert(invalidPaths.includes(malformedPath));
+		assert(await exists(invalidPath), "schema-invalid disconnect request should be preserved");
+		assert(await exists(malformedPath), "malformed disconnect request should be preserved");
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+}
+
 async function checkCurrentRouteDisconnectOnlyCancelsTargetRouteFinals(): Promise<void> {
 	const currentSession = session({ connectionNonce: "conn-current", connectionStartedAtMs: Date.now() - 2_000 });
 	const targetRoute = { ...topicRoute(currentSession.sessionId), createdAtMs: Date.now() - 1_500 };
@@ -246,5 +274,6 @@ await checkLateDisconnectRequestDoesNotDropOfflinePendingWork();
 await checkStaleDisconnectRequestIsClearedAfterReconnect();
 await checkRouteScopedDisconnectRequestRemovesOldRouteAfterReconnect();
 await checkRouteScopedStaleRequestCannotDeleteNewSelectorRoute();
+await checkInvalidDisconnectRequestFilesDoNotBlockValidOnes();
 await checkCurrentRouteDisconnectOnlyCancelsTargetRouteFinals();
 console.log("Session disconnect request checks passed");

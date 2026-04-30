@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { SESSION_REPLACEMENT_HANDOFF_TTL_MS } from "../shared/config.js";
 import type { BrokerState, SessionRegistration, TelegramRoute } from "../shared/types.js";
 import { canonicalRouteKey, retargetTurnToRoute, routeMatchesTopicIdentity } from "../shared/routing.js";
-import { ensurePrivateDir, now, readJson, writeJson } from "../shared/utils.js";
+import { ensurePrivateDir, invalidDurableJson, isRecord, now, readJson, writeJson } from "../shared/utils.js";
 
 export type SessionReplacementReason = "new" | "resume" | "fork";
 
@@ -76,14 +76,21 @@ export async function findMatchingSessionReplacementHandoff(options: {
 	context: SessionReplacementContext;
 	nowMs?: number;
 	deleteExpired?: boolean;
+	onInvalidHandoff?: (path: string, error: unknown) => void;
 }): Promise<MatchedSessionReplacementHandoff | undefined> {
 	const nowMs = options.nowMs ?? now();
 	const names = await readdir(options.dir).catch(() => [] as string[]);
 	for (const name of names) {
 		if (!name.endsWith(".json")) continue;
 		const path = join(options.dir, name);
-		const handoff = await readJson<SessionReplacementHandoff>(path);
-		if (!isValidHandoff(handoff)) continue;
+		let handoff: SessionReplacementHandoff | undefined;
+		try {
+			handoff = validateHandoff(path, await readJson<unknown>(path));
+		} catch (error) {
+			options.onInvalidHandoff?.(path, error);
+			continue;
+		}
+		if (!handoff) continue;
 		if (handoff.expiresAtMs < nowMs) {
 			if (options.deleteExpired ?? true) await rm(path, { force: true }).catch(() => undefined);
 			continue;
@@ -98,6 +105,7 @@ export async function hasMatchingSessionReplacementHandoff(options: {
 	dir: string;
 	context: SessionReplacementContext;
 	nowMs?: number;
+	onInvalidHandoff?: (path: string, error: unknown) => void;
 }): Promise<boolean> {
 	return (await findMatchingSessionReplacementHandoff({ ...options, deleteExpired: true })) !== undefined;
 }
@@ -107,10 +115,11 @@ export async function consumeSessionReplacementHandoffInBroker(options: {
 	brokerState: BrokerState;
 	registration: SessionRegistration;
 	nowMs?: number;
+	onInvalidHandoff?: (path: string, error: unknown) => void;
 }): Promise<boolean> {
 	const context = options.registration.replacement;
 	if (!context) return false;
-	const match = await findMatchingSessionReplacementHandoff({ dir: options.dir, context, nowMs: options.nowMs, deleteExpired: true });
+	const match = await findMatchingSessionReplacementHandoff({ dir: options.dir, context, nowMs: options.nowMs, deleteExpired: true, onInvalidHandoff: options.onInvalidHandoff });
 	if (!match) return false;
 	if (match.handoff.oldSessionId === options.registration.sessionId) return false;
 	retargetBrokerStateForReplacement(options.brokerState, match.handoff, options.registration);
@@ -118,13 +127,46 @@ export async function consumeSessionReplacementHandoffInBroker(options: {
 	return true;
 }
 
-function isValidHandoff(value: SessionReplacementHandoff | undefined): value is SessionReplacementHandoff {
-	return value?.schemaVersion === 1
-		&& isSessionReplacementReason(value.reason)
-		&& typeof value.oldSessionId === "string"
-		&& value.route !== undefined
-		&& typeof value.createdAtMs === "number"
-		&& typeof value.expiresAtMs === "number";
+function validateRoute(path: string, value: unknown): TelegramRoute {
+	if (!isRecord(value)) invalidDurableJson(path, "route must be an object");
+	if (typeof value.routeId !== "string") invalidDurableJson(path, "route.routeId must be a string");
+	if (typeof value.sessionId !== "string") invalidDurableJson(path, "route.sessionId must be a string");
+	if (typeof value.chatId !== "number" && typeof value.chatId !== "string") invalidDurableJson(path, "route.chatId must be a number or string");
+	if (typeof value.chatId === "number" && !Number.isFinite(value.chatId)) invalidDurableJson(path, "route.chatId must be finite when numeric");
+	if (value.messageThreadId !== undefined && (typeof value.messageThreadId !== "number" || !Number.isFinite(value.messageThreadId))) invalidDurableJson(path, "route.messageThreadId must be a finite number when present");
+	if (value.routeMode !== "private_topic" && value.routeMode !== "forum_supergroup_topic" && value.routeMode !== "single_chat_selector") invalidDurableJson(path, "route.routeMode must be a known route mode");
+	if (typeof value.topicName !== "string") invalidDurableJson(path, "route.topicName must be a string");
+	if (typeof value.createdAtMs !== "number" || !Number.isFinite(value.createdAtMs)) invalidDurableJson(path, "route.createdAtMs must be a finite number");
+	if (typeof value.updatedAtMs !== "number" || !Number.isFinite(value.updatedAtMs)) invalidDurableJson(path, "route.updatedAtMs must be a finite number");
+	return value as unknown as TelegramRoute;
+}
+
+function validateHandoff(path: string, value: unknown): SessionReplacementHandoff | undefined {
+	if (value === undefined) return undefined;
+	if (!isRecord(value)) invalidDurableJson(path, "root value must be an object");
+	if (value.schemaVersion !== 1) invalidDurableJson(path, "schemaVersion must be 1");
+	const reason = typeof value.reason === "string" ? value.reason : undefined;
+	if (!isSessionReplacementReason(reason)) invalidDurableJson(path, "reason must be new, resume, or fork");
+	if (typeof value.oldSessionId !== "string") invalidDurableJson(path, "oldSessionId must be a string");
+	if (value.oldSessionFile !== undefined && typeof value.oldSessionFile !== "string") invalidDurableJson(path, "oldSessionFile must be a string when present");
+	if (value.targetSessionFile !== undefined && typeof value.targetSessionFile !== "string") invalidDurableJson(path, "targetSessionFile must be a string when present");
+	const route = validateRoute(path, value.route);
+	if (value.connectionNonce !== undefined && typeof value.connectionNonce !== "string") invalidDurableJson(path, "connectionNonce must be a string when present");
+	if (value.connectionStartedAtMs !== undefined && (typeof value.connectionStartedAtMs !== "number" || !Number.isFinite(value.connectionStartedAtMs))) invalidDurableJson(path, "connectionStartedAtMs must be a finite number when present");
+	if (typeof value.createdAtMs !== "number" || !Number.isFinite(value.createdAtMs)) invalidDurableJson(path, "createdAtMs must be a finite number");
+	if (typeof value.expiresAtMs !== "number" || !Number.isFinite(value.expiresAtMs)) invalidDurableJson(path, "expiresAtMs must be a finite number");
+	return {
+		schemaVersion: 1,
+		reason,
+		oldSessionId: value.oldSessionId,
+		oldSessionFile: value.oldSessionFile,
+		targetSessionFile: value.targetSessionFile,
+		route,
+		connectionNonce: value.connectionNonce,
+		connectionStartedAtMs: value.connectionStartedAtMs,
+		createdAtMs: value.createdAtMs,
+		expiresAtMs: value.expiresAtMs,
+	};
 }
 
 function handoffMatchesContext(handoff: SessionReplacementHandoff, context: SessionReplacementContext): boolean {

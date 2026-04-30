@@ -77,6 +77,12 @@ The strongest drivers come directly from the intended purpose and requirements:
   maintenance to crash the pi session process
   (`StRS-delivery-continuity`, `StRS-multi-session-supervision`,
   `SyRS-broker-lease-loss-standdown`);
+- durable JSON artifacts are recovery boundaries, so malformed, unreadable, or
+  schema-invalid records must be visible invalid-state conditions rather than
+  implicit absence, and independent per-file recovery records should not block
+  each other when one record is corrupt
+  (`StRS-delivery-continuity`, `SyRS-durable-json-invalid-state`,
+  `SyRS-durable-maintenance-file-isolation`);
 - Telegram update, callback-query, webhook, retry, file, draft, media, and topic
   constraints are part of the runtime contract, not optional polish
   (`StRS-api-constrained-maintenance`, `SyRS-webhook-before-polling`,
@@ -425,6 +431,11 @@ with related code when they explain the same behavior.
   reconnect grace expires.
 - Pending turns and media groups are retryable durable broker state until
   consumed, processed, or terminally failed.
+- Malformed, unreadable, or schema-invalid durable JSON artifacts must not be
+  treated as missing state; they should be diagnosed with artifact context and
+  left intact unless a lifecycle-specific rule has classified them as safe to
+  discard. Directory-scanned maintenance records should isolate bad files so
+  unrelated valid recovery work can continue.
 - Broker maintenance tasks that discover lease loss must stand down or discard
   stale in-memory work without producing unhandled asynchronous rejections or
   persisting stale state.
@@ -505,6 +516,11 @@ The runtime persists config, lease, token, broker state, and downloaded files in
 user-local `.pi/agent` paths.
 Persistence is part of delivery durability and broker turnover; it must remain
 private and serialized where stale writes could resurrect old state.
+Read paths must distinguish true absence from invalid durable state. Missing
+files can initialize first-run or no-pending-work defaults; malformed,
+unreadable, or schema-invalid files are corruption or recovery conditions that
+should keep their original artifact available for diagnosis unless a specific
+lifecycle cleanup rule safely supersedes it.
 
 ### Repository planning surface
 

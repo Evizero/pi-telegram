@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { BROKER_DIR } from "../shared/config.js";
 import type { AssistantFinalPayload, BrokerLease, BrokerState, PendingTelegramTurn, TelegramRoute } from "../shared/types.js";
-import { ensurePrivateDir, now, readJson, writeJson } from "../shared/utils.js";
+import { ensurePrivateDir, invalidDurableJson, isRecord, now, readJson, writeJson } from "../shared/utils.js";
 import { getTelegramRetryAfterMs } from "../telegram/api.js";
 import { AssistantFinalRetryQueue } from "./final-delivery.js";
 
@@ -28,6 +28,7 @@ export interface ClientAssistantFinalHandoffDeps {
 	setActiveTelegramTurn: (turn: PendingTelegramTurn | undefined) => void;
 	rememberCompletedLocalTurn: (turnId: string) => void;
 	startNextTelegramTurn: () => void;
+	reportInvalidDurableState?: (path: string, error: unknown) => void;
 }
 
 interface PersistedClientFinals {
@@ -37,6 +38,91 @@ interface PersistedClientFinals {
 	connectionStartedAtMs?: number;
 	payloads?: AssistantFinalPayload[];
 	deferredPayloads?: AssistantFinalPayload[];
+}
+
+function optionalString(path: string, value: unknown, field: string): string | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value !== "string") invalidDurableJson(path, `${field} must be a string when present`);
+	return value;
+}
+
+function finiteNumber(path: string, value: unknown, field: string): number {
+	if (typeof value !== "number" || !Number.isFinite(value)) invalidDurableJson(path, `${field} must be a finite number`);
+	return value;
+}
+
+function optionalFiniteNumber(path: string, value: unknown, field: string): number | undefined {
+	if (value === undefined) return undefined;
+	return finiteNumber(path, value, field);
+}
+
+function validateQueuedAttachment(path: string, value: unknown, field: string): AssistantFinalPayload["attachments"][number] {
+	if (!isRecord(value)) invalidDurableJson(path, `${field} must be an object`);
+	if (typeof value.path !== "string") invalidDurableJson(path, `${field}.path must be a string`);
+	if (typeof value.fileName !== "string") invalidDurableJson(path, `${field}.fileName must be a string`);
+	return { path: value.path, fileName: value.fileName };
+}
+
+function validateTurn(path: string, value: unknown, field: string): PendingTelegramTurn {
+	if (!isRecord(value)) invalidDurableJson(path, `${field} must be an object`);
+	if (typeof value.turnId !== "string") invalidDurableJson(path, `${field}.turnId must be a string`);
+	if (typeof value.sessionId !== "string") invalidDurableJson(path, `${field}.sessionId must be a string`);
+	if (value.routeId !== undefined && typeof value.routeId !== "string") invalidDurableJson(path, `${field}.routeId must be a string when present`);
+	if (typeof value.chatId !== "number" && typeof value.chatId !== "string") invalidDurableJson(path, `${field}.chatId must be a number or string`);
+	if (typeof value.chatId === "number" && !Number.isFinite(value.chatId)) invalidDurableJson(path, `${field}.chatId must be finite when numeric`);
+	if (value.messageThreadId !== undefined && (typeof value.messageThreadId !== "number" || !Number.isFinite(value.messageThreadId))) invalidDurableJson(path, `${field}.messageThreadId must be a finite number when present`);
+	const replyToMessageId = finiteNumber(path, value.replyToMessageId, `${field}.replyToMessageId`);
+	if (!Array.isArray(value.queuedAttachments)) invalidDurableJson(path, `${field}.queuedAttachments must be an array`);
+	if (!Array.isArray(value.content)) invalidDurableJson(path, `${field}.content must be an array`);
+	if (typeof value.historyText !== "string") invalidDurableJson(path, `${field}.historyText must be a string`);
+	if (value.deliveryMode !== undefined && value.deliveryMode !== "steer" && value.deliveryMode !== "followUp") invalidDurableJson(path, `${field}.deliveryMode must be steer or followUp when present`);
+	if (value.blockedByManualCompactionOperationId !== undefined && typeof value.blockedByManualCompactionOperationId !== "string") invalidDurableJson(path, `${field}.blockedByManualCompactionOperationId must be a string when present`);
+	return {
+		turnId: value.turnId,
+		sessionId: value.sessionId,
+		routeId: value.routeId,
+		chatId: value.chatId,
+		messageThreadId: value.messageThreadId,
+		replyToMessageId,
+		queuedAttachments: value.queuedAttachments.map((attachment, index) => validateQueuedAttachment(path, attachment, `${field}.queuedAttachments[${index}]`)),
+		content: value.content as PendingTelegramTurn["content"],
+		historyText: value.historyText,
+		deliveryMode: value.deliveryMode,
+		blockedByManualCompactionOperationId: value.blockedByManualCompactionOperationId,
+	};
+}
+
+function validateAssistantFinalPayload(path: string, value: unknown, field: string): AssistantFinalPayload {
+	if (!isRecord(value)) invalidDurableJson(path, `${field} must be an object`);
+	const turn = validateTurn(path, value.turn, `${field}.turn`);
+	const text = optionalString(path, value.text, `${field}.text`);
+	const stopReason = optionalString(path, value.stopReason, `${field}.stopReason`);
+	const errorMessage = optionalString(path, value.errorMessage, `${field}.errorMessage`);
+	if (!Array.isArray(value.attachments)) invalidDurableJson(path, `${field}.attachments must be an array`);
+	return { turn, text, stopReason, errorMessage, attachments: value.attachments.map((attachment, index) => validateQueuedAttachment(path, attachment, `${field}.attachments[${index}]`)) };
+}
+
+function validatePayloadArray(path: string, value: unknown, field: string): AssistantFinalPayload[] {
+	if (value === undefined) return [];
+	if (!Array.isArray(value)) invalidDurableJson(path, `${field} must be an array when present`);
+	return value.map((payload, index) => validateAssistantFinalPayload(path, payload, `${field}[${index}]`));
+}
+
+function validatePersistedClientFinals(path: string, value: unknown): PersistedClientFinals | undefined {
+	if (value === undefined) return undefined;
+	if (!isRecord(value)) invalidDurableJson(path, "root value must be an object");
+	if (value.schemaVersion !== undefined && value.schemaVersion !== 2) invalidDurableJson(path, "schemaVersion must be 2 when present");
+	if (typeof value.sessionId !== "string") invalidDurableJson(path, "sessionId must be a string");
+	if (typeof value.connectionNonce !== "string") invalidDurableJson(path, "connectionNonce must be a string");
+	const connectionStartedAtMs = finiteNumber(path, value.connectionStartedAtMs, "connectionStartedAtMs");
+	return {
+		schemaVersion: 2,
+		sessionId: value.sessionId,
+		connectionNonce: value.connectionNonce,
+		connectionStartedAtMs,
+		payloads: validatePayloadArray(path, value.payloads, "payloads"),
+		deferredPayloads: validatePayloadArray(path, value.deferredPayloads, "deferredPayloads"),
+	};
 }
 
 export class ClientAssistantFinalHandoff {
@@ -97,7 +183,7 @@ export class ClientAssistantFinalHandoff {
 
 	private async persistPendingLocked(targetSessionId: string): Promise<void> {
 		const pendingPath = this.pendingFinalsPath(targetSessionId);
-		const existing = await readJson<PersistedClientFinals>(pendingPath);
+		const existing = validatePersistedClientFinals(pendingPath, await readJson<unknown>(pendingPath));
 		const existingTurnIds = new Set([...(existing?.payloads ?? []), ...(existing?.deferredPayloads ?? [])].map((payload) => payload.turn.turnId));
 		const deferredPayload = this.deps.peekDeferredPayload() ?? (this.persistedDeferredPayload?.turn.sessionId === targetSessionId ? this.persistedDeferredPayload : undefined);
 		if (deferredPayload?.turn.sessionId === targetSessionId) {
@@ -329,15 +415,19 @@ export class ClientAssistantFinalHandoff {
 
 	private async processPendingClientFinalFile(state: BrokerState, name: string): Promise<void> {
 		const path = this.filePath(name);
-		const persisted = await readJson<PersistedClientFinals>(path);
-		const targetSessionId = persisted?.sessionId;
-		const payloads = persisted?.payloads ?? [];
-		const deferredPayloads = persisted?.deferredPayloads ?? [];
-		if (!targetSessionId || (payloads.length === 0 && deferredPayloads.length === 0)) {
-			await rm(path, { force: true }).catch(() => undefined);
+		let persisted: PersistedClientFinals | undefined;
+		try {
+			persisted = validatePersistedClientFinals(path, await readJson<unknown>(path));
+		} catch (error) {
+			this.deps.reportInvalidDurableState?.(path, error);
 			return;
 		}
-		if (!persisted.connectionNonce || persisted.connectionStartedAtMs === undefined) {
+		if (!persisted) return;
+		const targetSessionId = persisted.sessionId;
+		if (!targetSessionId) return;
+		const payloads = persisted.payloads ?? [];
+		const deferredPayloads = persisted.deferredPayloads ?? [];
+		if (payloads.length === 0 && deferredPayloads.length === 0) {
 			await rm(path, { force: true }).catch(() => undefined);
 			return;
 		}

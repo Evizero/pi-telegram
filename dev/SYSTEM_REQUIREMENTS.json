@@ -1416,6 +1416,53 @@
           "queue-manual-compaction-after"
         ]
       }
+    },
+    {
+      "id": "SyRS-durable-json-invalid-state",
+      "origin": "derived",
+      "label": "Treat invalid durable JSON explicitly",
+      "statement": "The system shall treat malformed, unreadable, or schema-invalid durable JSON artifacts as invalid durable-state conditions rather than as absent state.",
+      "traces_to": [
+        "StRS-delivery-continuity",
+        "StRS-session-lifecycle-control"
+      ],
+      "rationale": "Durable broker, config, lease, handoff, and pending-final records are continuity and lifecycle boundaries. Missing files can mean first run or no pending work, but corrupt or unreadable files mean local state is unsafe to replace or clean up without an explicit lifecycle decision.",
+      "acceptance_criteria": "Focused checks show missing durable JSON still loads as absent where expected, while malformed JSON, filesystem read errors, and parsed records missing required schema fields surface an invalid-state outcome that includes enough path/context to diagnose the affected artifact and does not overwrite or delete that artifact as a side effect of treating it as absent.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-30",
+      "updated": "2026-04-30",
+      "sources": {
+        "inbox": [
+          "durable-json-read-failures"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-durable-maintenance-file-isolation",
+      "origin": "derived",
+      "label": "Isolate bad durable files",
+      "statement": "The system shall continue processing valid per-file durable maintenance records when another pending-final, disconnect-request, or session-replacement handoff record is malformed, unreadable, or schema-invalid.",
+      "traces_to": [
+        "StRS-delivery-continuity",
+        "StRS-session-lifecycle-control",
+        "StRS-activity-final-feedback"
+      ],
+      "rationale": "Directory-scanned durable records represent independent recovery or cleanup intents. One corrupt or unreadable record should be visible and preserved for repair, but it should not prevent unrelated final delivery, disconnect cleanup, or replacement handoff recovery from proceeding.",
+      "acceptance_criteria": "Focused lifecycle checks place one invalid durable JSON record and one valid record in each scanned pending-final, disconnect-request, and session-replacement handoff directory class; processing records a diagnostic or invalid-state result for the bad file without deleting it, and still processes the valid file according to its normal lifecycle semantics.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-30",
+      "updated": "2026-04-30",
+      "sources": {
+        "inbox": [
+          "durable-json-read-failures"
+        ]
+      }
     }
   ]
 }

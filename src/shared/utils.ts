@@ -19,13 +19,35 @@ export async function ensurePrivateDir(path: string): Promise<void> {
 	await chmod(path, 0o700).catch(() => undefined);
 }
 
+export class DurableJsonReadError extends Error {
+	constructor(readonly path: string, readonly cause: unknown) {
+		super(`Failed to read durable JSON ${path}: ${errorMessage(cause)}`);
+		this.name = "DurableJsonReadError";
+	}
+}
+
+export class InvalidDurableJsonError extends Error {
+	constructor(readonly path: string, reason: string) {
+		super(`Invalid durable JSON ${path}: ${reason}`);
+		this.name = "InvalidDurableJsonError";
+	}
+}
+
 export async function readJson<T>(path: string): Promise<T | undefined> {
 	try {
 		return JSON.parse(await readFile(path, "utf8")) as T;
 	} catch (error) {
 		if (isNodeError(error) && error.code === "ENOENT") return undefined;
-		throw error;
+		throw new DurableJsonReadError(path, error);
 	}
+}
+
+export function invalidDurableJson(path: string, reason: string): never {
+	throw new InvalidDurableJsonError(path, reason);
+}
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
