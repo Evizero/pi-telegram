@@ -6,6 +6,7 @@ import type { BrokerLease, TelegramConfig } from "../shared/types.js";
 import { now, processExists, readJson, writeJson } from "../shared/utils.js";
 
 export const STALE_BROKER_ERROR_MESSAGE = "stale_broker";
+export const BROKER_RENEWAL_CONTENTION_MESSAGE = "broker_renewal_contention";
 
 export class StaleBrokerError extends Error {
 	constructor() {
@@ -14,9 +15,21 @@ export class StaleBrokerError extends Error {
 	}
 }
 
+export class BrokerRenewalContentionError extends Error {
+	constructor() {
+		super(BROKER_RENEWAL_CONTENTION_MESSAGE);
+		this.name = "BrokerRenewalContentionError";
+	}
+}
+
 export function isStaleBrokerError(error: unknown): boolean {
 	return error instanceof StaleBrokerError
 		|| (error instanceof Error && error.message === STALE_BROKER_ERROR_MESSAGE);
+}
+
+export function isBrokerRenewalContentionError(error: unknown): boolean {
+	return error instanceof BrokerRenewalContentionError
+		|| (error instanceof Error && error.message === BROKER_RENEWAL_CONTENTION_MESSAGE);
 }
 
 export interface BrokerLeaseDeps {
@@ -33,12 +46,17 @@ export interface BrokerLeaseDeps {
 	stopBroker: () => Promise<void>;
 }
 
-async function acquireTakeoverLock(ownerId: string): Promise<boolean> {
+function isFileExistsError(error: unknown): boolean {
+	return error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "EEXIST";
+}
+
+async function acquireTakeoverLock(ownerId: string, purpose?: "renew"): Promise<boolean> {
 	try {
 		await mkdir(TAKEOVER_LOCK_DIR);
-		await writeJson(join(TAKEOVER_LOCK_DIR, "lock.json"), { ownerId, pid: process.pid, updatedAtMs: now() });
+		await writeJson(join(TAKEOVER_LOCK_DIR, "lock.json"), { ownerId, pid: process.pid, updatedAtMs: now(), ...(purpose ? { [purpose]: true } : {}) });
 		return true;
-	} catch {
+	} catch (error) {
+		if (!isFileExistsError(error)) throw error;
 		const takeover = await readJson<{ pid?: number; updatedAtMs?: number }>(join(TAKEOVER_LOCK_DIR, "lock.json"));
 		const takeoverStats = await stat(TAKEOVER_LOCK_DIR).catch(() => undefined);
 		const staleEmptyTakeover = !takeover && takeoverStats && now() - takeoverStats.mtimeMs > BROKER_LEASE_MS;
@@ -47,10 +65,11 @@ async function acquireTakeoverLock(ownerId: string): Promise<boolean> {
 		await rm(TAKEOVER_LOCK_DIR, { recursive: true, force: true }).catch(() => undefined);
 		try {
 			await mkdir(TAKEOVER_LOCK_DIR);
-			await writeJson(join(TAKEOVER_LOCK_DIR, "lock.json"), { ownerId, pid: process.pid, updatedAtMs: now() });
+			await writeJson(join(TAKEOVER_LOCK_DIR, "lock.json"), { ownerId, pid: process.pid, updatedAtMs: now(), ...(purpose ? { [purpose]: true } : {}) });
 			return true;
-		} catch {
-			return false;
+		} catch (retryError) {
+			if (isFileExistsError(retryError)) return false;
+			throw retryError;
 		}
 	}
 }
@@ -94,14 +113,13 @@ export async function tryAcquireBrokerLease(deps: BrokerLeaseDeps): Promise<bool
 export async function renewBrokerLease(deps: BrokerLeaseDeps): Promise<void> {
 	let locked = false;
 	try {
-		await mkdir(TAKEOVER_LOCK_DIR);
-		locked = true;
-		await writeJson(join(TAKEOVER_LOCK_DIR, "lock.json"), { ownerId: deps.ownerId, pid: process.pid, updatedAtMs: now(), renew: true });
+		locked = await acquireTakeoverLock(deps.ownerId, "renew");
 		const lease = await deps.readLease();
 		if (!lease || lease.ownerId !== deps.ownerId || lease.leaseEpoch !== deps.getBrokerLeaseEpoch() || lease.leaseUntilMs <= now()) {
 			await deps.stopBroker();
 			return;
 		}
+		if (!locked) throw new BrokerRenewalContentionError();
 		lease.leaseUntilMs = now() + BROKER_LEASE_MS;
 		lease.updatedAtMs = now();
 		await writeJson(LOCK_PATH, lease);

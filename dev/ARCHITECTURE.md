@@ -467,7 +467,11 @@ logs in normal operation.
 socket path, expiry, update time, and optional bot ID.
 The lease prevents multiple sessions from polling Telegram at once.
 Broker takeover must be explicit through lease expiry or valid replacement, not
-implicit parallel polling.
+implicit parallel polling. Renewal may briefly encounter a live takeover lock
+while the current broker still owns a live lease; that condition is broker
+coordination contention, not generic heartbeat failure or lease loss. Repeated
+live contention must become pi-safe diagnostic state, while missing, expired,
+changed-owner, or changed-epoch leases still require controlled stand-down.
 
 ### Broker state
 
@@ -548,10 +552,9 @@ state together.
 It may own cross-cutting orchestration that genuinely spans those boundaries,
 but it should not become the permanent home for every concern.
 
-Current-state note: this file is above the 1,000-line guard rail.
-Future work should extract cohesive broker lease/state/session lifecycle, client
-turn lifecycle, and client final-handoff modules without changing the product
-boundaries.
+Current-state note: this file is under the 1,000-line guard rail. Future work
+should continue extracting cohesive broker lease/state/session lifecycle pieces
+without changing the product boundaries when orchestration pressure grows.
 
 ### Broker modules: `src/broker/`
 
@@ -572,6 +575,12 @@ use `src/telegram/` IO policy helpers rather than local Telegram error classifie
 `broker/activity.ts` separates activity collection from Telegram rendering.
 `ActivityReporter` sends ordered activity updates to the broker; `ActivityRenderer`
 renders those updates with debounced Telegram sends/edits and typing loops.
+
+`broker/lease.ts` owns file-based broker lease acquisition and renewal
+classification. `broker/heartbeat.ts` owns heartbeat-cycle counters and overlap
+suppression so one-off live takeover-lock contention does not advance generic
+failure stand-down, repeated contention becomes actionable diagnostic state, and
+true lease loss still routes through controlled stand-down.
 
 `broker/sessions.ts` owns broker-side session offline and unregister cleanup.
 It distinguishes offline state from explicit unregister and ensures typing loops
@@ -598,12 +607,18 @@ until the broker durably accepts the payload, but after acceptance the broker
 final ledger owns delivery, retry ordering, terminal outcomes, and visible
 progress.
 
-### pi integration: `src/pi/hooks.ts`
+### pi integration: `src/pi/`
 
 `pi/hooks.ts` registers pi commands, tools, and event hooks.
 It owns the boundary where local pi events become Telegram activity/finals and
 where `telegram_attach` queues explicit outbound artifacts.
 It should not own Telegram Bot API mechanics or broker polling.
+
+`pi/diagnostics.ts` provides the pi-safe reporting adapter for extension
+background diagnostics. User-visible diagnostics should go through status,
+notification, or displayed custom session-message surfaces as appropriate rather
+than raw terminal writes; non-actionable transient coordination noise should stay
+silent or status-only.
 
 Current-state note: `pi/hooks.ts` imports activity line helpers from
 `broker/activity.ts`.

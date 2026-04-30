@@ -2,7 +2,7 @@
   "meta": {
     "title": "pi-telegram",
     "version": "0.1.0",
-    "last_updated": "2026-04-29"
+    "last_updated": "2026-04-30"
   },
   "requirements": [
     {
@@ -1224,6 +1224,54 @@
         "inbox": [
           "decompose-oversized-command-router",
           "reduce-duplicated-test-discovery"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-broker-renewal-contention",
+      "origin": "derived",
+      "label": "Classify renewal contention",
+      "statement": "The system shall classify broker lease-renewal contention by distinguishing one-off live takeover-lock contention, persistent repeated contention, and true broker lease loss so that benign contention is not treated as generic heartbeat failure while stale, missing, or changed broker ownership still causes controlled stand-down.",
+      "traces_to": [
+        "StRS-delivery-continuity",
+        "StRS-multi-session-supervision",
+        "StRS-session-lifecycle-control"
+      ],
+      "rationale": "Broker turnover is part of the multi-session operating model, but the observed heartbeat path turned ordinary takeover-lock contention into a visible heartbeat failure and possible stand-down. The system needs a distinct transient-contention classification so live brokers are not destabilized while genuine lease loss remains controlled.",
+      "acceptance_criteria": "Focused tests simulate a live contender holding the takeover lock while the current broker renews its lease and confirm one-off renewal contention is classified without incrementing generic heartbeat failure stand-down state, producing raw terminal output, or stopping the broker. Additional tests simulate repeated live contention across a bounded window and confirm it becomes pi-safe actionable diagnostic state without triggering an agent turn or spamming Telegram. Adjacent tests or inspection confirm missing, stale, mismatched-owner, and mismatched-epoch leases still trigger controlled stand-down.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "ready",
+      "created": "2026-04-30",
+      "updated": "2026-04-30",
+      "sources": {
+        "inbox": [
+          "broker-heartbeat-logs-takeover"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-pi-safe-diagnostics",
+      "origin": "derived",
+      "label": "Report diagnostics through pi",
+      "statement": "The system shall route user-visible extension diagnostics through pi-native notification, status, or session-message surfaces instead of raw terminal writes, while suppressing non-actionable transient coordination noise.",
+      "traces_to": [
+        "StRS-activity-final-feedback",
+        "StRS-remote-session-supervision",
+        "StRS-delivery-continuity"
+      ],
+      "rationale": "Remote supervision depends on intelligible session feedback, and raw console output from extension background work can corrupt the pi TUI while also failing to become durable session context. Diagnostics should use pi surfaces when they are user-visible and should not spam the conversation for benign transient coordination states.",
+      "acceptance_criteria": "Tests or inspection show broker/client background diagnostics no longer call raw console warning paths for user-visible failures in interactive pi, transient takeover-lock contention is silent or status-only, and durable/actionable events such as broker stand-down or repeated unrecovered failure can be surfaced through pi-native notification/status or displayed session-message mechanisms without triggering an unintended agent turn.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "ready",
+      "created": "2026-04-30",
+      "updated": "2026-04-30",
+      "sources": {
+        "inbox": [
+          "broker-heartbeat-logs-takeover"
         ]
       }
     }

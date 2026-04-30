@@ -9,7 +9,8 @@ import { configureBrokerScope, readConfig, writeConfig } from "./shared/config.j
 import { ActivityRenderer, ActivityReporter, type ActivityUpdatePayload } from "./broker/activity.js";
 import { isRouteScopedDisconnectRequest, processDisconnectRequestsInBroker, type PendingDisconnectRequest } from "./broker/disconnect-requests.js";
 import { handleBrokerBackgroundError, runBrokerBackgroundTask } from "./broker/background.js";
-import { isStaleBrokerError, renewBrokerLease as renewBrokerLeaseFile, StaleBrokerError, tryAcquireBrokerLease } from "./broker/lease.js";
+import { createBrokerHeartbeatState, runBrokerHeartbeatCycle } from "./broker/heartbeat.js";
+import { renewBrokerLease as renewBrokerLeaseFile, StaleBrokerError, tryAcquireBrokerLease } from "./broker/lease.js";
 import { targetChatIdForRoutes as routeTargetChatIdForRoutes, usesForumSupergroupRouting as routeUsesForumSupergroupRouting } from "./broker/routes.js";
 import { honorExplicitDisconnectRequestInBroker, unregisterSessionFromBroker, markSessionOfflineInBroker, retryPendingRouteCleanupsInBroker } from "./broker/sessions.js";
 import { BrokerSessionRegistrationCoordinator, isStaleSessionConnectionError } from "./broker/session-registration.js";
@@ -32,6 +33,7 @@ import { createTelegramTurnForSession as buildTelegramTurnForSession, durableTel
 import { PreviewManager } from "./telegram/previews.js";
 import { cleanupDownloadedTelegramSessionTempDirIfUnused, sweepOrphanedDownloadedTelegramSessionTempDirs } from "./telegram/temp-files.js";
 import { createTypingLoopController } from "./telegram/typing.js";
+import { createPiDiagnosticReporter } from "./pi/diagnostics.js";
 import { registerRuntimePiHooks } from "./pi/hooks.js";
 import { promptForTelegramConfig } from "./telegram/setup.js";
 import { pairingInstructions, telegramStatusText } from "./shared/ui-status.js";
@@ -48,7 +50,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	let brokerState: BrokerState | undefined;
 	let brokerPollAbort: AbortController | undefined;
 	let brokerHeartbeatTimer: ReturnType<typeof setInterval> | undefined;
-	let brokerHeartbeatFailures = 0;
+	const brokerHeartbeatState = createBrokerHeartbeatState();
 	let sessionReplacementContext: SessionReplacementContext | undefined;
 	let localBrokerSocketPath = join(BROKER_DIR, `broker-${ownerId}.sock`);
 	let connectedBrokerSocketPath = localBrokerSocketPath;
@@ -143,6 +145,11 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	const previewManager = new PreviewManager(callTelegram, sendMarkdownReply, rememberVisiblePreviewMessage, forgetVisiblePreviewMessage);
 	const activityReporter = new ActivityReporter((payload) => postIpc(connectedBrokerSocketPath, "activity_update", payload, sessionId));
 	const activityRenderer = new ActivityRenderer(callTelegram, startTypingLoopFor);
+	const reportPiDiagnostic = createPiDiagnosticReporter({
+		pi,
+		getLatestContext: () => latestCtx,
+		updateStatus,
+	});
 	const assistantFinalLedger = new AssistantFinalDeliveryLedger({
 		getBrokerState: () => brokerState,
 		setBrokerState: (state) => { brokerState = state; },
@@ -155,7 +162,10 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		callTelegramMultipart: callTelegramMultipartOnce,
 		isBrokerActive,
 		rememberCompletedBrokerTurn,
-		logTerminalFailure: (turnId, reason) => console.warn(`[pi-telegram] Terminal Telegram final delivery failure for ${turnId}: ${reason}`),
+		logTerminalFailure: (turnId, reason) => {
+			const message = `Terminal Telegram final delivery failure for ${turnId}: ${reason}`;
+			reportPiDiagnostic({ message, severity: "error", statusDetail: message, notify: true, display: true });
+		},
 	});
 	const brokerSessions = new BrokerSessionRegistrationCoordinator({
 		getBrokerState: () => brokerState,
@@ -220,10 +230,11 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	function pollLoop(ctx: ExtensionContext, signal: AbortSignal): Promise<void> { return updateHandlers.pollLoop(ctx, signal); }
 	function schedulePendingMediaGroups(ctx: ExtensionContext): void { updateHandlers.schedulePendingMediaGroups(ctx); }
 	function retryPendingTurns(): Promise<void> { return updateHandlers.retryPendingTurns(); }
-	function brokerBackgroundDeps() { return { stopBroker, log: (message: string) => console.warn(message) }; }
+	function brokerBackgroundDeps() { return { stopBroker, log: (message: string) => { reportPiDiagnostic({ message, severity: "warning", statusDetail: message }); } }; }
 	function runDetachedBrokerTask(label: string, task: () => Promise<void>): void { runBrokerBackgroundTask(label, task, brokerBackgroundDeps()); }
 	function logTerminalRouteCleanupFailure(route: TelegramRoute, reason: string): void {
-		console.warn(`[pi-telegram] Terminal Telegram topic cleanup failure for ${route.routeId}: ${reason}`);
+		const message = `Telegram bridge could not clean up topic ${route.topicName} (${route.routeId}): ${reason}`;
+		reportPiDiagnostic({ message, severity: "error", statusDetail: message, notify: true, display: true });
 	}
 	function cleanupSessionTempDir(sessionId: string, currentBrokerState: BrokerState): Promise<void> {
 		return cleanupDownloadedTelegramSessionTempDirIfUnused({ sessionId, brokerState: currentBrokerState }).then(() => undefined);
@@ -235,7 +246,10 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		try {
 			await commandRouter.retryQueuedTurnControlFinalizations();
 		} catch (error) {
-			if (getTelegramRetryAfterMs(error) === undefined) console.warn(`[pi-telegram] Failed to finalize queued Telegram controls: ${errorMessage(error)}`);
+			if (getTelegramRetryAfterMs(error) === undefined) {
+				const message = `Failed to finalize queued Telegram controls: ${errorMessage(error)}`;
+				reportPiDiagnostic({ message, severity: "warning", statusDetail: message });
+			}
 		}
 	}
 	function retryPendingRouteCleanups(): Promise<{ ok: true }> {
@@ -540,26 +554,26 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		assistantFinalLedger.start();
 		brokerServer = await createIpcServer(localBrokerSocketPath, handleBrokerIpc);
 		isBroker = true;
-		brokerHeartbeatFailures = 0;
+		brokerHeartbeatState.failures = 0;
+		brokerHeartbeatState.renewalContentions = 0;
+		brokerHeartbeatState.renewalContentionReported = false;
+		brokerHeartbeatState.inFlight = false;
 		brokerHeartbeatTimer = setInterval(() => {
-			void renewBrokerLease().then(async () => {
-				if (!(await isBrokerActive())) return;
-				brokerHeartbeatFailures = 0;
-				await assistantFinalHandoff.processPendingClientFinalFiles();
-				await processPendingDisconnectRequests();
-				await updateHandlers.markOfflineSessions();
-				await retryQueuedTurnControlFinalizations();
-				await retryPendingRouteCleanups();
-				await sweepOrphanedTelegramTempDirs();
-				assistantFinalLedger.kick();
-			}).catch((error) => {
-				if (isStaleBrokerError(error)) {
-					void handleBrokerBackgroundError("broker heartbeat", error, brokerBackgroundDeps());
-					return;
-				}
-				brokerHeartbeatFailures += 1;
-				console.warn(`[pi-telegram] Broker heartbeat failed: ${errorMessage(error)}`);
-				if (brokerHeartbeatFailures >= 2) runDetachedBrokerTask("broker heartbeat failure stand-down", stopBroker);
+			void runBrokerHeartbeatCycle(brokerHeartbeatState, {
+				renewBrokerLease,
+				isBrokerActive,
+				runMaintenance: async () => {
+					await assistantFinalHandoff.processPendingClientFinalFiles();
+					await processPendingDisconnectRequests();
+					await updateHandlers.markOfflineSessions();
+					await retryQueuedTurnControlFinalizations();
+					await retryPendingRouteCleanups();
+					await sweepOrphanedTelegramTempDirs();
+					assistantFinalLedger.kick();
+				},
+				handleStaleBrokerError: (error) => handleBrokerBackgroundError("broker heartbeat", error, brokerBackgroundDeps()),
+				stopBroker,
+				reportDiagnostic: reportPiDiagnostic,
 			});
 		}, BROKER_HEARTBEAT_MS);
 		brokerPollAbort = new AbortController();
