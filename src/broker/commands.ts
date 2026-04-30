@@ -1,7 +1,7 @@
 import { MODEL_LIST_TTL_MS, SESSION_LIST_OFFLINE_GRACE_MS } from "../shared/config.js";
 import { routeId } from "../shared/format.js";
 import { canonicalRouteKey } from "../shared/routing.js";
-import type { BrokerState, ClientDeliverTurnResult, PendingTelegramTurn, SessionRegistration, TelegramCallbackQuery, TelegramConfig, TelegramMessage, TelegramRoute } from "../shared/types.js";
+import type { BrokerState, ClientDeliverTurnResult, ClientManualCompactionResult, PendingManualCompactionOperation, PendingTelegramTurn, SessionRegistration, TelegramCallbackQuery, TelegramConfig, TelegramMessage, TelegramRoute } from "../shared/types.js";
 import { errorMessage, now } from "../shared/utils.js";
 import { getTelegramRetryAfterMs } from "../telegram/api.js";
 import type { TelegramCommandRouterDeps } from "./command-types.js";
@@ -76,7 +76,7 @@ export class TelegramCommandRouter {
 			await this.deps.sendTextReply(firstMessage.chat.id, firstMessage.message_thread_id, "That pi session is offline. Send /sessions to pick another.");
 			return;
 		}
-		if (await this.dispatchSessionCommand(command, lower, rawText, route, session)) return;
+		if (await this.dispatchSessionCommand(firstMessage, command, lower, rawText, route, session)) return;
 		await this.deliverTelegramTurn(messages, command, rawText, route, session);
 	}
 
@@ -121,7 +121,7 @@ export class TelegramCommandRouter {
 		return false;
 	}
 
-	private async dispatchSessionCommand(command: string, lower: string, rawText: string, route: TelegramRoute, session: SessionRegistration): Promise<boolean> {
+	private async dispatchSessionCommand(message: TelegramMessage, command: string, lower: string, rawText: string, route: TelegramRoute, session: SessionRegistration): Promise<boolean> {
 		if (lower === "stop" || command === "/stop") {
 			await this.stopSession(route, session);
 			return true;
@@ -131,7 +131,7 @@ export class TelegramCommandRouter {
 			return true;
 		}
 		if (command === "/compact") {
-			await this.compactSession(route, session);
+			await this.compactSession(message, route, session);
 			return true;
 		}
 		if (command === "/model") {
@@ -166,15 +166,33 @@ export class TelegramCommandRouter {
 	private async stopSession(route: TelegramRoute, session: SessionRegistration): Promise<void> {
 		const brokerState = this.deps.getBrokerState();
 		try {
-			const result = await this.deps.postIpc<{ text: string; clearedTurnIds?: string[] }>(session.clientSocketPath, "abort_turn", { turnId: "active" }, session.sessionId);
+			const result = await this.deps.postIpc<{ text: string; clearedTurnIds?: string[]; clearedCompactionIds?: string[] }>(session.clientSocketPath, "abort_turn", { turnId: "active" }, session.sessionId);
+			let stateChanged = false;
+			let responseText = result.text;
 			if (brokerState?.pendingTurns && result.clearedTurnIds) {
 				for (const turnId of result.clearedTurnIds) delete brokerState.pendingTurns[turnId];
+				stateChanged = true;
 				await this.finalizeQueuedTurnControls(result.clearedTurnIds, QUEUED_CONTROL_TEXT.cleared).catch((error) => {
 					if (getTelegramRetryAfterMs(error) === undefined) throw error;
 				});
-				await this.deps.persistBrokerState();
 			}
-			await this.deps.sendTextReply(route.chatId, route.messageThreadId, result.text);
+			const clearedCompactionIds = new Set(result.clearedCompactionIds ?? []);
+			for (const operationId of this.queuedManualCompactionIdsForSession(session.sessionId)) clearedCompactionIds.add(operationId);
+			if (clearedCompactionIds.size > 0) {
+				const clearedBlockedTurnIds = this.clearPendingTurnsBlockedByManualCompactions([...clearedCompactionIds]);
+				if (clearedBlockedTurnIds.length > 0) {
+					stateChanged = true;
+					await this.finalizeQueuedTurnControls(clearedBlockedTurnIds, QUEUED_CONTROL_TEXT.cleared).catch((error) => {
+						if (getTelegramRetryAfterMs(error) === undefined) throw error;
+					});
+				}
+				if (this.clearManualCompactions([...clearedCompactionIds])) {
+					stateChanged = true;
+					if (!/compaction/i.test(responseText)) responseText = `${responseText} Cancelled queued compaction.`;
+				}
+			}
+			if (stateChanged) await this.deps.persistBrokerState();
+			await this.deps.sendTextReply(route.chatId, route.messageThreadId, responseText);
 		} catch (error) {
 			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
 			await this.deps.sendTextReply(route.chatId, route.messageThreadId, `Failed to stop session: ${errorMessage(error)}`);
@@ -192,15 +210,154 @@ export class TelegramCommandRouter {
 		}
 	}
 
-	private async compactSession(route: TelegramRoute, session: SessionRegistration): Promise<void> {
+	private compactOperationId(message: TelegramMessage, session: SessionRegistration, route: TelegramRoute): string {
+		return `compact:${session.sessionId}:${route.chatId}:${route.messageThreadId ?? 0}:${message.message_id}`;
+	}
+
+	private findPendingManualCompaction(brokerState: BrokerState, sessionId: string): PendingManualCompactionOperation | undefined {
+		return Object.values(brokerState.pendingManualCompactions ?? {}).find((operation) => operation.sessionId === sessionId && (operation.status === "queued" || operation.status === "running"));
+	}
+
+	private async compactSession(message: TelegramMessage, route: TelegramRoute, session: SessionRegistration): Promise<void> {
+		const brokerState = this.deps.getBrokerState();
+		if (!brokerState) return;
+		brokerState.pendingManualCompactions ??= {};
+		const existing = this.findPendingManualCompaction(brokerState, session.sessionId);
+		if (existing) {
+			await this.deps.sendTextReply(route.chatId, route.messageThreadId, existing.status === "running" ? "Compaction already running." : "Compaction already queued after current work.");
+			return;
+		}
+		const operation: PendingManualCompactionOperation = {
+			operationId: this.compactOperationId(message, session, route),
+			sessionId: session.sessionId,
+			routeId: route.routeId,
+			chatId: route.chatId,
+			messageThreadId: route.messageThreadId,
+			commandMessageId: message.message_id,
+			status: "queued",
+			createdAtMs: now(),
+			updatedAtMs: now(),
+		};
+		const duplicate = brokerState.pendingManualCompactions[operation.operationId];
+		if (duplicate) {
+			await this.deps.sendTextReply(route.chatId, route.messageThreadId, duplicate.status === "running" ? "Compaction already running." : "Compaction already queued after current work.");
+			return;
+		}
+		brokerState.pendingManualCompactions[operation.operationId] = operation;
+		await this.deps.persistBrokerState();
+		if (this.hasPendingTurnsAheadOfManualCompaction(operation)) {
+			await this.deps.sendTextReply(route.chatId, route.messageThreadId, "Compaction queued after current work.");
+			return;
+		}
+		let result: ClientManualCompactionResult;
 		try {
-			const result = await this.deps.postIpc<{ text: string }>(session.clientSocketPath, "compact_session", {}, session.sessionId);
-			await this.deps.sendTextReply(route.chatId, route.messageThreadId, result.text);
+			result = await this.deps.postIpc<ClientManualCompactionResult>(session.clientSocketPath, "queue_or_start_compact_session", { operation }, session.sessionId);
 		} catch (error) {
+			if (getTelegramRetryAfterMs(error) !== undefined) throw error;
 			session.status = "offline";
 			await this.deps.persistBrokerState();
-			await this.deps.sendTextReply(route.chatId, route.messageThreadId, `Failed to compact session: ${errorMessage(error)}`);
+			await this.deps.sendTextReply(route.chatId, route.messageThreadId, `Failed to queue compaction; will retry while the session is connected: ${errorMessage(error)}`);
+			return;
 		}
+		await this.applyCompactionResult(result, { sendReply: true });
+	}
+
+	private async applyCompactionResult(result: ClientManualCompactionResult, options: { sendReply: boolean }): Promise<boolean> {
+		const brokerState = this.deps.getBrokerState();
+		const operation = brokerState?.pendingManualCompactions?.[result.operationId];
+		let cleared = false;
+		if (operation) {
+			if (result.status === "queued") {
+				operation.status = "queued";
+				operation.updatedAtMs = now();
+			} else if (result.status === "started" || result.status === "already_running") {
+				operation.status = "running";
+				operation.updatedAtMs = now();
+			} else {
+				delete brokerState!.pendingManualCompactions![result.operationId];
+				cleared = true;
+			}
+			await this.deps.persistBrokerState();
+		}
+		if (options.sendReply && operation) await this.deps.sendTextReply(operation.chatId, operation.messageThreadId, result.text);
+		return cleared;
+	}
+
+	async markManualCompactionStarted(operationId: string): Promise<boolean> {
+		const brokerState = this.deps.getBrokerState();
+		const operation = brokerState?.pendingManualCompactions?.[operationId];
+		if (!operation) return false;
+		operation.status = "running";
+		operation.updatedAtMs = now();
+		await this.deps.persistBrokerState();
+		return true;
+	}
+
+	async markManualCompactionSettled(operationId: string): Promise<boolean> {
+		const brokerState = this.deps.getBrokerState();
+		if (!brokerState?.pendingManualCompactions?.[operationId]) return false;
+		delete brokerState.pendingManualCompactions[operationId];
+		await this.deps.persistBrokerState();
+		return true;
+	}
+
+	private queuedManualCompactionIdsForSession(sessionId: string): string[] {
+		const brokerState = this.deps.getBrokerState();
+		return Object.values(brokerState?.pendingManualCompactions ?? {})
+			.filter((operation) => operation.sessionId === sessionId && operation.status === "queued")
+			.map((operation) => operation.operationId);
+	}
+
+	private clearPendingTurnsBlockedByManualCompactions(operationIds: string[]): string[] {
+		const brokerState = this.deps.getBrokerState();
+		if (!brokerState?.pendingTurns) return [];
+		const operationIdSet = new Set(operationIds);
+		const clearedTurnIds: string[] = [];
+		for (const [turnId, pending] of Object.entries(brokerState.pendingTurns)) {
+			const blocker = pending.turn.blockedByManualCompactionOperationId;
+			if (!blocker || !operationIdSet.has(blocker)) continue;
+			delete brokerState.pendingTurns[turnId];
+			clearedTurnIds.push(turnId);
+		}
+		return clearedTurnIds;
+	}
+
+	private hasPendingTurnsAheadOfManualCompaction(operation: PendingManualCompactionOperation): boolean {
+		const brokerState = this.deps.getBrokerState();
+		if (!brokerState?.pendingTurns) return false;
+		return Object.values(brokerState.pendingTurns).some((pending) => pending.turn.sessionId === operation.sessionId
+			&& !brokerState.pendingAssistantFinals?.[pending.turn.turnId]
+			&& pending.turn.blockedByManualCompactionOperationId !== operation.operationId);
+	}
+
+	clearManualCompactions(operationIds: string[]): boolean {
+		const brokerState = this.deps.getBrokerState();
+		if (!brokerState?.pendingManualCompactions) return false;
+		let changed = false;
+		for (const operationId of operationIds) {
+			if (!brokerState.pendingManualCompactions[operationId]) continue;
+			delete brokerState.pendingManualCompactions[operationId];
+			changed = true;
+		}
+		return changed;
+	}
+
+	async retryPendingManualCompactions(): Promise<boolean> {
+		const brokerState = this.deps.getBrokerState();
+		if (!brokerState?.pendingManualCompactions) return false;
+		let clearedAny = false;
+		for (const operation of Object.values(brokerState.pendingManualCompactions)) {
+			if (this.hasPendingTurnsAheadOfManualCompaction(operation)) continue;
+			const session = brokerState.sessions[operation.sessionId];
+			if (!session || session.status === "offline") continue;
+			try {
+				const result = await this.deps.postIpc<ClientManualCompactionResult>(session.clientSocketPath, "queue_or_start_compact_session", { operation }, session.sessionId);
+				clearedAny = await this.applyCompactionResult(result, { sendReply: false }) || clearedAny;
+			} catch (error) {
+				if (getTelegramRetryAfterMs(error) !== undefined) throw error;
+			}
+		}
+		return clearedAny;
 	}
 
 	private async disconnectSession(route: TelegramRoute, session: SessionRegistration): Promise<void> {
@@ -232,6 +389,8 @@ export class TelegramCommandRouter {
 			await this.deps.sendTextReply(route.chatId, route.messageThreadId, `Failed to prepare Telegram message: ${errorMessage(error)}`);
 			return;
 		}
+		const blockingCompaction = deliveryMode === "steer" ? undefined : this.findPendingManualCompaction(brokerState, route.sessionId);
+		if (blockingCompaction) turn.blockedByManualCompactionOperationId = blockingCompaction.operationId;
 		brokerState.pendingTurns ??= {};
 		brokerState.completedTurnIds ??= [];
 		if (brokerState.completedTurnIds.includes(turn.turnId)) return;
@@ -241,6 +400,10 @@ export class TelegramCommandRouter {
 		}
 		brokerState.pendingTurns[turn.turnId] = { turn: this.deps.durableTelegramTurn(turn), updatedAtMs: now() };
 		await this.deps.persistBrokerState();
+		if (blockingCompaction) {
+			await this.deps.sendTextReply(route.chatId, route.messageThreadId, "Queued after compaction.");
+			return;
+		}
 		let delivery: ClientDeliverTurnResult;
 		try {
 			delivery = await this.deps.postIpc<ClientDeliverTurnResult>(session.clientSocketPath, "deliver_turn", turn, session.sessionId);

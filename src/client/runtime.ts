@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { QUEUED_CONTROL_TEXT } from "../shared/queued-control-text.js";
-import type { ActiveTelegramTurn, AssistantFinalPayload, BrokerLease, CancelQueuedTurnRequest, CancelQueuedTurnResult, ClientGitRepositoryQueryRequest, ClientGitRepositoryQueryResult, ConvertQueuedTurnToSteerRequest, ConvertQueuedTurnToSteerResult, ClientDeliverTurnResult, ModelSummary, PendingTelegramTurn, TelegramRoute } from "../shared/types.js";
+import type { ActiveTelegramTurn, AssistantFinalPayload, BrokerLease, CancelQueuedTurnRequest, CancelQueuedTurnResult, ClientGitRepositoryQueryRequest, ClientGitRepositoryQueryResult, ClientManualCompactionRequest, ClientManualCompactionResult, ConvertQueuedTurnToSteerRequest, ConvertQueuedTurnToSteerResult, ClientDeliverTurnResult, ModelSummary, PendingManualCompactionOperation, PendingTelegramTurn, TelegramRoute } from "../shared/types.js";
 import { errorMessage, randomId } from "../shared/utils.js";
 import { clientAbortTelegramTurn } from "./abort-turn.js";
 import { clientCompactSession } from "./compact.js";
@@ -43,6 +43,7 @@ export interface ClientRuntimeDeps {
 	acknowledgeConsumedTurn: (turnId: string, finalizeQueuedControlText?: string) => Promise<void>;
 	ensureCurrentTurnMirroredToTelegram: (ctx: ExtensionContext | undefined, historyText: string) => void;
 	startNextTelegramTurn: () => void;
+	onManualCompactionSettled?: (operationId: string) => void;
 	readLease: () => Promise<BrokerLease | undefined>;
 	updateStatus: (ctx: ExtensionContext, detail?: string) => void;
 }
@@ -181,12 +182,60 @@ export class ClientRuntime {
 			sessionName,
 			lease: await this.deps.readLease(),
 			activeTelegramTurn: this.turnLifecycle.getActiveTurn(),
-			queuedTurnCount: this.turnLifecycle.queuedTurnCount(),
-			manualCompactionInProgress: this.turnLifecycle.getManualCompactionQueue().isActive(),
+			queuedTurnCount: this.turnLifecycle.queuedTurnCount() + (this.turnLifecycle.hasQueuedManualCompaction() ? 1 : 0),
+			manualCompactionInProgress: this.turnLifecycle.getManualCompactionQueue().isActive() || this.turnLifecycle.hasQueuedManualCompaction(),
 		});
 	}
 
-	compact(onSettledStatus?: ExtensionContext): { text: string } {
+	queueOrStartCompaction(request: ClientManualCompactionRequest): ClientManualCompactionResult {
+		this.syncLegacyLifecycleFromDeps();
+		const { operation } = request;
+		const ctx = this.deps.getLatestCtx();
+		if (!ctx) return { status: "unavailable", text: "Session context unavailable.", operationId: operation.operationId };
+		if (this.turnLifecycle.hasHandledManualCompactionOperation(operation.operationId) && !this.turnLifecycle.hasRunningManualCompaction()) return { status: "already_handled", text: "Compaction already handled.", operationId: operation.operationId };
+		if (this.turnLifecycle.hasRunningManualCompaction()) {
+			this.turnLifecycle.rememberManualCompactionOperation(operation.operationId);
+			return { status: "already_running", text: "Compaction already running.", operationId: operation.operationId };
+		}
+		if (this.turnLifecycle.hasQueuedManualCompaction()) {
+			const status = this.turnLifecycle.queuedManualCompactionOperationId() === operation.operationId ? "queued" : "already_queued";
+			return { status, text: "Compaction already queued after current work.", operationId: operation.operationId };
+		}
+		const busy = !ctx.isIdle() || Boolean(this.turnLifecycle.getActiveTurn()) || this.turnLifecycle.queuedTurnCount() > 0 || this.turnLifecycle.hasAwaitingTelegramFinalTurn();
+		if (!busy) {
+			this.turnLifecycle.rememberManualCompactionOperation(operation.operationId);
+			const result = this.compact(undefined, operation.operationId);
+			return { status: result.text === "Compaction started." ? "started" : "failed", text: result.text, operationId: operation.operationId };
+		}
+		this.turnLifecycle.queueManualCompaction(operation);
+		return { status: "queued", text: "Compaction queued after current work.", operationId: operation.operationId };
+	}
+
+	startQueuedCompaction(operation: PendingManualCompactionOperation): void {
+		const result = this.compact(undefined, operation.operationId, { notifyStart: true, notifySynchronousFailure: true });
+		if (result.text === "Compaction started." || result.text !== "Session context unavailable.") return;
+		void this.deps.sendAssistantFinalToBroker({
+			turn: {
+				turnId: randomId("cmd"),
+				sessionId: operation.sessionId,
+				routeId: operation.routeId,
+				chatId: operation.chatId,
+				messageThreadId: operation.messageThreadId,
+				replyToMessageId: 0,
+				queuedAttachments: [],
+				content: [],
+				historyText: "",
+			},
+			text: result.text,
+			attachments: [],
+		});
+		this.deps.onManualCompactionSettled?.(operation.operationId);
+		this.turnLifecycle.finishRunningManualCompaction(operation.operationId);
+		this.turnLifecycle.getManualCompactionQueue().finish();
+		this.deps.startNextTelegramTurn();
+	}
+
+	compact(onSettledStatus?: ExtensionContext, operationId?: string, options?: { notifyStart?: boolean; notifySynchronousFailure?: boolean }): { text: string } {
 		return clientCompactSession({
 			ctx: this.deps.getLatestCtx(),
 			sessionId: this.deps.getSessionId(),
@@ -201,10 +250,15 @@ export class ClientRuntime {
 				if (ctx) this.deps.updateStatus(ctx);
 			},
 			onSettled: () => {
+				if (operationId) this.deps.onManualCompactionSettled?.(operationId);
+				this.turnLifecycle.finishRunningManualCompaction(operationId);
 				this.turnLifecycle.getManualCompactionQueue().finish();
 				const ctx = onSettledStatus ?? this.deps.getLatestCtx();
 				if (ctx) this.deps.updateStatus(ctx);
+				this.deps.startNextTelegramTurn();
 			},
+			notifyStart: options?.notifyStart,
+			notifySynchronousFailure: options?.notifySynchronousFailure,
 		});
 	}
 

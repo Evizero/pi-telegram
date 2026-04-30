@@ -4,13 +4,19 @@ import type { Server } from "node:http";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { ClientRuntimeHost, type ClientRuntimeHostDeps, type ClientRuntimeHostFinalHandoff, type ClientRuntimeHostFinalizer } from "../src/client/runtime-host.js";
-import type { AssistantFinalPayload, IpcEnvelope, PendingTelegramTurn, TelegramRoute } from "../src/shared/types.js";
+import type { AssistantFinalPayload, IpcEnvelope, PendingManualCompactionOperation, PendingTelegramTurn, TelegramRoute } from "../src/shared/types.js";
+
+type CompactCallbacks = { onComplete?: (result?: unknown) => void; onError?: (error: unknown) => void };
 
 function route(id = "route-1", chatId: number | string = 123): TelegramRoute {
 	return { routeId: id, sessionId: "session-1", chatId, messageThreadId: 9, routeMode: "private_topic", topicName: id, createdAtMs: 1, updatedAtMs: 1 };
 }
 
-function turn(id: string, deliveryMode?: PendingTelegramTurn["deliveryMode"]): PendingTelegramTurn {
+function operation(id: string): PendingManualCompactionOperation {
+	return { operationId: id, sessionId: "session-1", routeId: "route-1", chatId: 123, messageThreadId: 9, status: "queued", createdAtMs: 1, updatedAtMs: 1 };
+}
+
+function turn(id: string, deliveryMode?: PendingTelegramTurn["deliveryMode"], blockedByManualCompactionOperationId?: string): PendingTelegramTurn {
 	return {
 		turnId: id,
 		sessionId: "session-1",
@@ -22,14 +28,16 @@ function turn(id: string, deliveryMode?: PendingTelegramTurn["deliveryMode"]): P
 		content: [{ type: "text", text: `message ${id}` }],
 		historyText: `history ${id}`,
 		deliveryMode,
+		blockedByManualCompactionOperationId,
 	};
 }
 
-function ctx(idle = true): ExtensionContext {
+function ctx(idle = true, compact?: ExtensionContext["compact"]): ExtensionContext {
 	return {
 		cwd: "/tmp/pi-telegram-runtime-host-check",
 		isIdle: () => idle,
 		abort: () => undefined,
+		compact: compact ?? (() => undefined),
 		sessionManager: {
 			getSessionId: () => "session-1",
 			getSessionFile: () => "/tmp/session.json",
@@ -61,11 +69,13 @@ interface Harness {
 	lastHandler?: (envelope: IpcEnvelope) => Promise<unknown>;
 	finalizer: ClientRuntimeHostFinalizer & { deferredPayload?: AssistantFinalPayload; hasDeferred: boolean; cancelled: number; released: number };
 	handoff: ClientRuntimeHostFinalHandoff & { retryPendingCalls: number; handoffPendingForShutdownCalls: number; abortedFinals: PendingTelegramTurn[]; deferFinals: boolean };
+	finals: AssistantFinalPayload[];
 	setPostIpc(handler: ClientRuntimeHostDeps["postIpc"]): void;
+	setLatestCtx(nextCtx: ExtensionContext): void;
 }
 
-function createHarness(options: { idle?: boolean; postIpc?: ClientRuntimeHostDeps["postIpc"]; sendUserMessage?: ExtensionAPI["sendUserMessage"] } = {}): Harness {
-	let latestCtx = ctx(options.idle ?? true);
+function createHarness(options: { idle?: boolean; postIpc?: ClientRuntimeHostDeps["postIpc"]; sendUserMessage?: ExtensionAPI["sendUserMessage"]; compact?: ExtensionContext["compact"] } = {}): Harness {
+	let latestCtx = ctx(options.idle ?? true, options.compact);
 	let postIpc: ClientRuntimeHostDeps["postIpc"] = options.postIpc ?? (async (_socketPath, type) => {
 		if (type === "register_session") return route() as never;
 		if (type === "heartbeat_session") return {} as never;
@@ -73,6 +83,7 @@ function createHarness(options: { idle?: boolean; postIpc?: ClientRuntimeHostDep
 	});
 	const postCalls: Harness["postCalls"] = [];
 	const sentMessages: Harness["sentMessages"] = [];
+	const finals: AssistantFinalPayload[] = [];
 	const createdServers: string[] = [];
 	let closedServers = 0;
 	let lastHandler: Harness["lastHandler"];
@@ -144,11 +155,11 @@ function createHarness(options: { idle?: boolean; postIpc?: ClientRuntimeHostDep
 		assistantFinalHandoff: handoff,
 		clearAssistantPreviewInBroker: async () => undefined,
 		isRoutableRoute: (candidate): candidate is TelegramRoute => candidate !== undefined && candidate.chatId !== 0 && String(candidate.chatId) !== "0",
-		sendAssistantFinalToBroker: async () => true,
+		sendAssistantFinalToBroker: async (payload) => { finals.push(payload); return true; },
 		updateStatus: () => undefined,
 	};
 	const host = new ClientRuntimeHost(deps);
-	return { host, postCalls, sentMessages, createdServers, get closedServers() { return closedServers; }, get lastHandler() { return lastHandler; }, finalizer, handoff, setPostIpc(handler) { postIpc = handler; } } as Harness;
+	return { host, postCalls, sentMessages, finals, createdServers, get closedServers() { return closedServers; }, get lastHandler() { return lastHandler; }, finalizer, handoff, setPostIpc(handler) { postIpc = handler; }, setLatestCtx(nextCtx) { latestCtx = nextCtx; } } as Harness;
 }
 
 async function checkClientServerStartRefreshesConnectionIdentity(): Promise<void> {
@@ -272,6 +283,128 @@ async function checkRouteShutdownHandoffsPendingFinalsAndClearsRouteState(): Pro
 	assert.equal(harness.host.getQueuedTelegramTurns().length, 0);
 }
 
+async function checkIdleQueueOrStartCompactStartsImmediately(): Promise<void> {
+	let compactStarted = 0;
+	const harness = createHarness({ idle: true, compact: () => { compactStarted += 1; } });
+	harness.host.setConnectedRoute(route());
+	const result = harness.host.clientQueueOrStartCompact({ operation: operation("compact-idle") });
+	assert.equal(result.status, "started");
+	assert.equal(result.text, "Compaction started.");
+	assert.equal(compactStarted, 1);
+}
+
+async function checkQueuedCompactRunsAfterEarlierTurnAndBeforeLaterFollowUp(): Promise<void> {
+	let compactCallbacks: CompactCallbacks | undefined;
+	const harness = createHarness({ idle: false, compact: (callbacks) => { compactCallbacks = callbacks as CompactCallbacks | undefined; } });
+	await harness.host.startClientServer();
+	harness.host.setConnectedRoute(route());
+	harness.host.setActiveTelegramTurn(turn("active"));
+	harness.host.setQueuedTelegramTurns([turn("earlier", "followUp")]);
+
+	const queueResult = harness.host.clientQueueOrStartCompact({ operation: operation("compact-queued") });
+	assert.equal(queueResult.status, "queued");
+	assert.equal(compactCallbacks, undefined);
+
+	harness.host.setActiveTelegramTurn(undefined);
+	harness.setLatestCtx(ctx(true, (callbacks) => { compactCallbacks = callbacks as CompactCallbacks | undefined; }));
+	await harness.host.clientDeliverTurn(turn("later", "followUp", "compact-queued"));
+	assert.deepEqual(harness.sentMessages.map((message) => (message.content[0] as { text: string }).text), ["message earlier"]);
+	assert.equal(compactCallbacks, undefined);
+
+	harness.host.setActiveTelegramTurn(undefined);
+	harness.host.startNextTelegramTurn();
+	assert.ok(compactCallbacks, "expected queued compaction to start before later follow-up");
+	assert.ok(harness.postCalls.some((call) => call.type === "manual_compaction_started" && (call.payload as { operationId?: string }).operationId === "compact-queued"));
+	assert.equal(harness.finals.at(-1)?.text, "Compaction started.");
+	assert.deepEqual(harness.sentMessages.map((message) => (message.content[0] as { text: string }).text), ["message earlier"]);
+
+	const completionCallbacks = compactCallbacks as CompactCallbacks | undefined;
+	completionCallbacks?.onComplete?.();
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(harness.finals.at(-1)?.text, "Compaction completed.");
+	assert.ok(harness.postCalls.some((call) => call.type === "manual_compaction_settled" && (call.payload as { operationId?: string }).operationId === "compact-queued"));
+	assert.deepEqual(harness.sentMessages.map((message) => (message.content[0] as { text: string }).text), ["message earlier", "message later"]);
+	await harness.host.stopClientServer();
+}
+
+async function checkQueuedCompactFailureReleasesLaterFollowUp(): Promise<void> {
+	let compactCallbacks: CompactCallbacks | undefined;
+	const harness = createHarness({ idle: false, compact: (callbacks) => { compactCallbacks = callbacks as CompactCallbacks | undefined; } });
+	await harness.host.startClientServer();
+	harness.host.setConnectedRoute(route());
+	harness.host.setActiveTelegramTurn(turn("active"));
+	assert.equal(harness.host.clientQueueOrStartCompact({ operation: operation("compact-fails") }).status, "queued");
+	harness.host.setActiveTelegramTurn(undefined);
+	harness.setLatestCtx(ctx(true, (callbacks) => { compactCallbacks = callbacks as CompactCallbacks | undefined; }));
+	await harness.host.clientDeliverTurn(turn("later-after-fail", "followUp", "compact-fails"));
+	harness.host.startNextTelegramTurn();
+	compactCallbacks?.onError?.(new Error("summary failed"));
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.ok(harness.finals.some((final) => final.text === "Compaction failed: summary failed"));
+	assert.ok(harness.postCalls.some((call) => call.type === "manual_compaction_settled" && (call.payload as { operationId?: string }).operationId === "compact-fails"));
+	assert.deepEqual(harness.sentMessages.map((message) => (message.content[0] as { text: string }).text), ["message later-after-fail"]);
+	await harness.host.stopClientServer();
+}
+
+async function checkQueuedCompactSynchronousFailureSettlesOnceAndReleasesLaterFollowUp(): Promise<void> {
+	const harness = createHarness({ idle: false, compact: () => { throw new Error("sync compact failed"); } });
+	await harness.host.startClientServer();
+	harness.host.setConnectedRoute(route());
+	assert.equal(harness.host.clientQueueOrStartCompact({ operation: operation("compact-sync-fails") }).status, "queued");
+	harness.setLatestCtx(ctx(true, () => { throw new Error("sync compact failed"); }));
+	await harness.host.clientDeliverTurn(turn("later-after-sync-fail", "followUp", "compact-sync-fails"));
+	harness.host.startNextTelegramTurn();
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.deepEqual(harness.finals.map((final) => final.text).filter((text) => text === "Compaction failed: sync compact failed"), ["Compaction failed: sync compact failed"]);
+	assert.equal(harness.postCalls.filter((call) => call.type === "manual_compaction_settled" && (call.payload as { operationId?: string }).operationId === "compact-sync-fails").length, 1);
+	assert.deepEqual(harness.sentMessages.map((message) => (message.content[0] as { text: string }).text), ["message later-after-sync-fail"]);
+	await harness.host.stopClientServer();
+}
+
+async function checkQueuedCompactUnavailableContextSettlesAndReleasesLaterFollowUp(): Promise<void> {
+	const harness = createHarness({ idle: false });
+	await harness.host.startClientServer();
+	harness.host.setConnectedRoute(route());
+	assert.equal(harness.host.clientQueueOrStartCompact({ operation: operation("compact-unavailable") }).status, "queued");
+	harness.setLatestCtx(undefined as unknown as ExtensionContext);
+	await harness.host.clientDeliverTurn(turn("later-after-unavailable", "followUp", "compact-unavailable"));
+	harness.host.startNextTelegramTurn();
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.ok(harness.postCalls.some((call) => call.type === "manual_compaction_started" && (call.payload as { operationId?: string }).operationId === "compact-unavailable"));
+	assert.ok(harness.postCalls.some((call) => call.type === "manual_compaction_settled" && (call.payload as { operationId?: string }).operationId === "compact-unavailable"));
+	assert.equal(harness.finals.at(-1)?.text, "Session context unavailable.");
+	assert.deepEqual(harness.sentMessages.map((message) => (message.content[0] as { text: string }).text), ["message later-after-unavailable"]);
+	await harness.host.stopClientServer();
+}
+
+async function checkQueuedCompactCoalescesAndAbortClearsIt(): Promise<void> {
+	const harness = createHarness({ idle: false });
+	harness.host.setConnectedRoute(route());
+	harness.host.setActiveTelegramTurn(turn("active"));
+	assert.equal(harness.host.clientQueueOrStartCompact({ operation: operation("compact-one") }).status, "queued");
+	assert.equal(harness.host.clientQueueOrStartCompact({ operation: operation("compact-two") }).status, "already_queued");
+	const abortResult = await harness.host.clientAbortTurn();
+	assert.deepEqual(abortResult.clearedCompactionIds, ["compact-one"]);
+	assert.equal(abortResult.text, "Aborted current turn. Cancelled queued compaction.");
+	assert.equal(harness.host.clientQueueOrStartCompact({ operation: operation("compact-one") }).status, "already_handled");
+}
+
+async function checkQueuedCompactReportsAlreadyRunning(): Promise<void> {
+	let compactCallbacks: CompactCallbacks | undefined;
+	const harness = createHarness({ idle: false, compact: (callbacks) => { compactCallbacks = callbacks as CompactCallbacks | undefined; } });
+	await harness.host.startClientServer();
+	harness.host.setConnectedRoute(route());
+	assert.equal(harness.host.clientQueueOrStartCompact({ operation: operation("compact-running") }).status, "queued");
+	harness.setLatestCtx(ctx(true, (callbacks) => { compactCallbacks = callbacks as CompactCallbacks | undefined; }));
+	harness.host.startNextTelegramTurn();
+	assert.ok(compactCallbacks);
+	assert.equal(harness.host.clientQueueOrStartCompact({ operation: operation("compact-again") }).status, "already_running");
+	compactCallbacks?.onComplete?.();
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(harness.host.clientQueueOrStartCompact({ operation: operation("compact-running") }).status, "already_handled");
+	await harness.host.stopClientServer();
+}
+
 async function main(): Promise<void> {
 	await checkClientServerStartRefreshesConnectionIdentity();
 	await checkRegistrationRetriesAndMirrorsBusyTurnOnce();
@@ -281,6 +414,13 @@ async function main(): Promise<void> {
 	await checkStartNextTelegramTurnRestoresQueueWhenLocalDeliveryThrows();
 	await checkStaleStandDownPersistsFinalsAndClearsLocalState();
 	await checkRouteShutdownHandoffsPendingFinalsAndClearsRouteState();
+	await checkIdleQueueOrStartCompactStartsImmediately();
+	await checkQueuedCompactRunsAfterEarlierTurnAndBeforeLaterFollowUp();
+	await checkQueuedCompactFailureReleasesLaterFollowUp();
+	await checkQueuedCompactSynchronousFailureSettlesOnceAndReleasesLaterFollowUp();
+	await checkQueuedCompactUnavailableContextSettlesAndReleasesLaterFollowUp();
+	await checkQueuedCompactCoalescesAndAbortClearsIt();
+	await checkQueuedCompactReportsAlreadyRunning();
 	console.log("Client runtime host checks passed");
 }
 

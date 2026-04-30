@@ -14,6 +14,8 @@ import type {
 	ClientDeliverTurnResult,
 	ClientGitRepositoryQueryRequest,
 	ClientGitRepositoryQueryResult,
+	ClientManualCompactionRequest,
+	ClientManualCompactionResult,
 	ConvertQueuedTurnToSteerRequest,
 	ConvertQueuedTurnToSteerResult,
 	IpcEnvelope,
@@ -132,6 +134,9 @@ export class ClientRuntimeHost {
 			acknowledgeConsumedTurn: (turnId, finalizeQueuedControlText) => this.acknowledgeConsumedTurn(turnId, finalizeQueuedControlText),
 			ensureCurrentTurnMirroredToTelegram: (ctx, historyText) => this.ensureCurrentTurnMirroredToTelegram(ctx, historyText),
 			startNextTelegramTurn: () => this.startNextTelegramTurn(),
+			onManualCompactionSettled: (operationId) => {
+				void this.deps.postIpc(this.deps.getConnectedBrokerSocketPath(), "manual_compaction_settled", { operationId }, this.deps.getSessionId()).catch(() => undefined);
+			},
 			readLease: this.deps.readLease,
 			updateStatus: this.deps.updateStatus,
 		});
@@ -176,6 +181,7 @@ export class ClientRuntimeHost {
 			activeTelegramTurn: this.turnLifecycle.getActiveTurn(),
 			queuedTelegramTurns: this.turnLifecycle.getQueuedTurnsSnapshot(),
 			manualCompactionInProgress: this.turnLifecycle.getManualCompactionQueue().isActive(),
+			queuedManualCompaction: this.turnLifecycle.hasQueuedManualCompaction(),
 			replacement: this.deps.getSessionReplacementContext(),
 		});
 	}
@@ -377,6 +383,7 @@ export class ClientRuntimeHost {
 		}
 		if (envelope.type === "query_status") return { text: await this.clientStatusText() };
 		if (envelope.type === "compact_session") return this.clientCompact();
+		if (envelope.type === "queue_or_start_compact_session") return this.clientQueueOrStartCompact(envelope.payload as ClientManualCompactionRequest);
 		if (envelope.type === "query_models") return this.clientQueryModels((envelope.payload as { filter?: string }).filter);
 		if (envelope.type === "query_git_repository") return await this.clientQueryGitRepository(envelope.payload as ClientGitRepositoryQueryRequest);
 		if (envelope.type === "set_model") {
@@ -416,12 +423,23 @@ export class ClientRuntimeHost {
 		return this.clientRuntime.cancelQueuedTurn(request);
 	}
 
-	clientAbortTurn(): Promise<{ text: string; clearedTurnIds: string[] }> {
-		return this.clientRuntime.abortTurn();
+	async clientAbortTurn(): Promise<{ text: string; clearedTurnIds: string[]; clearedCompactionIds?: string[] }> {
+		const queuedCompactionId = this.turnLifecycle.queuedManualCompactionOperationId();
+		const result = await this.clientRuntime.abortTurn();
+		if (!queuedCompactionId) return result;
+		const text = result.text === "No active turn."
+			? "Cancelled queued compaction."
+			: `${result.text} Cancelled queued compaction.`;
+		return { ...result, text, clearedCompactionIds: [queuedCompactionId] };
 	}
 
 	startNextTelegramTurn(): void {
-		this.turnLifecycle.startNextTelegramTurn();
+		const result = this.turnLifecycle.startNextTelegramTurn();
+		if (result !== "blocked_by_compaction") return;
+		const operation = this.turnLifecycle.takeQueuedManualCompactionToStart();
+		if (!operation) return;
+		void this.deps.postIpc(this.deps.getConnectedBrokerSocketPath(), "manual_compaction_started", { operationId: operation.operationId }, this.deps.getSessionId()).catch(() => undefined);
+		this.clientRuntime.startQueuedCompaction(operation);
 	}
 
 	clientStatusText(): Promise<string> {
@@ -430,6 +448,10 @@ export class ClientRuntimeHost {
 
 	clientCompact(): { text: string } {
 		return this.clientRuntime.compact();
+	}
+
+	clientQueueOrStartCompact(request: ClientManualCompactionRequest): ClientManualCompactionResult {
+		return this.clientRuntime.queueOrStartCompaction(request);
 	}
 
 	clientQueryModels(filter?: string): { current?: string; models: ModelSummary[] } {

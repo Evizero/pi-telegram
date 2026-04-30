@@ -741,24 +741,25 @@
     {
       "id": "SyRS-compact-busy-session",
       "origin": "derived",
-      "label": "Compact busy sessions remotely",
-      "statement": "The system shall invoke pi manual compaction for an authorized Telegram /compact command on the selected session so that pi interrupts any active turn before compacting according to native manual compaction semantics.",
+      "label": "Deprecated immediate busy compact",
+      "statement": "Deprecated: the system previously invoked pi manual compaction immediately for an authorized Telegram /compact command on a busy selected session, interrupting any active turn according to native manual compaction semantics.",
       "traces_to": [
         "StRS-mid-turn-control",
         "StRS-remote-session-supervision",
         "StRS-local-first-authority"
       ],
-      "rationale": "Native pi treats /compact as a control command that interrupts an active turn and compacts; Telegram control should preserve the same remote-session expectation instead of rejecting busy sessions.",
-      "acceptance_criteria": "A focused test shows that /compact sent to a busy selected session invokes pi manual compaction, interrupts the active turn through that path, and produces the normal compaction completion or failure reply rather than the busy-session rejection, while busy-time Telegram message routing continues to follow the current default-follow-up and explicit-steer requirements.",
+      "rationale": "The earlier Telegram behavior matched native pi manual compaction, but later source input clarified that mobile /compact should behave as a non-urgent queued control when the session is busy so useful active work is not aborted.",
+      "acceptance_criteria": "Retained only as historical trace for archived work; new implementation work must satisfy the replacement queued-compaction requirements instead of this deprecated immediate-interrupt behavior.",
       "verification": {
         "method": "test"
       },
-      "status": "draft",
+      "status": "deprecated",
       "created": "2026-04-25",
-      "updated": "2026-04-28",
+      "updated": "2026-04-30",
       "sources": {
         "inbox": [
-          "telegram-compact-should-match"
+          "telegram-compact-should-match",
+          "queue-manual-compaction-after"
         ]
       }
     },
@@ -1296,6 +1297,123 @@
       "sources": {
         "inbox": [
           "pi-telegram-slows-pi"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-queue-busy-compact",
+      "origin": "derived",
+      "label": "Queue busy /compact",
+      "statement": "The system shall queue an authorized Telegram /compact command received while the selected pi session has active or earlier queued work as a manual-compaction operation that starts only after that earlier work has settled.",
+      "traces_to": [
+        "StRS-deferred-session-controls",
+        "StRS-mid-turn-control",
+        "StRS-busy-turn-intent"
+      ],
+      "rationale": "A busy-session Telegram /compact is a non-urgent maintenance control in mobile supervision; it should preserve active work and align with follow-up-style scheduling instead of invoking pi's immediate aborting compaction path at receipt time.",
+      "acceptance_criteria": "A focused busy-session command test shows /compact returns a queued acknowledgement without calling ctx.compact immediately, the active turn continues, and the queued compaction starts after the active turn and any earlier queued turn lifecycle gates have settled.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-30",
+      "updated": "2026-04-30",
+      "sources": {
+        "inbox": [
+          "queue-manual-compaction-after"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-compact-barrier-ordering",
+      "origin": "derived",
+      "label": "Keep turns behind compact",
+      "statement": "The system shall keep ordinary authorized Telegram messages and /follow turns received after a queued Telegram manual-compaction operation behind that operation until the compaction completes or fails.",
+      "traces_to": [
+        "StRS-deferred-session-controls",
+        "StRS-busy-turn-intent"
+      ],
+      "rationale": "The operator's intended workflow is to queue compaction first and then send the next non-urgent instruction that should run against the post-compaction session state; ordinary follow-up work must not overtake the compaction barrier, while explicit /steer remains a separate urgent active-turn correction path.",
+      "acceptance_criteria": "A focused ordering test queues /compact during active work, then sends ordinary and /follow Telegram messages; after active work settles, compaction starts before those later non-urgent turns, and those later turns start only after the compaction completion or failure callback releases the barrier, while explicit /steer behavior remains covered by active-turn steering requirements.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-30",
+      "updated": "2026-04-30",
+      "sources": {
+        "inbox": [
+          "queue-manual-compaction-after"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-queued-compact-durability",
+      "origin": "derived",
+      "label": "Preserve queued compact ops",
+      "statement": "The system shall preserve queued Telegram manual-compaction operations with session and route identity until they start, are cleared by an explicit lifecycle outcome, or reach a terminal unrecoverable outcome.",
+      "traces_to": [
+        "StRS-deferred-session-controls",
+        "StRS-delivery-continuity",
+        "StRS-connection-scoped-telegram-view"
+      ],
+      "rationale": "Queued compaction is remote-control work, not an ephemeral local callback; it needs enough durable identity to survive ordinary broker turnover and to be cleared safely when the selected session disconnects or stops.",
+      "acceptance_criteria": "Focused broker/client lifecycle coverage demonstrates that a queued compaction is represented with the selected session and Telegram route, is not duplicated by redelivery, can resume or be redelivered after broker turnover while the session remains connected, and is cleared or finalized with a clear Telegram-visible outcome when /stop, explicit disconnect, route cleanup, reconnect-grace expiry, or session death makes it no longer actionable.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-30",
+      "updated": "2026-04-30",
+      "sources": {
+        "inbox": [
+          "queue-manual-compaction-after"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-compact-request-coalescing",
+      "origin": "derived",
+      "label": "Coalesce repeated /compact",
+      "statement": "The system shall not enqueue a second Telegram manual-compaction operation for a selected session that already has a queued or running Telegram manual-compaction operation without distinct supported instructions.",
+      "traces_to": [
+        "StRS-deferred-session-controls",
+        "StRS-busy-turn-intent"
+      ],
+      "rationale": "The current Telegram compact command has no supported custom-instruction distinction in this slice, so repeated compact requests should remain understandable and idempotent rather than stacking redundant compaction barriers.",
+      "acceptance_criteria": "Focused command-routing coverage shows that after a Telegram manual compaction is queued or running for the selected session, another /compact without supported distinct instructions does not create an additional compaction barrier and instead receives a clear already-queued or already-running acknowledgement.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-30",
+      "updated": "2026-04-30",
+      "sources": {
+        "inbox": [
+          "queue-manual-compaction-after"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-idle-telegram-compact",
+      "origin": "derived",
+      "label": "Start idle /compact",
+      "statement": "The system shall start pi manual compaction immediately for an authorized Telegram /compact command when the selected pi session is idle and has no earlier queued Telegram work.",
+      "traces_to": [
+        "StRS-remote-session-supervision",
+        "StRS-local-first-authority"
+      ],
+      "rationale": "Queued compaction changes only busy-session scheduling; when there is no active or earlier queued work, Telegram /compact should remain a direct remote control for native pi manual compaction.",
+      "acceptance_criteria": "A focused idle-session command test shows that authorized Telegram /compact calls pi manual compaction immediately, reports that compaction started, and sends the existing completion or failure result back to the selected Telegram route without creating a queued barrier.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-30",
+      "updated": "2026-04-30",
+      "sources": {
+        "inbox": [
+          "queue-manual-compaction-after"
         ]
       }
     }

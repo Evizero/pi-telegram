@@ -1,7 +1,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { QUEUED_CONTROL_TEXT } from "../shared/queued-control-text.js";
-import type { ActiveTelegramTurn, PendingTelegramTurn, QueuedAttachment, TelegramRoute } from "../shared/types.js";
+import type { ActiveTelegramTurn, PendingManualCompactionOperation, PendingTelegramTurn, QueuedAttachment, TelegramRoute } from "../shared/types.js";
 import { randomId } from "../shared/utils.js";
 import { ManualCompactionTurnQueue } from "./manual-compaction.js";
 
@@ -9,6 +9,7 @@ export interface TakenQueuedTelegramTurn {
 	turn: PendingTelegramTurn;
 	source: "queued" | "manualCompaction";
 	index?: number;
+	beforeManualCompaction?: boolean;
 }
 
 export interface ClientTelegramTurnLifecycleDeps {
@@ -26,6 +27,9 @@ export class ClientTelegramTurnLifecycle {
 	private activeTelegramTurn: ActiveTelegramTurn | undefined;
 	private currentAbort: (() => void) | undefined;
 	private awaitingTelegramFinalTurnId: string | undefined;
+	private queuedManualCompaction: { operation: PendingManualCompactionOperation; turnsBefore: number } | undefined;
+	private runningManualCompactionOperationId: string | undefined;
+	private readonly handledManualCompactionOperationIds = new Set<string>();
 	private readonly completedTurnIds = new Set<string>();
 	private readonly disconnectedTurnIds = new Set<string>();
 	private readonly manualCompactionQueue: ManualCompactionTurnQueue;
@@ -72,6 +76,67 @@ export class ClientTelegramTurnLifecycle {
 		return this.queuedTelegramTurns.length;
 	}
 
+	hasQueuedManualCompaction(): boolean {
+		return this.queuedManualCompaction !== undefined;
+	}
+
+	hasRunningManualCompaction(): boolean {
+		return this.manualCompactionQueue.isActive() || this.runningManualCompactionOperationId !== undefined;
+	}
+
+	queueManualCompaction(operation: PendingManualCompactionOperation): boolean {
+		if (this.queuedManualCompaction || this.hasRunningManualCompaction()) return false;
+		this.queuedManualCompaction = { operation, turnsBefore: this.queuedTelegramTurns.length };
+		return true;
+	}
+
+	queuedManualCompactionOperationId(): string | undefined {
+		return this.queuedManualCompaction?.operation.operationId;
+	}
+
+	rememberManualCompactionOperation(operationId: string): void {
+		this.handledManualCompactionOperationIds.add(operationId);
+		if (this.handledManualCompactionOperationIds.size > 1000) {
+			const oldestOperationId = this.handledManualCompactionOperationIds.values().next().value;
+			if (oldestOperationId) this.handledManualCompactionOperationIds.delete(oldestOperationId);
+		}
+	}
+
+	hasHandledManualCompactionOperation(operationId: string): boolean {
+		return this.handledManualCompactionOperationIds.has(operationId);
+	}
+
+	canStartQueuedManualCompaction(): boolean {
+		return Boolean(
+			this.queuedManualCompaction &&
+			this.queuedManualCompaction.turnsBefore <= 0 &&
+			!this.manualCompactionQueue.isActive() &&
+			!this.activeTelegramTurn &&
+			!this.awaitingTelegramFinalTurnId &&
+			this.deps.getConnectedRoute() &&
+			this.deps.hasClientServer(),
+		);
+	}
+
+	takeQueuedManualCompactionToStart(): PendingManualCompactionOperation | undefined {
+		if (!this.canStartQueuedManualCompaction()) return undefined;
+		const operation = this.queuedManualCompaction?.operation;
+		this.queuedManualCompaction = undefined;
+		this.runningManualCompactionOperationId = operation?.operationId;
+		if (operation) this.rememberManualCompactionOperation(operation.operationId);
+		return operation;
+	}
+
+	finishRunningManualCompaction(operationId?: string): void {
+		if (!operationId || this.runningManualCompactionOperationId === operationId) this.runningManualCompactionOperationId = undefined;
+	}
+
+	clearQueuedManualCompaction(): string | undefined {
+		const operationId = this.queuedManualCompaction?.operation.operationId;
+		this.queuedManualCompaction = undefined;
+		return operationId;
+	}
+
 	hasQueuedTurn(turnId: string): boolean {
 		return this.queuedTelegramTurns.some((turn) => turn.turnId === turnId);
 	}
@@ -81,6 +146,11 @@ export class ClientTelegramTurnLifecycle {
 	}
 
 	queueTurn(turn: PendingTelegramTurn): void {
+		if (this.queuedManualCompaction && turn.blockedByManualCompactionOperationId !== this.queuedManualCompaction.operation.operationId) {
+			this.queuedTelegramTurns.splice(this.queuedManualCompaction.turnsBefore, 0, turn);
+			this.queuedManualCompaction.turnsBefore += 1;
+			return;
+		}
 		this.queuedTelegramTurns.push(turn);
 	}
 
@@ -88,7 +158,9 @@ export class ClientTelegramTurnLifecycle {
 		const queuedIndex = this.queuedTelegramTurns.findIndex((turn) => turn.turnId === turnId);
 		if (queuedIndex >= 0) {
 			const [turn] = this.queuedTelegramTurns.splice(queuedIndex, 1);
-			return { turn, source: "queued", index: queuedIndex };
+			const beforeManualCompaction = Boolean(this.queuedManualCompaction && queuedIndex < this.queuedManualCompaction.turnsBefore);
+			if (this.queuedManualCompaction && beforeManualCompaction) this.queuedManualCompaction.turnsBefore -= 1;
+			return { turn, source: "queued", index: queuedIndex, beforeManualCompaction };
 		}
 		const deferredTurn = this.manualCompactionQueue.removeDeferredTurn(turnId);
 		return deferredTurn ? { turn: deferredTurn, source: "manualCompaction" } : undefined;
@@ -98,6 +170,7 @@ export class ClientTelegramTurnLifecycle {
 		if (taken.source === "queued") {
 			const index = taken.index ?? this.queuedTelegramTurns.length;
 			this.queuedTelegramTurns.splice(index, 0, taken.turn);
+			if (this.queuedManualCompaction && taken.beforeManualCompaction) this.queuedManualCompaction.turnsBefore += 1;
 			return;
 		}
 		this.manualCompactionQueue.enqueueDeferredTurn(taken.turn);
@@ -108,7 +181,10 @@ export class ClientTelegramTurnLifecycle {
 			...this.queuedTelegramTurns.map((turn) => turn.turnId),
 			...this.manualCompactionQueue.peekPendingRemainder().map((turn) => turn.turnId),
 		];
+		const queuedManualCompactionId = this.queuedManualCompaction?.operation.operationId;
 		this.queuedTelegramTurns = [];
+		this.queuedManualCompaction = undefined;
+		if (queuedManualCompactionId) this.rememberManualCompactionOperation(queuedManualCompactionId);
 		this.manualCompactionQueue.clearPendingRemainder();
 		this.manualCompactionQueue.cancelDeferredStart();
 		for (const turnId of turnIds) this.rememberCompletedTurn(turnId);
@@ -118,6 +194,8 @@ export class ClientTelegramTurnLifecycle {
 	clearQueuedAndDeferredTurnsAsDisconnected(): void {
 		for (const turn of this.queuedTelegramTurns) this.rememberDisconnectedTurn(turn.turnId);
 		this.queuedTelegramTurns = [];
+		this.queuedManualCompaction = undefined;
+		this.runningManualCompactionOperationId = undefined;
 		for (const turn of this.manualCompactionQueue.clearPendingRemainder()) this.rememberDisconnectedTurn(turn.turnId);
 		this.manualCompactionQueue.reset();
 	}
@@ -137,10 +215,12 @@ export class ClientTelegramTurnLifecycle {
 		activeTurn.queuedAttachments.push(...attachments);
 	}
 
-	startNextTelegramTurn(): void {
-		if (this.manualCompactionQueue.isActive() || this.activeTelegramTurn || this.awaitingTelegramFinalTurnId || !this.deps.getConnectedRoute() || !this.deps.hasClientServer()) return;
+	startNextTelegramTurn(): "started" | "blocked_by_compaction" | "idle" {
+		if (this.manualCompactionQueue.isActive() || this.activeTelegramTurn || this.awaitingTelegramFinalTurnId || !this.deps.getConnectedRoute() || !this.deps.hasClientServer()) return "idle";
+		if (this.queuedManualCompaction && this.queuedManualCompaction.turnsBefore <= 0) return "blocked_by_compaction";
 		const turn = this.queuedTelegramTurns.shift();
-		if (!turn) return;
+		if (!turn) return "idle";
+		if (this.queuedManualCompaction && this.queuedManualCompaction.turnsBefore > 0) this.queuedManualCompaction.turnsBefore -= 1;
 		const activeTurn = { ...turn, queuedAttachments: [] };
 		const previousAbort = this.currentAbort;
 		this.activeTelegramTurn = activeTurn;
@@ -151,9 +231,11 @@ export class ClientTelegramTurnLifecycle {
 			if (this.activeTelegramTurn?.turnId === turn.turnId) this.activeTelegramTurn = undefined;
 			this.currentAbort = previousAbort;
 			this.queuedTelegramTurns.unshift(turn);
+			if (this.queuedManualCompaction) this.queuedManualCompaction.turnsBefore += 1;
 			throw error;
 		}
 		this.deps.postTurnStarted(turn.turnId);
+		return "started";
 	}
 
 	ensureCurrentTurnMirroredToTelegram(ctx: ExtensionContext | undefined, historyText: string): void {

@@ -36,7 +36,16 @@ async function checkMarkOfflinePreservesPendingWorkAndQueuesRouteCleanup(): Prom
 		updatedAtMs: Date.now(),
 		expiresAtMs: Date.now() + 60_000,
 	};
-	const brokerState = state({ queuedTurnControls: { [queuedControl.token]: queuedControl, [retryPendingControl.token]: retryPendingControl } });
+	const brokerState = state({
+		queuedTurnControls: { [queuedControl.token]: queuedControl, [retryPendingControl.token]: retryPendingControl },
+		pendingManualCompactions: {
+			"compact-offline": { operationId: "compact-offline", sessionId: "session-1", routeId: topicRoute().routeId, chatId: 111, messageThreadId: 9, status: "queued", createdAtMs: Date.now(), updatedAtMs: Date.now() },
+		},
+	});
+	brokerState.pendingTurns!.blockedByOfflineCompact = {
+		turn: { turnId: "blockedByOfflineCompact", sessionId: "session-1", routeId: topicRoute().routeId, chatId: 111, messageThreadId: 9, replyToMessageId: 2, queuedAttachments: [], content: [], historyText: "after compact", blockedByManualCompactionOperationId: "compact-offline" },
+		updatedAtMs: Date.now(),
+	};
 	const stopped: string[] = [];
 	const cleanedTemps: string[] = [];
 	const editCalls: Array<Record<string, unknown>> = [];
@@ -68,10 +77,12 @@ async function checkMarkOfflinePreservesPendingWorkAndQueuesRouteCleanup(): Prom
 	assert.equal(brokerState.sessions["session-1"], undefined);
 	assert.ok(brokerState.routes["chat-1:9"]);
 	assert.ok(brokerState.pendingTurns?.turn1);
+	assert.equal(brokerState.pendingTurns?.blockedByOfflineCompact, undefined);
+	assert.equal(brokerState.pendingManualCompactions?.["compact-offline"], undefined);
 	assert.ok(brokerState.pendingAssistantFinals?.turn2);
 	assert.ok(brokerState.assistantPreviewMessages?.turn1);
 	assert.ok(brokerState.assistantPreviewMessages?.turn2);
-	assert.deepEqual(stopped.sort(), ["turn1", "turn2"]);
+	assert.deepEqual(stopped.sort(), ["blockedByOfflineCompact", "turn1", "turn2"]);
 	assert.equal(brokerState.pendingRouteCleanups?.["chat-1:9"], undefined);
 	assert.equal(queuedControl.status, "expired");
 	assert.equal(queuedControl.completedText, "Queued follow-up was cleared.");
@@ -187,6 +198,69 @@ async function checkRetryPendingTurnRehomesToCurrentRoute(): Promise<void> {
 	assert.equal(brokerState.pendingTurns?.rehome?.turn.chatId, 222);
 	assert.equal(brokerState.pendingTurns?.rehome?.turn.messageThreadId, 44);
 	assert.equal(brokerState.assistantPreviewMessages?.rehome, undefined);
+}
+
+async function checkRetryPendingTurnWaitsForBlockingManualCompaction(): Promise<void> {
+	const brokerState = state({
+		pendingAssistantFinals: {},
+		assistantPreviewMessages: {},
+		pendingManualCompactions: {
+			"compact-blocker": { operationId: "compact-blocker", sessionId: "session-1", routeId: topicRoute().routeId, chatId: 111, messageThreadId: 9, status: "queued", createdAtMs: Date.now(), updatedAtMs: Date.now() },
+		},
+		pendingTurns: {
+			blocked: {
+				turn: {
+					turnId: "blocked",
+					sessionId: "session-1",
+					routeId: topicRoute().routeId,
+					chatId: 111,
+					messageThreadId: 9,
+					replyToMessageId: 1,
+					queuedAttachments: [],
+					content: [{ type: "text", text: "after compact" }],
+					historyText: "after compact",
+					blockedByManualCompactionOperationId: "compact-blocker",
+				},
+				updatedAtMs: Date.now(),
+			},
+		},
+	});
+	const delivered: string[] = [];
+	const handlers = createRuntimeUpdateHandlers({
+		getConfig: () => ({ allowedUserId: 1 }),
+		setConfig: () => undefined,
+		getBrokerState: () => brokerState,
+		setBrokerState: () => undefined,
+		getBrokerLeaseEpoch: () => 1,
+		getOwnerId: () => "owner",
+		commandRouter: noopCommandRouter(() => brokerState),
+		mediaGroups: new Map(),
+		callTelegram: async <TResponse>() => [] as unknown as TResponse,
+		writeConfig: async () => undefined,
+		persistBrokerState: async () => undefined,
+		loadBrokerState: async () => brokerState,
+		readLease: async () => undefined,
+		stopBroker: async () => undefined,
+		updateStatus: () => undefined,
+		refreshTelegramStatus: () => undefined,
+		sendTextReply: async () => undefined,
+		ensureRoutesAfterPairing: async () => undefined,
+		isAllowedTelegramChat: () => true,
+		stopTypingLoop: () => undefined,
+		dropAssistantPreviewState: async () => undefined,
+		postIpc: async <TResponse>(_socketPath: string, type: string, payload: unknown) => {
+			if (type === "deliver_turn") delivered.push((payload as { turnId: string }).turnId);
+			return { ok: true } as TResponse;
+		},
+		unregisterSession: async () => ({ ok: true }),
+		markSessionOffline: async () => ({ ok: true }),
+	});
+
+	await handlers.retryPendingTurns();
+	assert.deepEqual(delivered, []);
+	delete brokerState.pendingManualCompactions?.["compact-blocker"];
+	await handlers.retryPendingTurns();
+	assert.deepEqual(delivered, ["blocked"]);
 }
 
 async function checkRetryPendingTurnWaitsForPreviewDeleteBeforeRehome(): Promise<void> {
@@ -343,6 +417,7 @@ async function checkMarkOfflinePreservesPreviewRefWhenDeleteRetryableFails(): Pr
 await checkMarkOfflinePreservesPendingWorkAndQueuesRouteCleanup();
 await checkMarkOfflineClearsRouteWhenOnlyPendingTurnsRemain();
 await checkRetryPendingTurnRehomesToCurrentRoute();
+await checkRetryPendingTurnWaitsForBlockingManualCompaction();
 await checkRetryPendingTurnWaitsForPreviewDeleteBeforeRehome();
 await checkRetryPendingTurnDropsPreviewRefOnPermanentDeleteFailure();
 await checkMarkOfflinePreservesPreviewRefWhenDeleteRetryableFails();

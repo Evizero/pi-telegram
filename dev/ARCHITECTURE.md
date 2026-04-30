@@ -60,6 +60,12 @@ The strongest drivers come directly from the intended purpose and requirements:
   `SyRS-busy-message-default-followup`,
   `SyRS-queued-followup-steer-control`, `SyRS-cancel-queued-followup`,
   `SyRS-queued-control-finalization`, `SyRS-follow-queues-next-turn`);
+- non-urgent Telegram session controls such as manual compaction should be
+  schedulable during active work without aborting that work, and they must act
+  as ordered barriers for later dependent follow-up turns
+  (`StRS-deferred-session-controls`, `SyRS-idle-telegram-compact`,
+  `SyRS-queue-busy-compact`, `SyRS-compact-barrier-ordering`,
+  `SyRS-queued-compact-durability`, `SyRS-compact-request-coalescing`);
 - activity and final responses must stay intelligible, chronologically clear,
   and non-duplicated even when legacy preview cleanup, Telegram edits, chunks,
   pi/provider auto-retry, and Telegram delivery retries are involved
@@ -221,6 +227,25 @@ wait their turn, urgent intervention is still one explicit action away,
 obsolete or mistaken follow-ups can be withdrawn, and old Telegram controls do
 not misrepresent durable queue state while each action targets a specific
 route/turn.
+
+### Queued manual compaction barrier
+
+The selected pi session is busy and the paired user sends `/compact` from
+Telegram because the next mobile instruction should run after the session is
+summarized.
+The bridge should acknowledge that compaction is queued, leave the active pi
+turn running, and represent the pending compaction as a first-class ordered
+session operation rather than as fake conversation text.
+When earlier active and queued work settles, the client starts pi manual
+compaction; ordinary messages and `/follow ...` turns received after the queued
+compaction remain behind that barrier until the compaction completion or failure
+callback releases them.
+Explicit steering remains an urgent active-turn correction path, while ordinary
+messages and `/follow ...` preserve follow-up ordering behind the compaction
+barrier.
+The important property is lifecycle ordering: Telegram `/compact` can be
+requested early from a phone without aborting useful work, and later queued
+messages see a clear compaction boundary before they start.
 
 ### Telegram rate limit during final delivery
 
@@ -411,6 +436,10 @@ with related code when they explain the same behavior.
 - Busy ordinary messages queue as follow-up by default; explicit steering
   commands or controls target the active turn; queued-control buttons must be
   removed or finalized when they no longer represent an actionable queued turn.
+- Non-urgent Telegram controls that are queued behind active work, such as
+  manual compaction, must be represented as ordered session operations rather
+  than fake user messages, and later follow-up turns must not overtake their
+  barrier.
 - Activity collection preserves history; Telegram rendering may debounce but may
   not erase collected event meaning.
 - Final delivery detaches streamed preview messages before appending final
@@ -514,6 +543,11 @@ session registrations, routes, pending media groups, pending turns, queued-turn
 control records, visible assistant preview message references, pending
 assistant-final deliveries, pending Telegram outbox jobs, completed turn IDs,
 and timestamps.
+Architecture contract for queued session controls: when a Telegram control such
+as `/compact` must wait for active work, broker state should preserve enough
+operation identity, route/session ownership, and idempotency data to retry,
+resume, or terminally clear that operation without treating it as ordinary user
+conversation text.
 It is the durable handoff record for polling safety, bounded route continuity,
 broker turnover, pending work retry, queued follow-up controls, visible Telegram
 cleanup retry, and dedupe.
@@ -554,6 +588,11 @@ context.
 content, history text, and delivery mode.
 It is currently persisted under `BrokerState.pendingTurns` so broker retry and
 turn consumption have a durable handoff point.
+Queued session-control operations, such as a deferred manual-compaction barrier,
+should remain distinct from `PendingTelegramTurn`: they carry session/route
+identity and lifecycle status, but they are not user content and should not be
+eligible for queued-turn steer/cancel controls unless a future requirement adds
+a specific control surface for them.
 Queued-turn control records are broker-owned state that map compact Telegram
 callback tokens to a specific queued turn, route, session, target active turn,
 visible status message, status, and expiry. They are not execution authority by
@@ -665,7 +704,10 @@ Client turn and finalization modules own execution-side lifecycle decisions.
 queued follow-up state, awaiting-final gates, abort callbacks, completed and
 disconnected turn dedupe, outbound attachment queueing on an active turn, and
 the shared manual-compaction queue boundary used by turn delivery, abort, route
-shutdown, and pi hooks. Retry-aware active-turn finalization and client-side
+shutdown, and pi hooks. It is also the natural owner for ordered client-side
+session-operation scheduling when a queued Telegram control, such as deferred
+manual compaction, must act as a barrier between earlier active work and later
+Telegram turns. Retry-aware active-turn finalization and client-side
 assistant-final handoff also belong under `src/client/` rather than in broker
 modules or Telegram API modules. The client may protect assistant-final handoff
 until the broker durably accepts the payload, but after acceptance the broker
@@ -818,8 +860,14 @@ durable turn for ordinary input, and dispatches it to the selected session's
 client socket.
 Delivery mode controls whether the client steers, queues follow-up work, or
 starts a normal turn.
+Session-control commands that need ordering, such as busy-time `/compact`,
+should use a distinct queued-operation path instead of being injected as pending
+turn content; repeated controls without distinct supported instructions should
+coalesce or acknowledge the existing operation rather than stacking redundant
+barriers.
 Consumed-turn IPC removes durable pending state only after pi has accepted the
-turn semantics.
+turn semantics, and queued-control-operation state should have the same explicit
+accepted, consumed, cleared, or terminal lifecycle discipline.
 
 Interactive callback controls, such as the `/model` picker, are still routed
 session controls. They must preserve route context, authorize the paired user,

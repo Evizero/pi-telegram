@@ -44,6 +44,7 @@ export function state(): BrokerState {
 		},
 		pendingTurns: {},
 		pendingAssistantFinals: {},
+		pendingManualCompactions: {},
 		completedTurnIds: [],
 		createdAtMs: Date.now(),
 		updatedAtMs: Date.now(),
@@ -99,6 +100,7 @@ export function createRouter(
 		postIpc: postIpcOverride ?? (async <TResponse>(_socketPath: string, type: string, payload: unknown, targetSessionId?: string) => {
 			ipcCalls.push({ type, payload, target: targetSessionId });
 			if (type === "compact_session") return { text: "Compaction started." } as TResponse;
+			if (type === "queue_or_start_compact_session") return { status: "started", text: "Compaction started.", operationId: (payload as { operation: { operationId: string } }).operation.operationId } as TResponse;
 			if (type === "abort_turn") return { text: "Aborted current turn.", clearedTurnIds: ["active"] } as TResponse;
 			if (type === "deliver_turn") return { accepted: true } as TResponse;
 			if (type === "cancel_queued_turn") return { status: "cancelled", text: "Cancelled queued follow-up.", turnId: (payload as { turnId: string }).turnId } as TResponse;

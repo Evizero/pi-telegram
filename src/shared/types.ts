@@ -176,6 +176,7 @@ export interface PendingTelegramTurn {
 	content: Array<TextContent | ImageContent>;
 	historyText: string;
 	deliveryMode?: "steer" | "followUp";
+	blockedByManualCompactionOperationId?: string;
 }
 
 export type ActiveTelegramTurn = PendingTelegramTurn;
@@ -204,6 +205,28 @@ export interface QueuedTurnControlState {
 	createdAtMs: number;
 	updatedAtMs: number;
 	expiresAtMs: number;
+}
+
+export interface PendingManualCompactionOperation {
+	operationId: string;
+	sessionId: string;
+	routeId?: string;
+	chatId: number | string;
+	messageThreadId?: number;
+	commandMessageId?: number;
+	status: "queued" | "running";
+	createdAtMs: number;
+	updatedAtMs: number;
+}
+
+export interface ClientManualCompactionRequest {
+	operation: PendingManualCompactionOperation;
+}
+
+export interface ClientManualCompactionResult {
+	status: "started" | "queued" | "already_queued" | "already_running" | "already_handled" | "failed" | "unavailable";
+	text: string;
+	operationId: string;
 }
 
 export interface ClientDeliverTurnResult {
@@ -450,6 +473,7 @@ export interface BrokerState {
 	modelPickers?: Record<string, TelegramModelPickerState>;
 	gitControls?: Record<string, TelegramGitControlState>;
 	queuedTurnControls?: Record<string, QueuedTurnControlState>;
+	pendingManualCompactions?: Record<string, PendingManualCompactionOperation>;
 	/** Earliest broker-wide retry time for deferred queued-control status-message cleanup edits. */
 	queuedTurnControlCleanupRetryAtMs?: number;
 	completedTurnIds?: string[];

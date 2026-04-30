@@ -392,6 +392,8 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 		if (!brokerState?.pendingTurns) return;
 		for (const pending of Object.values(brokerState.pendingTurns)) {
 			if (brokerState.pendingAssistantFinals?.[pending.turn.turnId]) continue;
+			const blockingCompactionId = pending.turn.blockedByManualCompactionOperationId;
+			if (blockingCompactionId && brokerState.pendingManualCompactions?.[blockingCompactionId]) continue;
 			const session = brokerState.sessions[pending.turn.sessionId];
 			if (!session || session.status === "offline" || session.status === "connecting") continue;
 			const sessionRoutes = Object.values(brokerState.routes).filter((candidate) => candidate.sessionId === pending.turn.sessionId);

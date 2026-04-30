@@ -12,6 +12,8 @@ export interface ClientCompactOptions {
 	formatError: (error: unknown) => string;
 	onStart?: () => void;
 	onSettled?: () => void;
+	notifyStart?: boolean;
+	notifySynchronousFailure?: boolean;
 }
 
 function commandTurn(turnId: string, sessionId: string, route: TelegramRoute): PendingTelegramTurn {
@@ -53,9 +55,12 @@ export function clientCompactSession(options: ClientCompactOptions): { text: str
 				options.onSettled?.();
 			},
 		});
+		if (options.notifyStart) sendResult("Compaction started.");
 		return { text: "Compaction started." };
 	} catch (error) {
+		const text = `Compaction failed: ${options.formatError(error)}`;
+		if (options.notifySynchronousFailure) sendResult(text);
 		options.onSettled?.();
-		return { text: `Compaction failed: ${options.formatError(error)}` };
+		return { text };
 	}
 }

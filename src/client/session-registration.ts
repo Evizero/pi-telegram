@@ -18,9 +18,10 @@ export async function collectSessionRegistration(options: {
 	activeTelegramTurn?: ActiveTelegramTurn;
 	queuedTelegramTurns: PendingTelegramTurn[];
 	manualCompactionInProgress?: boolean;
+	queuedManualCompaction?: boolean;
 	replacement?: SessionReplacementRegistrationContext;
 }): Promise<SessionRegistration> {
-	const { ctx, sessionId, ownerId, startedAtMs, connectionStartedAtMs, connectionNonce, clientSocketPath, piSessionName, activeTelegramTurn, queuedTelegramTurns, manualCompactionInProgress, replacement } = options;
+	const { ctx, sessionId, ownerId, startedAtMs, connectionStartedAtMs, connectionNonce, clientSocketPath, piSessionName, activeTelegramTurn, queuedTelegramTurns, manualCompactionInProgress, queuedManualCompaction, replacement } = options;
 	const gitRoot = await execGit(ctx.cwd, ["rev-parse", "--show-toplevel"]);
 	const gitBranch = await execGit(ctx.cwd, ["branch", "--show-current"]);
 	const gitHead = await execGit(ctx.cwd, ["rev-parse", "--short", "HEAD"]);
@@ -37,9 +38,9 @@ export async function collectSessionRegistration(options: {
 		gitHead,
 		piSessionName,
 		model,
-		status: (!ctx.isIdle() || activeTelegramTurn || manualCompactionInProgress ? "busy" : "idle") as SessionRegistration["status"],
+		status: (!ctx.isIdle() || activeTelegramTurn || manualCompactionInProgress || queuedManualCompaction ? "busy" : "idle") as SessionRegistration["status"],
 		activeTurnId: activeTelegramTurn?.turnId,
-		queuedTurnCount: queuedTelegramTurns.length,
+		queuedTurnCount: queuedTelegramTurns.length + (queuedManualCompaction ? 1 : 0),
 		lastHeartbeatMs: now(),
 		connectedAtMs: startedAtMs,
 		connectionStartedAtMs,

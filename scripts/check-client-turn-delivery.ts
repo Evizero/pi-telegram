@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 
 import { ClientRuntime } from "../src/client/runtime.js";
+import { ClientTelegramTurnLifecycle } from "../src/client/turn-lifecycle.js";
 import { clientDeliverTelegramTurn } from "../src/client/turn-delivery.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { ActiveTelegramTurn, AssistantFinalPayload, PendingTelegramTurn, TelegramRoute } from "../src/shared/types.js";
 
-function turn(id: string, deliveryMode?: PendingTelegramTurn["deliveryMode"]): PendingTelegramTurn {
+function turn(id: string, deliveryMode?: PendingTelegramTurn["deliveryMode"], blockedByManualCompactionOperationId?: string): PendingTelegramTurn {
 	return {
 		turnId: id,
 		sessionId: "session-1",
@@ -16,11 +17,16 @@ function turn(id: string, deliveryMode?: PendingTelegramTurn["deliveryMode"]): P
 		content: [{ type: "text", text: `message ${id}` }],
 		historyText: "",
 		deliveryMode,
+		blockedByManualCompactionOperationId,
 	};
 }
 
 function activeTurn(id = "active"): ActiveTelegramTurn {
 	return { ...turn(id), queuedAttachments: [] };
+}
+
+function route(): TelegramRoute {
+	return { routeId: "route-1", sessionId: "session-1", chatId: 123, messageThreadId: 9, routeMode: "private_topic", topicName: "route", createdAtMs: 1, updatedAtMs: 1 };
 }
 
 function busyCtx(): ExtensionContext {
@@ -428,6 +434,35 @@ async function checkQueuedTurnCancellationRemovesDeferredTurn(): Promise<void> {
 	assert.deepEqual(consumed, ["deferred-cancel"]);
 }
 
+async function checkFailedSteerRestoreDoesNotMoveCompactionBarrier(): Promise<void> {
+	const sent: string[] = [];
+	const lifecycle = new ClientTelegramTurnLifecycle({
+		getSessionId: () => "session-1",
+		getLatestCtx: () => idleCtx(),
+		getConnectedRoute: route,
+		hasClientServer: () => true,
+		postTurnStarted: () => undefined,
+		sendUserMessage: (content) => {
+			const text = content.find((item) => item.type === "text");
+			assert.equal(text?.type, "text");
+			sent.push(text.text);
+		},
+		acknowledgeConsumedTurn: () => undefined,
+	});
+	lifecycle.queueTurn(turn("before", "followUp"));
+	lifecycle.queueManualCompaction({ operationId: "compact-barrier", sessionId: "session-1", routeId: "route-1", chatId: 123, messageThreadId: 9, status: "queued", createdAtMs: 1, updatedAtMs: 1 });
+	lifecycle.queueTurn(turn("after", "followUp", "compact-barrier"));
+	const taken = lifecycle.takeQueuedOrDeferredTurn("after");
+	assert.ok(taken);
+	lifecycle.restoreTakenQueuedOrDeferredTurn(taken);
+
+	assert.equal(lifecycle.startNextTelegramTurn(), "started");
+	assert.deepEqual(sent, ["message before"]);
+	lifecycle.clearActiveTurnIf("before");
+	assert.equal(lifecycle.startNextTelegramTurn(), "blocked_by_compaction");
+	assert.deepEqual(sent, ["message before"]);
+}
+
 async function checkCompactionBoundaryMessagesJoinDeferredRemainder(): Promise<void> {
 	const queued: PendingTelegramTurn[] = [];
 	const appended: PendingTelegramTurn[] = [];
@@ -467,5 +502,6 @@ await checkDeferredCompactionDuplicateIsIgnored();
 await checkQueuedTurnConversionRemovesBeforeSteering();
 await checkQueuedTurnCancellationRemovesOnlyTarget();
 await checkQueuedTurnCancellationRemovesDeferredTurn();
+await checkFailedSteerRestoreDoesNotMoveCompactionBarrier();
 await checkCompactionBoundaryMessagesJoinDeferredRemainder();
 console.log("Client turn delivery checks passed");

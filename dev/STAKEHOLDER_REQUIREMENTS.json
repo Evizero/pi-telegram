@@ -439,6 +439,29 @@
           "pi-telegram-slows-pi"
         ]
       }
+    },
+    {
+      "id": "StRS-deferred-session-controls",
+      "origin": "derived",
+      "label": "Schedule controls after work",
+      "statement": "Remote pi operators shall be able to schedule non-urgent Telegram session-control actions during active work without interrupting the active pi turn.",
+      "rationale": "Remote supervision often happens while long agent work is already running; non-urgent maintenance controls such as manual compaction should be schedulable from the phone without forcing the operator to wait for idle time or abort useful active work.",
+      "stakeholders": [
+        "remote-pi-operator"
+      ],
+      "priority": 2,
+      "validation": {
+        "method": "review",
+        "criteria": "Review the Telegram command behavior for a busy selected session and confirm a non-urgent control can be acknowledged as queued, the active pi turn continues, and the queued control later runs at an intelligible lifecycle boundary before later dependent work."
+      },
+      "status": "draft",
+      "created": "2026-04-30",
+      "updated": "2026-04-30",
+      "sources": {
+        "inbox": [
+          "queue-manual-compaction-after"
+        ]
+      }
     }
   ]
 }

@@ -70,7 +70,18 @@ export function detachRoutesForSessionAndQueueCleanup(brokerState: BrokerState, 
 	return removedRoutes;
 }
 
+function retargetPendingManualCompactionsToRoute(brokerState: BrokerState, sessionId: string, route: TelegramRoute): void {
+	for (const operation of Object.values(brokerState.pendingManualCompactions ?? {})) {
+		if (operation.sessionId !== sessionId) continue;
+		operation.routeId = route.routeId;
+		operation.chatId = route.chatId;
+		operation.messageThreadId = route.messageThreadId;
+		operation.updatedAtMs = now();
+	}
+}
+
 export function replaceRoutesForSession(brokerState: BrokerState, sessionId: string, route: TelegramRoute, routeKey = canonicalRouteKey(route)): void {
+	retargetPendingManualCompactionsToRoute(brokerState, sessionId, route);
 	for (const [id, previousRoute] of routesForSession(brokerState, sessionId)) {
 		if (id === routeKey) continue;
 		if (previousRoute.routeId === route.routeId) {

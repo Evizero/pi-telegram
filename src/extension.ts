@@ -260,6 +260,17 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 			}
 		}
 	}
+	async function retryPendingManualCompactions(): Promise<void> {
+		try {
+			const clearedAny = await commandRouter.retryPendingManualCompactions();
+			if (clearedAny) await retryPendingTurns();
+		} catch (error) {
+			if (getTelegramRetryAfterMs(error) === undefined) {
+				const message = `Failed to retry queued Telegram compaction: ${errorMessage(error)}`;
+				reportPiDiagnostic({ message, severity: "warning", statusDetail: message });
+			}
+		}
+	}
 	async function retryTelegramOutbox(): Promise<void> {
 		await drainTelegramOutboxInBroker(telegramOutboxRunner, {
 			getBrokerState: () => brokerState,
@@ -531,9 +542,10 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 		if (existing) {
 			delete (existing as BrokerState & { reloadIntents?: unknown }).reloadIntents;
 			existing.telegramOutbox ??= {};
+			existing.pendingManualCompactions ??= {};
 			return existing;
 		}
-		return { schemaVersion: 1, lastProcessedUpdateId: config.lastUpdateId, recentUpdateIds: [], sessions: {}, routes: {}, pendingMediaGroups: {}, pendingTurns: {}, pendingAssistantFinals: {}, pendingRouteCleanups: {}, telegramOutbox: {}, assistantPreviewMessages: {}, queuedTurnControls: {}, completedTurnIds: [], createdAtMs: now(), updatedAtMs: now() };
+		return { schemaVersion: 1, lastProcessedUpdateId: config.lastUpdateId, recentUpdateIds: [], sessions: {}, routes: {}, pendingMediaGroups: {}, pendingTurns: {}, pendingAssistantFinals: {}, pendingRouteCleanups: {}, telegramOutbox: {}, assistantPreviewMessages: {}, queuedTurnControls: {}, pendingManualCompactions: {}, completedTurnIds: [], createdAtMs: now(), updatedAtMs: now() };
 	}
 	async function assertCurrentBrokerLeaseForPersist(): Promise<void> {
 		const lease = await readLease();
@@ -589,6 +601,7 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 					await processPendingDisconnectRequests();
 					await updateHandlers.markOfflineSessions();
 					await retryQueuedTurnControlFinalizations();
+					await retryPendingManualCompactions();
 					await retryPendingRouteCleanups();
 					await retryTelegramOutbox();
 					await sweepOrphanedTelegramTempDirs();
@@ -607,6 +620,7 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 			await processPendingDisconnectRequests();
 			await retryPendingTurns();
 			await retryQueuedTurnControlFinalizations();
+			await retryPendingManualCompactions();
 			await retryPendingRouteCleanups();
 			await retryTelegramOutbox();
 			await sweepOrphanedTelegramTempDirs();
@@ -650,7 +664,7 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 		});
 	}
 	async function assertCurrentSessionConnection(envelope: IpcEnvelope): Promise<void> {
-		const guardedTypes = new Set(["unregister_session", "mark_session_offline", "turn_started", "assistant_message_start", "assistant_preview", "assistant_preview_clear", "activity_update", "activity_complete", "assistant_final", "turn_consumed", "local_user_message"]);
+		const guardedTypes = new Set(["unregister_session", "mark_session_offline", "turn_started", "manual_compaction_started", "manual_compaction_settled", "assistant_message_start", "assistant_preview", "assistant_preview_clear", "activity_update", "activity_complete", "assistant_final", "turn_consumed", "local_user_message"]);
 		if (!guardedTypes.has(envelope.type) || !envelope.session_id) return;
 		brokerState ??= await loadBrokerState();
 		const session = brokerState.sessions[envelope.session_id];
@@ -705,6 +719,8 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 		if (envelope.type === "activity_complete") return await handleActivityComplete(envelope.payload as { turnId: string; activityId?: string });
 		if (envelope.type === "assistant_final") return await assistantFinalLedger.accept(envelope.payload as AssistantFinalPayload);
 		if (envelope.type === "turn_consumed") return await handleTurnConsumed(envelope.payload as { turnId: string; finalizeQueuedControlText?: string });
+		if (envelope.type === "manual_compaction_started") return await handleManualCompactionStarted(envelope.payload as { operationId: string });
+		if (envelope.type === "manual_compaction_settled") return await handleManualCompactionSettled(envelope.payload as { operationId: string });
 		if (envelope.type === "local_user_message") return await handleLocalUserMessage(envelope.session_id, envelope.payload as { text: string; imagesCount?: number; routeId?: string; chatId?: number | string; messageThreadId?: number });
 		throw new Error(`Unsupported broker IPC message: ${envelope.type}`);
 	}
@@ -806,6 +822,15 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 		brokerState.completedTurnIds ??= [];
 		if (!brokerState.completedTurnIds.includes(turnId)) brokerState.completedTurnIds.push(turnId);
 		if (brokerState.completedTurnIds.length > 1000) brokerState.completedTurnIds.splice(0, brokerState.completedTurnIds.length - 1000);
+	}
+	async function handleManualCompactionStarted(payload: { operationId: string }): Promise<{ ok: true }> {
+		await commandRouter.markManualCompactionStarted(payload.operationId);
+		return { ok: true };
+	}
+	async function handleManualCompactionSettled(payload: { operationId: string }): Promise<{ ok: true }> {
+		await commandRouter.markManualCompactionSettled(payload.operationId);
+		runDetachedBrokerTask("pending turn retry after compaction settle", retryPendingTurns);
+		return { ok: true };
 	}
 	async function handleTurnConsumed(payload: { turnId: string; finalizeQueuedControlText?: string }): Promise<{ ok: true }> {
 		const finalizeQueuedControlText = payload.finalizeQueuedControlText ?? QUEUED_CONTROL_TEXT.noLongerWaiting;

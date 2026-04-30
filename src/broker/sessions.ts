@@ -54,6 +54,39 @@ function removeSelectorSelectionsForSession(brokerState: BrokerState, targetSess
 	}
 }
 
+function removePendingManualCompactionsForSession(brokerState: BrokerState, targetSessionId: string): string[] {
+	const removedOperationIds: string[] = [];
+	for (const [operationId, operation] of Object.entries(brokerState.pendingManualCompactions ?? {})) {
+		if (operation.sessionId !== targetSessionId) continue;
+		delete brokerState.pendingManualCompactions![operationId];
+		removedOperationIds.push(operationId);
+	}
+	return removedOperationIds;
+}
+
+function removePendingTurnsBlockedByManualCompactions(brokerState: BrokerState, operationIds: string[], stopTypingLoop: (turnId: string) => void): string[] {
+	if (operationIds.length === 0) return [];
+	const operationIdSet = new Set(operationIds);
+	const removedTurnIds: string[] = [];
+	for (const [turnId, pending] of Object.entries(brokerState.pendingTurns ?? {})) {
+		const blocker = pending.turn.blockedByManualCompactionOperationId;
+		if (!blocker || !operationIdSet.has(blocker)) continue;
+		stopTypingLoop(turnId);
+		delete brokerState.pendingTurns![turnId];
+		rememberCompletedTurnId(brokerState, turnId);
+		removedTurnIds.push(turnId);
+		if (brokerState.assistantPreviewMessages?.[turnId]) delete brokerState.assistantPreviewMessages[turnId];
+	}
+	return removedTurnIds;
+}
+
+function removePendingManualCompactionsForRoutes(brokerState: BrokerState, routes: TelegramRoute[]): void {
+	for (const [operationId, operation] of Object.entries(brokerState.pendingManualCompactions ?? {})) {
+		if (!routes.some((route) => operation.routeId === route.routeId || (String(operation.chatId) === String(route.chatId) && operation.messageThreadId === route.messageThreadId))) continue;
+		delete brokerState.pendingManualCompactions![operationId];
+	}
+}
+
 function rememberCompletedTurnId(brokerState: BrokerState, turnId: string): void {
 	brokerState.completedTurnIds ??= [];
 	if (!brokerState.completedTurnIds.includes(turnId)) brokerState.completedTurnIds.push(turnId);
@@ -196,6 +229,7 @@ async function removeSessionFromBrokerState(options: SessionCleanupOptions, brok
 	delete brokerState.sessions[options.targetSessionId];
 	detachRoutesForSessionAndQueueCleanup(brokerState, options.targetSessionId);
 	removeSelectorSelectionsForSession(brokerState, options.targetSessionId);
+	removePendingManualCompactionsForSession(brokerState, options.targetSessionId);
 	const removedTurnIds = removeTurnStateForSession(brokerState, options.targetSessionId, options.stopTypingLoop);
 	return markQueuedControlsCleared(brokerState, removedTurnIds, QUEUED_CONTROL_TEXT.cleared, (control) => control.sessionId === options.targetSessionId);
 }
@@ -232,6 +266,7 @@ export async function honorExplicitDisconnectRequestInBroker(options: SessionCle
 	if (requestTargetsCurrentConnection) {
 		delete brokerState.sessions[targetSessionId];
 		removeSelectorSelectionsForSession(brokerState, targetSessionId);
+		removePendingManualCompactionsForSession(brokerState, targetSessionId);
 		finalizedSessionControls = markQueuedControlsCleared(brokerState, [], QUEUED_CONTROL_TEXT.cleared, (control) => control.sessionId === targetSessionId);
 		if (targetRoutes.length === 0) {
 			await options.persistBrokerState();
@@ -244,6 +279,7 @@ export async function honorExplicitDisconnectRequestInBroker(options: SessionCle
 	const pendingFinalTurnIds = pendingFinalTurnIdsForRoutes(brokerState, targetRoutes);
 	if (pendingFinalTurnIds.length > 0) await options.cancelPendingFinalDeliveries?.(targetSessionId, pendingFinalTurnIds);
 	for (const route of detachRoutesForDisconnectRequest(brokerState, request)) queueRouteCleanup(brokerState, route);
+	removePendingManualCompactionsForRoutes(brokerState, targetRoutes);
 	const removedTurnIds = removeTurnStateForRoutes(brokerState, targetRoutes, options.stopTypingLoop);
 	const finalizedControls = requestTargetsCurrentConnection ? finalizedSessionControls : markQueuedControlsCleared(brokerState, removedTurnIds, QUEUED_CONTROL_TEXT.cleared, (control) => targetRoutes.some((route) => queuedControlBelongsToRoute(control, route)));
 	await options.persistBrokerState();
@@ -274,6 +310,8 @@ export async function markSessionOfflineInBroker(options: SessionCleanupOptions)
 	const brokerState = await ensureBrokerState(options);
 	delete brokerState.sessions[targetSessionId];
 	removeSelectorSelectionsForSession(brokerState, targetSessionId);
+	const removedCompactionIds = removePendingManualCompactionsForSession(brokerState, targetSessionId);
+	removePendingTurnsBlockedByManualCompactions(brokerState, removedCompactionIds, options.stopTypingLoop);
 	const pendingState = pendingOfflineSessionState(brokerState, targetSessionId, options.stopTypingLoop);
 	if (!pendingState.hasPendingAssistantFinals) {
 		await clearVisiblePendingTurnPreviews(options, brokerState, targetSessionId);
