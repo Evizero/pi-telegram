@@ -1,0 +1,2 @@
+export const IPC_REQUEST_TIMEOUT_MS = 5000;
+export const MAX_IPC_BODY_BYTES = 100 * 1024 * 1024;

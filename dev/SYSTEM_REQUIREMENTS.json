@@ -1497,8 +1497,8 @@
         "StRS-runtime-boundary-legibility",
         "StRS-api-constrained-maintenance"
       ],
-      "rationale": "The current shared type and config barrels mix Telegram API DTOs, broker durable state, IPC envelopes, session/turn lifecycle records, command-control state, paths, Telegram limits, timing policy, and prompt text. Bounded ownership makes change impact easier to review while preserving the local-first Telegram supervision behavior.",
-      "acceptance_criteria": "Inspection confirms stable runtime concepts are grouped under semantic owner modules or bounded shared surfaces; feature modules import from those owner modules where practical; any retained compatibility re-exports are documented as migration aids rather than places for new concepts; no runtime behavior, durable JSON shape, Telegram Bot API limits, or pi-visible command/tool surface changes merely because of the refactor; npm run check passes.",
+      "rationale": "Broad shared type and config barrels historically mixed Telegram API DTOs, broker durable state, IPC envelopes, session/turn lifecycle records, command-control state, paths, Telegram limits, timing policy, prompt text, and local IPC transport policy. Bounded ownership makes change impact easier to review while preserving the local-first Telegram supervision behavior, and IPC timeout/body-size policy should remain legible without depending on unrelated attachment-size policy.",
+      "acceptance_criteria": "Inspection confirms stable runtime concepts are grouped under semantic owner modules or bounded shared surfaces; feature modules import from those owner modules where practical; any retained compatibility re-exports are documented as migration aids rather than places for new concepts; IPC timeout and IPC JSON body-size policy are owned by an IPC-appropriate surface and are not expressed by reusing Telegram or attachment file-size constants; no runtime behavior, durable JSON shape, Telegram Bot API limits, or pi-visible command/tool surface changes merely because of the refactor; npm run check passes.",
       "verification": {
         "method": "inspection"
       },
@@ -1507,7 +1507,8 @@
       "updated": "2026-04-30",
       "sources": {
         "inbox": [
-          "split-shared-types-and"
+          "split-shared-types-and",
+          "centralize-ipc-limits-and"
         ]
       }
     }

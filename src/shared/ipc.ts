@@ -2,7 +2,7 @@ import { createServer, request as httpRequest, type IncomingMessage, type Server
 import { chmod, readFile, rm } from "node:fs/promises";
 
 import { BROKER_DIR, TOKEN_PATH } from "./paths.js";
-import { MAX_FILE_BYTES } from "./file-policy.js";
+import { IPC_REQUEST_TIMEOUT_MS, MAX_IPC_BODY_BYTES } from "./ipc-policy.js";
 import type { IpcEnvelope, IpcResponse } from "./ipc-types.js";
 import { ensurePrivateDir, errorMessage, now, randomId } from "./utils.js";
 
@@ -36,7 +36,7 @@ export async function postIpc<TResponse>(
 					"content-length": Buffer.byteLength(body),
 					authorization: `Bearer ${token.trim()}`,
 				},
-				timeout: 5000,
+				timeout: IPC_REQUEST_TIMEOUT_MS,
 			},
 			(res) => {
 				const chunks: Buffer[] = [];
@@ -79,7 +79,7 @@ async function readRequest(req: IncomingMessage): Promise<IpcEnvelope> {
 	for await (const chunk of req) {
 		const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
 		size += buffer.length;
-		if (size > MAX_FILE_BYTES * 2) throw new Error("IPC body too large");
+		if (size > MAX_IPC_BODY_BYTES) throw new Error("IPC body too large");
 		chunks.push(buffer);
 	}
 	return JSON.parse(Buffer.concat(chunks).toString("utf8")) as IpcEnvelope;

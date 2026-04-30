@@ -3,8 +3,8 @@ title: "Centralize IPC limits and decouple them from attachment sizes"
 type: "request"
 created: "2026-04-28"
 author: "Christof Stocker"
-status: "open"
-planned_as: []
+status: "planned"
+planned_as: ["centralize-local-ipc-limits"]
 ---
 Code-quality audit finding from 2026-04-28.
 

@@ -796,8 +796,9 @@ Configuration policy is semantically grouped rather than collected in one global
 bag: `shared/paths.ts` owns mutable broker path scope, `shared/file-policy.ts`
 owns bridge file/attachment limits, `broker/policy.ts` owns broker/session timing
 and broker control TTL/update limits, `telegram/policy.ts` owns Telegram method
-limits, and `shared/prompt.ts` owns the prompt suffix. Changing one policy should
-not appear to change unrelated behavior.
+limits, and `shared/prompt.ts` owns the prompt suffix. Local IPC timeout and JSON
+body-size limits belong with IPC ownership, not with Telegram attachment policy.
+Changing one policy should not appear to change unrelated behavior.
 
 `shared/ipc.ts` owns local IPC transport mechanics.
 `shared/activity-lines.ts`, `shared/format.ts`, `shared/messages.ts`,
@@ -1294,15 +1295,18 @@ ownership.
   limited `CONFIG_PATH` compatibility export; unrelated policy constants should
   not be added here by default.
 - `src/shared/paths.ts` — mutable broker path scope and local path constants.
-- `src/shared/file-policy.ts` — bridge file/attachment limits shared across
-  Telegram upload/download and local IPC surfaces.
+- `src/shared/file-policy.ts` — bridge file/attachment limits for explicit pi
+  attachment return paths and local files uploaded to Telegram; Telegram-hosted
+  download limits belong to `src/telegram/policy.ts`, and local IPC limits
+  should not depend on these attachment-size constants.
 - `src/shared/prompt.ts` — Telegram bridge prompt suffix text.
 - `src/shared/config-types.ts` — persisted Telegram bridge config shape.
 - `src/shared/types.ts` — transitional compatibility barrel for the former broad
   cross-module runtime data model; stable concepts should be imported from
   Telegram, broker, client, or IPC owner modules.
 - `src/shared/ipc.ts` and `src/shared/ipc-types.ts` — local IPC transport helpers
-  plus envelope/response types.
+  plus envelope/response types; IPC timeout and JSON body-size policy should be
+  owned here or by a narrow IPC policy sibling.
 - `src/shared/activity-lines.ts`, `src/shared/format.ts`,
   `src/shared/messages.ts`, `src/shared/routing.ts`, `src/shared/pairing.ts`,
   `src/shared/ui-status.ts`, and `src/shared/utils.ts` — activity-line
