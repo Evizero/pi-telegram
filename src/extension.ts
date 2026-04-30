@@ -519,6 +519,17 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 		if (value.callback_query !== undefined && !isRecord(value.callback_query)) invalidDurableJson(path, `${field}.callback_query must be an object when present`);
 	}
 
+	function validateControlResultDeliveryProgress(path: string, value: unknown, field: string): void {
+		if (!isRecord(value)) invalidDurableJson(path, `${field} must be an object`);
+		validateStringArray(path, value.chunks, `${field}.chunks`);
+		if (value.mode !== undefined && value.mode !== "edited" && value.mode !== "sent") invalidDurableJson(path, `${field}.mode must be edited or sent when present`);
+		validateNumberArray(path, value.deliveredChunkIndexes, `${field}.deliveredChunkIndexes`);
+		if (value.deliveredMessageIds !== undefined) {
+			if (!isRecord(value.deliveredMessageIds)) invalidDurableJson(path, `${field}.deliveredMessageIds must be an object when present`);
+			for (const [key, messageId] of Object.entries(value.deliveredMessageIds)) validateFiniteNumber(path, messageId, `${field}.deliveredMessageIds.${key}`);
+		}
+	}
+
 	function validateFinalProgress(path: string, value: unknown, field: string): void {
 		if (!isRecord(value)) invalidDurableJson(path, `${field} must be an object`);
 		for (const key of ["activityCompleted", "typingStopped", "previewDetached", "previewCleared", "previewCleanupDone", "legacyPreviewEditedFinalReset"]) validateOptionalBoolean(path, value[key], `${field}.${key}`);
@@ -682,6 +693,7 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 				validateOptionalFiniteNumber(path, record.selectorSelectionUpdatedAtMs, `${sectionName}.${key}.selectorSelectionUpdatedAtMs`);
 				validateOptionalFiniteNumber(path, record.selectorSelectionExpiresAtMs, `${sectionName}.${key}.selectorSelectionExpiresAtMs`);
 				validateOptionalString(path, record.completedText, `${sectionName}.${key}.completedText`);
+				if (record.resultDeliveryProgress !== undefined) validateControlResultDeliveryProgress(path, record.resultDeliveryProgress, `${sectionName}.${key}.resultDeliveryProgress`);
 				validateFiniteNumber(path, record.createdAtMs, `${sectionName}.${key}.createdAtMs`);
 				validateFiniteNumber(path, record.updatedAtMs, `${sectionName}.${key}.updatedAtMs`);
 				validateFiniteNumber(path, record.expiresAtMs, `${sectionName}.${key}.expiresAtMs`);

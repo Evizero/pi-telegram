@@ -1,13 +1,17 @@
-import type { BrokerState, InlineKeyboardMarkup, TelegramCallbackQuery, TelegramRoute } from "../shared/types.js";
+import type { BrokerState, InlineKeyboardMarkup, TelegramCallbackQuery, TelegramControlResultDeliveryProgress, TelegramRoute } from "../shared/types.js";
 import { now } from "../shared/utils.js";
 import { getTelegramRetryAfterMs } from "../telegram/api.js";
-import { answerTelegramCallbackQueryBestEffort, editOrSendTelegramText, editTelegramTextMessage } from "../telegram/message-ops.js";
+import { answerTelegramCallbackQueryBestEffort, editOrSendTelegramTextFully, editTelegramTextMessage, TelegramTextDeliveryProgressError } from "../telegram/message-ops.js";
 import type { TelegramCommandRouterDeps } from "./command-types.js";
 
 export interface TelegramControlMessageBinding {
 	chatId: number | string;
 	messageThreadId?: number;
 	messageId?: number;
+}
+
+export interface TelegramControlResultBinding extends TelegramControlMessageBinding {
+	resultDeliveryProgress?: TelegramControlResultDeliveryProgress;
 }
 
 export interface TelegramRouteControlBinding extends TelegramControlMessageBinding {
@@ -77,8 +81,16 @@ export async function tryEditCallbackMessage(deps: Pick<TelegramCommandRouterDep
 	});
 }
 
-export async function tryEditOrSendControlResult(deps: Pick<TelegramCommandRouterDeps, "callTelegram" | "sendTextReply">, control: TelegramControlMessageBinding, query: TelegramCallbackQuery, text: string): Promise<void> {
-	await editOrSendTelegramText(deps.callTelegram, deps.sendTextReply, control.chatId, control.messageThreadId, query.message?.message_id ?? control.messageId, text, { fallbackOn: "any-non-rate-limit" }).catch((error) => {
-		if (getTelegramRetryAfterMs(error) !== undefined) throw error;
+export async function tryEditOrSendControlResult(deps: Pick<TelegramCommandRouterDeps, "callTelegram" | "persistBrokerState">, control: TelegramControlResultBinding, query: TelegramCallbackQuery, text: string): Promise<void> {
+	control.resultDeliveryProgress ??= {};
+	await editOrSendTelegramTextFully(deps.callTelegram, control.chatId, control.messageThreadId, query.message?.message_id ?? control.messageId, text, {
+		fallbackOn: "any-non-rate-limit",
+		progress: control.resultDeliveryProgress,
+		onProgress: async (progress) => {
+			control.resultDeliveryProgress = progress;
+			await deps.persistBrokerState();
+		},
+	}).catch((error) => {
+		if (getTelegramRetryAfterMs(error) !== undefined || error instanceof TelegramTextDeliveryProgressError) throw error;
 	});
 }

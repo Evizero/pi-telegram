@@ -1463,6 +1463,30 @@
           "durable-json-read-failures"
         ]
       }
+    },
+    {
+      "id": "SyRS-command-result-text-preservation",
+      "origin": "derived",
+      "label": "Deliver full command results",
+      "statement": "The system shall preserve complete Telegram command and control result text when the result exceeds one Telegram text message by delivering every chunk instead of silently discarding overflow text.",
+      "traces_to": [
+        "StRS-activity-final-feedback",
+        "StRS-telegram-repo-state",
+        "StRS-api-constrained-maintenance"
+      ],
+      "rationale": "Remote operators use Telegram commands and inline controls for situational awareness and local-session control. Telegram editMessageText can only hold one text chunk, so helper behavior that edits only the first chunk can satisfy the API size limit while still losing meaningful command output.",
+      "acceptance_criteria": "Focused behavior checks exercise a command/control result longer than one Telegram message and show the first visible message is edited or otherwise updated while remaining chunks are sent to the same chat/thread in order; retryable Telegram failures after partial multi-chunk delivery do not cause already-delivered overflow chunks to be resent on callback/control retry; existing single-message edits, reply markup placement, fallback-on-missing-editable behavior, and retry_after propagation remain unchanged.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-04-30",
+      "updated": "2026-04-30",
+      "sources": {
+        "inbox": [
+          "edited-telegram-command-results"
+        ]
+      }
     }
   ]
 }

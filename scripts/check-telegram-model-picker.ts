@@ -116,7 +116,8 @@ async function checkTelegramUiFailureAfterSuccessfulSelectionDoesNotMarkOffline(
 	await router.dispatchCallback(callbackQuery(modelKeyboard.inline_keyboard[0]![0]!.callback_data));
 
 	assert.equal(brokerState.sessions["session-1"]!.status, "busy");
-	assert.equal(sentReplies.at(-1), "Model changed to openai-codex-2/gpt-5.5");
+	assert.equal(telegramCalls.some((call) => call.method === "sendMessage" && call.body.message_thread_id === 9 && call.body.text === "Model changed to openai-codex-2/gpt-5.5"), true);
+	assert.equal(sentReplies.includes("Model changed to openai-codex-2/gpt-5.5"), false);
 }
 
 async function checkRetryAfterAfterSuccessfulSelectionRetriesConfirmationWithoutRepeatingSetModel(): Promise<void> {

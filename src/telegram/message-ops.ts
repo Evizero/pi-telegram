@@ -1,5 +1,5 @@
 import { chunkParagraphs } from "../shared/format.js";
-import type { InlineKeyboardMarkup, TelegramSentMessage } from "../shared/types.js";
+import type { InlineKeyboardMarkup, TelegramControlResultDeliveryProgress, TelegramSentMessage } from "../shared/types.js";
 import { getTelegramRetryAfterMs } from "./api.js";
 import {
 	isMissingDeletedTelegramMessage,
@@ -21,6 +21,19 @@ export interface EditOrSendTextOptions {
 	replyMarkup?: InlineKeyboardMarkup;
 	fallbackOn?: "missing-editable" | "any-non-rate-limit";
 	signal?: AbortSignal;
+}
+
+export interface EditOrSendFullTextOptions extends EditOrSendTextOptions {
+	progress?: TelegramControlResultDeliveryProgress;
+	onProgress?: (progress: TelegramControlResultDeliveryProgress) => Promise<void>;
+}
+
+export class TelegramTextDeliveryProgressError extends Error {
+	constructor(public readonly originalError: unknown) {
+		const message = originalError instanceof Error ? originalError.message : String(originalError);
+		super(`Failed to persist Telegram text delivery progress: ${message}`);
+		this.name = "TelegramTextDeliveryProgressError";
+	}
 }
 
 export interface DeleteTelegramMessageOptions {
@@ -134,6 +147,130 @@ export async function editOrSendTelegramText(
 		if (options?.fallbackOn === "missing-editable" && !isMissingEditableTelegramMessage(error)) throw error;
 		return await sendTextReply(chatId, messageThreadId, text, options?.replyMarkup ? { replyMarkup: options.replyMarkup, signal: options.signal } : { signal: options?.signal });
 	}
+}
+
+function resetProgress(progress: TelegramControlResultDeliveryProgress, chunks: string[]): void {
+	progress.chunks = [...chunks];
+	progress.mode = undefined;
+	progress.deliveredChunkIndexes = [];
+	progress.deliveredMessageIds = {};
+}
+
+function progressMatchesText(progress: TelegramControlResultDeliveryProgress, chunks: string[]): boolean {
+	return progress.chunks?.length === chunks.length && chunks.every((chunk, index) => progress.chunks?.[index] === chunk);
+}
+
+function deliveredIndexes(progress: TelegramControlResultDeliveryProgress): Set<number> {
+	return new Set((progress.deliveredChunkIndexes ?? []).filter((index) => Number.isInteger(index) && index >= 0));
+}
+
+async function persistTextDeliveryProgress(progress: TelegramControlResultDeliveryProgress, onProgress: ((progress: TelegramControlResultDeliveryProgress) => Promise<void>) | undefined): Promise<void> {
+	try {
+		await onProgress?.(progress);
+	} catch (error) {
+		throw new TelegramTextDeliveryProgressError(error);
+	}
+}
+
+async function markTextChunkDelivered(
+	progress: TelegramControlResultDeliveryProgress,
+	chunks: string[],
+	index: number,
+	messageId: number | undefined,
+	mode: "edited" | "sent",
+	onProgress: ((progress: TelegramControlResultDeliveryProgress) => Promise<void>) | undefined,
+): Promise<void> {
+	if (!progressMatchesText(progress, chunks)) resetProgress(progress, chunks);
+	progress.mode = mode;
+	const indexes = deliveredIndexes(progress);
+	indexes.add(index);
+	progress.deliveredChunkIndexes = [...indexes].sort((left, right) => left - right);
+	if (messageId !== undefined) {
+		progress.deliveredMessageIds ??= {};
+		progress.deliveredMessageIds[String(index)] = messageId;
+	}
+	await persistTextDeliveryProgress(progress, onProgress);
+}
+
+async function setTextDeliveryMode(
+	progress: TelegramControlResultDeliveryProgress,
+	chunks: string[],
+	mode: "edited" | "sent",
+	onProgress: ((progress: TelegramControlResultDeliveryProgress) => Promise<void>) | undefined,
+): Promise<void> {
+	if (!progressMatchesText(progress, chunks)) resetProgress(progress, chunks);
+	if (progress.mode === mode) return;
+	progress.mode = mode;
+	await persistTextDeliveryProgress(progress, onProgress);
+}
+
+function lastDeliveredMessageId(progress: TelegramControlResultDeliveryProgress, chunks: string[], fallbackMessageId: number | undefined): number | undefined {
+	for (let index = chunks.length - 1; index >= 0; index -= 1) {
+		const messageId = progress.deliveredMessageIds?.[String(index)];
+		if (messageId !== undefined) return messageId;
+	}
+	return fallbackMessageId;
+}
+
+async function sendTextChunk(
+	callTelegram: TelegramJsonCall,
+	chatId: number | string,
+	messageThreadId: number | undefined,
+	chunk: string,
+	options: SendTextReplyOptions | undefined,
+): Promise<number | undefined> {
+	const sent = await callTelegram<TelegramSentMessage>("sendMessage", textMessageBody(chatId, messageThreadId, chunk, options), { signal: options?.signal });
+	return sent.message_id;
+}
+
+export async function editOrSendTelegramTextFully(
+	callTelegram: TelegramJsonCall,
+	chatId: number | string,
+	messageThreadId: number | undefined,
+	messageId: number | undefined,
+	text: string,
+	options?: EditOrSendFullTextOptions,
+): Promise<number | undefined> {
+	const chunks = chunkParagraphs(text || " ");
+	const progress = options?.progress ?? {};
+	if (!progressMatchesText(progress, chunks)) resetProgress(progress, chunks);
+	let mode = progress.mode;
+	if (!mode && messageId !== undefined) {
+		const body: Record<string, unknown> = { chat_id: chatId, message_id: messageId, text: chunks[0] ?? " " };
+		if (options?.replyMarkup) body.reply_markup = options.replyMarkup;
+		let edited = false;
+		try {
+			await callTelegram("editMessageText", body, { signal: options?.signal });
+			edited = true;
+		} catch (error) {
+			if (isTelegramMessageNotModified(error)) {
+				edited = true;
+			} else {
+				if (isTelegramRetryAfterError(error)) throw error;
+				if (options?.fallbackOn === "missing-editable" && !isMissingEditableTelegramMessage(error)) throw error;
+				await setTextDeliveryMode(progress, chunks, "sent", options?.onProgress);
+				mode = "sent";
+			}
+		}
+		if (edited) {
+			await markTextChunkDelivered(progress, chunks, 0, messageId, "edited", options?.onProgress);
+			mode = "edited";
+		}
+	}
+	if (!mode) {
+		await setTextDeliveryMode(progress, chunks, "sent", options?.onProgress);
+		mode = "sent";
+	}
+	const delivered = deliveredIndexes(progress);
+	const startIndex = mode === "edited" ? 1 : 0;
+	for (let index = startIndex; index < chunks.length; index += 1) {
+		if (delivered.has(index)) continue;
+		const includeReplyMarkup = mode === "sent" && index === chunks.length - 1;
+		const sentMessageId = await sendTextChunk(callTelegram, chatId, messageThreadId, chunks[index]!, includeReplyMarkup ? { replyMarkup: options?.replyMarkup, signal: options?.signal } : { signal: options?.signal });
+		delivered.add(index);
+		await markTextChunkDelivered(progress, chunks, index, sentMessageId, mode, options?.onProgress);
+	}
+	return lastDeliveredMessageId(progress, chunks, mode === "edited" ? messageId : undefined);
 }
 
 export async function deleteTelegramMessage(

@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { MAX_MESSAGE_LENGTH } from "../src/shared/config.js";
 import { callTelegram, callTelegramMultipart, getTelegramRetryAfterMs, TelegramApiError } from "../src/telegram/api.js";
 import {
 	isAlreadyDeletedTelegramTopic,
@@ -14,7 +15,7 @@ import {
 	isTerminalTelegramFinalDeliveryError,
 	isTerminalTelegramTopicCleanupError,
 } from "../src/telegram/errors.js";
-import { deleteTelegramMessage, editOrSendTelegramText, editTelegramTextMessage, sendTelegramMarkdownReply, type TelegramJsonCall } from "../src/telegram/message-ops.js";
+import { deleteTelegramMessage, editOrSendTelegramText, editOrSendTelegramTextFully, editTelegramTextMessage, sendTelegramMarkdownReply, TelegramTextDeliveryProgressError, type TelegramJsonCall } from "../src/telegram/message-ops.js";
 
 interface CapturedCall {
 	method: string;
@@ -121,6 +122,40 @@ async function assertEditAndDeleteHelpersClassifyMessages(): Promise<void> {
 	assert.equal(result, "missing");
 }
 
+async function assertFullEditOrSendFallbackSendsAllChunks(): Promise<void> {
+	const calls: CapturedCall[] = [];
+	const longText = `${"a".repeat(MAX_MESSAGE_LENGTH)}${"b".repeat(12)}`;
+	const messageId = await editOrSendTelegramTextFully(
+		captureCall(calls, (method) => method === "editMessageText" ? new TelegramApiError("editMessageText", "Bad Request: message to edit not found", 400, undefined) : undefined),
+		123,
+		456,
+		9,
+		longText,
+		{ fallbackOn: "missing-editable", replyMarkup: { inline_keyboard: [[{ text: "Done", callback_data: "done" }]] } },
+	);
+	assert.equal(messageId, 103);
+	assert.deepEqual(calls.map((call) => call.method), ["editMessageText", "sendMessage", "sendMessage"]);
+	assert.equal(calls[1]?.body.message_thread_id, 456);
+	assert.equal(calls[1]?.body.text, "a".repeat(MAX_MESSAGE_LENGTH));
+	assert.equal(calls[1]?.body.reply_markup, undefined);
+	assert.equal(calls[2]?.body.text, "b".repeat(12));
+	assert.deepEqual(calls[2]?.body.reply_markup, { inline_keyboard: [[{ text: "Done", callback_data: "done" }]] });
+}
+
+async function assertFullEditProgressFailureDoesNotFallbackSend(): Promise<void> {
+	const calls: CapturedCall[] = [];
+	await assert.rejects(
+		() => editOrSendTelegramTextFully(captureCall(calls), 123, 456, 9, `${"a".repeat(MAX_MESSAGE_LENGTH)}${"b".repeat(12)}`, {
+			progress: {},
+			onProgress: async () => {
+				throw new Error("persist failed");
+			},
+		}),
+		(error: unknown) => error instanceof TelegramTextDeliveryProgressError,
+	);
+	assert.deepEqual(calls.map((call) => call.method), ["editMessageText"]);
+}
+
 function assertCentralClassifiers(): void {
 	assert.equal(isTelegramFormattingError(new TelegramApiError("sendMessage", "Bad Request: can't parse entities", 400, undefined)), true);
 	assert.equal(isTelegramMessageNotModified(new TelegramApiError("editMessageText", "Bad Request: message is not modified", 400, undefined)), true);
@@ -138,5 +173,7 @@ await assertJsonApiPreservesHttpRetryAfter();
 await assertMultipartApiPreservesStructuredRetryAfter();
 await assertMarkdownFallbackDoesNotHideRateLimit();
 await assertEditAndDeleteHelpersClassifyMessages();
+await assertFullEditOrSendFallbackSendsAllChunks();
+await assertFullEditProgressFailureDoesNotFallbackSend();
 assertCentralClassifiers();
 console.log("Telegram IO policy checks passed");

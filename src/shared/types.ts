@@ -410,6 +410,13 @@ export interface TelegramModelPickerGroup {
 	modelIndexes: number[];
 }
 
+export interface TelegramControlResultDeliveryProgress {
+	chunks?: string[];
+	mode?: "edited" | "sent";
+	deliveredChunkIndexes?: number[];
+	deliveredMessageIds?: Record<string, number>;
+}
+
 export interface TelegramModelPickerState {
 	token: string;
 	sessionId: string;
@@ -423,6 +430,7 @@ export interface TelegramModelPickerState {
 	models: ModelSummary[];
 	groups: TelegramModelPickerGroup[];
 	completedText?: string;
+	resultDeliveryProgress?: TelegramControlResultDeliveryProgress;
 	selectedAtMs?: number;
 	createdAtMs: number;
 	updatedAtMs: number;
@@ -441,6 +449,7 @@ export interface TelegramGitControlState {
 	selectorSelectionUpdatedAtMs?: number;
 	selectorSelectionExpiresAtMs?: number;
 	completedText?: string;
+	resultDeliveryProgress?: TelegramControlResultDeliveryProgress;
 	completedAction?: GitRepositoryAction;
 	resultDeliveredAtMs?: number;
 	createdAtMs: number;
