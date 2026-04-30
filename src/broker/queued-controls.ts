@@ -1,4 +1,5 @@
-import type { BrokerState, QueuedTurnControlState, TelegramCallbackQuery, TelegramRoute } from "../shared/types.js";
+import type { TelegramCallbackQuery } from "../telegram/types.js";
+import type { BrokerState, QueuedTurnControlState, TelegramRoute } from "./types.js";
 import { QUEUED_CONTROL_TEXT } from "../shared/queued-control-text.js";
 import { now } from "../shared/utils.js";
 import { routeBoundControlBelongsToRoute } from "../shared/routing.js";

@@ -1,5 +1,6 @@
-import { MODEL_LIST_TTL_MS } from "../shared/config.js";
-import type { InlineKeyboardMarkup, TelegramGitControlState, TelegramInlineKeyboardButton, TelegramRoute } from "../shared/types.js";
+import { MODEL_LIST_TTL_MS } from "./policy.js";
+import type { InlineKeyboardMarkup, TelegramInlineKeyboardButton } from "../telegram/types.js";
+import type { TelegramGitControlState, TelegramRoute } from "./types.js";
 import { now, randomId } from "../shared/utils.js";
 
 export const GIT_CONTROL_CALLBACK_PREFIX = "git1";

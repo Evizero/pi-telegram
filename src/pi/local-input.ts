@@ -1,7 +1,8 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { isTelegramPrompt } from "../shared/format.js";
-import type { ActiveTelegramTurn, PendingTelegramTurn, TelegramRoute } from "../shared/types.js";
+import type { TelegramRoute } from "../broker/types.js";
+import type { ActiveTelegramTurn, PendingTelegramTurn } from "../client/types.js";
 import { randomId } from "../shared/utils.js";
 
 export interface PiLocalInputHookDeps {

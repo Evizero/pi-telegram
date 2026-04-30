@@ -4,7 +4,8 @@ import { ClientRuntime } from "../src/client/runtime.js";
 import { ClientTelegramTurnLifecycle } from "../src/client/turn-lifecycle.js";
 import { clientDeliverTelegramTurn } from "../src/client/turn-delivery.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { ActiveTelegramTurn, AssistantFinalPayload, PendingTelegramTurn, TelegramRoute } from "../src/shared/types.js";
+import type { TelegramRoute } from "../src/broker/types.js";
+import type { ActiveTelegramTurn, AssistantFinalPayload, PendingTelegramTurn } from "../src/client/types.js";
 
 function turn(id: string, deliveryMode?: PendingTelegramTurn["deliveryMode"], blockedByManualCompactionOperationId?: string): PendingTelegramTurn {
 	return {

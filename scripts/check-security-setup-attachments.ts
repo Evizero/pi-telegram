@@ -7,7 +7,8 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { resolveAllowedAttachmentPath } from "../src/client/attachment-path.js";
 import { writeJson } from "../src/shared/utils.js";
-import type { PendingTelegramTurn, TelegramConfig } from "../src/shared/types.js";
+import type { PendingTelegramTurn } from "../src/client/types.js";
+import type { TelegramConfig } from "../src/shared/config-types.js";
 import { promptForTelegramConfig } from "../src/telegram/setup.js";
 import { sendQueuedAttachment } from "../src/telegram/attachments.js";
 import { TelegramApiError } from "../src/telegram/api.js";

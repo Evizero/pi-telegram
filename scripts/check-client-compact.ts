@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 
 import { clientCompactSession } from "../src/client/compact.js";
-import type { PendingTelegramTurn, QueuedAttachment, TelegramRoute } from "../src/shared/types.js";
+import type { TelegramRoute } from "../src/broker/types.js";
+import type { PendingTelegramTurn, QueuedAttachment } from "../src/client/types.js";
 
 interface CompactCallbacks {
 	onComplete?: () => void;

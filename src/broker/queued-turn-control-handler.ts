@@ -1,4 +1,6 @@
-import type { BrokerState, CancelQueuedTurnResult, ConvertQueuedTurnToSteerResult, PendingTelegramTurn, QueuedTurnControlState, SessionRegistration, TelegramCallbackQuery } from "../shared/types.js";
+import type { CancelQueuedTurnResult, ConvertQueuedTurnToSteerResult, PendingTelegramTurn } from "../client/types.js";
+import type { TelegramCallbackQuery } from "../telegram/types.js";
+import type { BrokerState, QueuedTurnControlState, SessionRegistration } from "./types.js";
 import { errorMessage, now, randomId } from "../shared/utils.js";
 import type { TelegramCommandRouterDeps } from "./command-types.js";
 import { answerControlCallback } from "./inline-controls.js";

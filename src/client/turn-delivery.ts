@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import type { ActiveTelegramTurn, AssistantFinalPayload, ClientDeliverTurnResult, PendingTelegramTurn } from "../shared/types.js";
+import type { ActiveTelegramTurn, AssistantFinalPayload, ClientDeliverTurnResult, PendingTelegramTurn } from "./types.js";
 import { ClientTelegramTurnLifecycle } from "./turn-lifecycle.js";
 
 export interface ClientDeliverTurnOptions {

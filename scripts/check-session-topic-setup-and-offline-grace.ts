@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 
 import { TelegramApiError } from "../src/telegram/api.js";
 import { createRuntimeUpdateHandlers } from "../src/broker/updates.js";
-import { SESSION_OFFLINE_MS, SESSION_RECONNECT_GRACE_MS } from "../src/shared/config.js";
-import type { BrokerState } from "../src/shared/types.js";
+import { SESSION_OFFLINE_MS, SESSION_RECONNECT_GRACE_MS } from "../src/broker/policy.js";
+import type { BrokerState } from "../src/broker/types.js";
 import { session, state, topicRoute } from "./support/session-route-fixtures.js";
 import { noopCommandRouter, testExtensionContext } from "./support/runtime-update-fixtures.js";
 

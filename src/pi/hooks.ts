@@ -17,7 +17,8 @@ export type RuntimePiHooksDeps = PiAttachmentHookDeps
 
 // Keep these type exports available for fixtures and callers that still import
 // the monolithic hook contract while the implementation is split by concern.
-export type { ActiveTelegramTurn, BrokerState, PendingTelegramTurn, QueuedAttachment, TelegramRoute } from "../shared/types.js";
+export type { BrokerState, TelegramRoute } from "../broker/types.js";
+export type { ActiveTelegramTurn, PendingTelegramTurn, QueuedAttachment } from "../client/types.js";
 export type { PiActivityHookDeps, PiAttachmentHookDeps, PiCommandHookDeps, PiFinalizationHookDeps, PiLifecycleHookDeps, PiLocalInputHookDeps };
 
 export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDeps): void {

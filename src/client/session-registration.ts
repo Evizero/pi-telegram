@@ -3,7 +3,8 @@ import { basename } from "node:path";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { topicNameFor } from "../shared/format.js";
-import type { ActiveTelegramTurn, PendingTelegramTurn, SessionRegistration, SessionReplacementRegistrationContext } from "../shared/types.js";
+import type { SessionRegistration, SessionReplacementRegistrationContext } from "../broker/types.js";
+import type { ActiveTelegramTurn, PendingTelegramTurn } from "./types.js";
 import { execGit, now } from "../shared/utils.js";
 
 export async function collectSessionRegistration(options: {

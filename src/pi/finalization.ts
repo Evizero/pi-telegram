@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 
 import { isRetryableAssistantError } from "../shared/assistant-errors.js";
 import { extractAssistantText } from "../shared/messages.js";
-import type { ActiveTelegramTurn, PendingTelegramTurn, QueuedAttachment } from "../shared/types.js";
+import type { ActiveTelegramTurn, PendingTelegramTurn, QueuedAttachment } from "../client/types.js";
 import type { PiActivityReporter } from "./activity.js";
 
 export interface PiFinalizationHookDeps {

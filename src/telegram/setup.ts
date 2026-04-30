@@ -1,7 +1,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { randomInt } from "node:crypto";
 
-import type { TelegramConfig, TelegramUser } from "../shared/types.js";
+import type { TelegramConfig, TelegramUser } from "./types.js";
 import { errorMessage, hashSecret, now } from "../shared/utils.js";
 import { formatPairingPin, PAIRING_PIN_TTL_MS } from "../shared/pairing.js";
 import { callTelegram, TelegramApiError } from "./api.js";

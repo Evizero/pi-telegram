@@ -1,7 +1,7 @@
 import { realpath } from "node:fs/promises";
 import { basename, isAbsolute, resolve } from "node:path";
 
-import { TEMP_DIR } from "../shared/config.js";
+import { TEMP_DIR } from "../shared/paths.js";
 
 const SENSITIVE_BASENAMES = new Set([
 	"id_rsa",

@@ -1,0 +1,8 @@
+export { MAX_MESSAGE_LENGTH, TELEGRAM_PREFIX } from "../shared/telegram-text-policy.js";
+
+export const MAX_TELEGRAM_DOWNLOAD_BYTES = 20 * 1024 * 1024;
+export const MAX_TELEGRAM_PHOTO_BYTES = 10 * 1024 * 1024;
+export const PREVIEW_THROTTLE_MS = 750;
+export const TELEGRAM_DRAFT_ID_MAX = 2_147_483_647;
+export const TELEGRAM_MEDIA_GROUP_DEBOUNCE_MS = 1200;
+export const TELEGRAM_TEMP_SESSION_ORPHAN_TTL_MS = 24 * 60 * 60 * 1000;

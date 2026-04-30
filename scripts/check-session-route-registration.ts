@@ -5,7 +5,7 @@ import { BrokerSessionRegistrationCoordinator } from "../src/broker/session-regi
 import { ensureRouteForSessionInBroker } from "../src/broker/routes.js";
 import { retryPendingRouteCleanupsInBroker } from "../src/broker/sessions.js";
 import type { PendingDisconnectRequest } from "../src/broker/disconnect-requests.js";
-import type { QueuedTurnControlState, TelegramRoute } from "../src/shared/types.js";
+import type { QueuedTurnControlState, TelegramRoute } from "../src/broker/types.js";
 import { honorScopedDisconnect, registrationCoordinatorForCleanupCheck, selectorRoute, session, state, topicRoute } from "./support/session-route-fixtures.js";
 
 

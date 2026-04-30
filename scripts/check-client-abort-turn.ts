@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { clientAbortTelegramTurn } from "../src/client/abort-turn.js";
-import type { ActiveTelegramTurn, PendingTelegramTurn } from "../src/shared/types.js";
+import type { ActiveTelegramTurn, PendingTelegramTurn } from "../src/client/types.js";
 
 function turn(id: string): PendingTelegramTurn {
 	return {

@@ -1,4 +1,4 @@
-import type { BrokerState, QueuedTurnControlState, TelegramRoute } from "../shared/types.js";
+import type { BrokerState, QueuedTurnControlState, TelegramRoute } from "./types.js";
 import { now } from "../shared/utils.js";
 import {
 	isMissingDeletedTelegramMessage,

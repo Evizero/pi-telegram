@@ -1,6 +1,6 @@
-import { ACTIVITY_THROTTLE_MS } from "../shared/config.js";
+import { ACTIVITY_THROTTLE_MS } from "./policy.js";
 import { activityLineToHtml, isThinkingActivityLine, isWorkingActivityLine, normalizedActivityLine } from "../shared/activity-lines.js";
-import type { TelegramSentMessage } from "../shared/types.js";
+import type { TelegramSentMessage } from "../telegram/types.js";
 
 export { activityLineToHtml, thinkingActivityLine, toolActivityLine } from "../shared/activity-lines.js";
 

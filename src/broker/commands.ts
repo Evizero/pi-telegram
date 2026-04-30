@@ -1,7 +1,10 @@
-import { MODEL_LIST_TTL_MS, SESSION_LIST_OFFLINE_GRACE_MS } from "../shared/config.js";
+import { MODEL_LIST_TTL_MS, SESSION_LIST_OFFLINE_GRACE_MS } from "./policy.js";
 import { routeId } from "../shared/format.js";
 import { canonicalRouteKey } from "../shared/routing.js";
-import type { BrokerState, ClientDeliverTurnResult, ClientManualCompactionResult, PendingManualCompactionOperation, PendingTelegramTurn, SessionRegistration, TelegramCallbackQuery, TelegramConfig, TelegramMessage, TelegramRoute } from "../shared/types.js";
+import type { ClientDeliverTurnResult, ClientManualCompactionResult, PendingManualCompactionOperation, PendingTelegramTurn } from "../client/types.js";
+import type { TelegramCallbackQuery, TelegramMessage } from "../telegram/types.js";
+import type { TelegramConfig } from "../shared/config-types.js";
+import type { BrokerState, SessionRegistration, TelegramRoute } from "./types.js";
 import { errorMessage, now } from "../shared/utils.js";
 import { getTelegramRetryAfterMs } from "../telegram/api.js";
 import type { TelegramCommandRouterDeps } from "./command-types.js";

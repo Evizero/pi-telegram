@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { consumeSessionReplacementHandoffInBroker, findMatchingSessionReplacementHandoff, writeSessionReplacementHandoff } from "../src/client/session-replacement.js";
-import type { BrokerState, PendingAssistantFinalDelivery, PendingTelegramTurn, SessionRegistration, TelegramRoute } from "../src/shared/types.js";
+import type { BrokerState, PendingAssistantFinalDelivery, SessionRegistration, TelegramRoute } from "../src/broker/types.js";
+import type { PendingTelegramTurn } from "../src/client/types.js";
 
 function route(sessionId: string): TelegramRoute {
 	return {

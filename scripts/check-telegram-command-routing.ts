@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
-import type { ClientManualCompactionResult, PendingTelegramTurn, TelegramMessage } from "../src/shared/types.js";
+import type { ClientManualCompactionResult, PendingTelegramTurn } from "../src/client/types.js";
+import type { TelegramMessage } from "../src/telegram/types.js";
 import { createRouter, message, state } from "./support/telegram-command-fixtures.js";
 import type { IpcCall } from "./support/telegram-command-fixtures.js";
 

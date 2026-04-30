@@ -3,7 +3,10 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { RuntimeUpdateDeps } from "../../src/broker/updates.js";
 import { TelegramCommandRouter } from "../../src/broker/commands.js";
 import type { TelegramCommandRouterDeps } from "../../src/broker/command-types.js";
-import type { BrokerLease, BrokerState, PendingTelegramTurn, TelegramConfig, TelegramMessage } from "../../src/shared/types.js";
+import type { BrokerLease, BrokerState } from "../../src/broker/types.js";
+import type { PendingTelegramTurn } from "../../src/client/types.js";
+import type { TelegramMessage } from "../../src/telegram/types.js";
+import type { TelegramConfig } from "../../src/shared/config-types.js";
 import { now } from "../../src/shared/utils.js";
 
 export function brokerState(overrides: Partial<BrokerState> = {}): BrokerState {

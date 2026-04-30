@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { TelegramApiError } from "../src/telegram/api.js";
-import type { TelegramMessage } from "../src/shared/types.js";
+import type { TelegramMessage } from "../src/telegram/types.js";
 import { callbackQuery, callbackQueryForMessage, createRouter, message, session, state } from "./support/telegram-command-fixtures.js";
 import type { IpcCall, TelegramCall } from "./support/telegram-command-fixtures.js";
 

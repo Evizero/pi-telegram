@@ -1,5 +1,5 @@
 import { chunkParagraphs } from "../shared/format.js";
-import type { InlineKeyboardMarkup, TelegramControlResultDeliveryProgress, TelegramSentMessage } from "../shared/types.js";
+import type { InlineKeyboardMarkup, TelegramControlResultDeliveryProgress, TelegramSentMessage } from "./types.js";
 import { getTelegramRetryAfterMs } from "./api.js";
 import {
 	isMissingDeletedTelegramMessage,

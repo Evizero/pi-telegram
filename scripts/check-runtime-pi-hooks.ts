@@ -9,8 +9,10 @@ import { registerTelegramCommands } from "../src/pi/commands.js";
 import { registerRuntimePiHooks } from "../src/pi/hooks.js";
 import { registerLocalInputMirrorHook } from "../src/pi/local-input.js";
 import { registerPromptSuffixHook } from "../src/pi/prompt.js";
-import { SYSTEM_PROMPT_SUFFIX, TELEGRAM_PREFIX } from "../src/shared/config.js";
-import type { ActiveTelegramTurn, TelegramRoute } from "../src/shared/types.js";
+import { SYSTEM_PROMPT_SUFFIX } from "../src/shared/prompt.js";
+import { TELEGRAM_PREFIX } from "../src/telegram/policy.js";
+import type { TelegramRoute } from "../src/broker/types.js";
+import type { ActiveTelegramTurn } from "../src/client/types.js";
 import { activeTurn, baseDeps, buildPiHarness, noopActivityReporter, recordingActivityReporter, route, testExtensionContext } from "./support/pi-hook-fixtures.js";
 
 function activityId(payload: unknown): unknown {

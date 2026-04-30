@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 
 import { TelegramApiError } from "../src/telegram/api.js";
 import { routeTopicDeleteJobId } from "../src/broker/telegram-outbox.js";
-import type { PendingTelegramTurn, QueuedTurnControlState } from "../src/shared/types.js";
+import type { QueuedTurnControlState } from "../src/broker/types.js";
+import type { PendingTelegramTurn } from "../src/client/types.js";
 import { callbackQuery, createRouter, message, queuedControlCallbackDataByText, state } from "./support/telegram-command-fixtures.js";
 import type { IpcCall, TelegramCall } from "./support/telegram-command-fixtures.js";
 

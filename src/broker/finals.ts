@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 
 import { chunkParagraphs } from "../shared/format.js";
 import { formatAssistantFailureText } from "../shared/assistant-errors.js";
-import type { AssistantFinalPayload, BrokerState, PendingAssistantFinalDelivery, QueuedAttachment } from "../shared/types.js";
+import type { AssistantFinalPayload, QueuedAttachment } from "../client/types.js";
+import type { BrokerState, PendingAssistantFinalDelivery } from "./types.js";
 import { isStaleBrokerError } from "./lease.js";
 import { errorMessage, now } from "../shared/utils.js";
 import { getTelegramRetryAfterMs } from "../telegram/api.js";

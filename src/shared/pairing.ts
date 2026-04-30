@@ -1,8 +1,18 @@
-import type { TelegramConfig, TelegramMessage } from "./types.js";
-
 export const PAIRING_PIN_DIGITS = 4;
 export const PAIRING_PIN_TTL_MS = 5 * 60 * 1000;
 export const PAIRING_MAX_FAILED_ATTEMPTS = 5;
+
+interface PairingConfig {
+	allowedUserId?: number;
+	pairingCodeHash?: string;
+	pairingCreatedAtMs?: number;
+	pairingExpiresAtMs?: number;
+	pairingFailedAttempts?: number;
+}
+
+interface TelegramDatedMessage {
+	date?: number;
+}
 
 export function pairingCandidateFromText(text: string | undefined): string | undefined {
 	const trimmed = (text ?? "").trim();
@@ -13,16 +23,16 @@ export function pairingCandidateFromText(text: string | undefined): string | und
 	return undefined;
 }
 
-export function isPairingPending(config: TelegramConfig, nowMs: number): boolean {
+export function isPairingPending(config: PairingConfig, nowMs: number): boolean {
 	return config.allowedUserId === undefined && Boolean(config.pairingCodeHash) && Boolean(config.pairingCreatedAtMs) && Boolean(config.pairingExpiresAtMs && config.pairingExpiresAtMs > nowMs);
 }
 
-export function isMessageBeforePairingWindow(message: TelegramMessage, config: TelegramConfig): boolean {
+export function isMessageBeforePairingWindow(message: TelegramDatedMessage, config: PairingConfig): boolean {
 	if (config.pairingCreatedAtMs === undefined || message.date === undefined) return false;
 	return message.date < Math.floor(config.pairingCreatedAtMs / 1000);
 }
 
-export function clearPairingState(config: TelegramConfig): TelegramConfig {
+export function clearPairingState<TConfig extends PairingConfig>(config: TConfig): TConfig {
 	return {
 		...config,
 		pairingCodeHash: undefined,

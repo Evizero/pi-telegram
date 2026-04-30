@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { MAX_MESSAGE_LENGTH } from "../src/shared/config.js";
+import { MAX_MESSAGE_LENGTH } from "../src/telegram/policy.js";
 import { callTelegram, callTelegramMultipart, getTelegramRetryAfterMs, TelegramApiError } from "../src/telegram/api.js";
 import {
 	isAlreadyDeletedTelegramTopic,

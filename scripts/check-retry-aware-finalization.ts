@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { RetryAwareTelegramTurnFinalizer } from "../src/client/retry-aware-finalization.js";
-import type { ActiveTelegramTurn, AssistantFinalPayload } from "../src/shared/types.js";
+import type { ActiveTelegramTurn, AssistantFinalPayload } from "../src/client/types.js";
 
 function activeTurn(id = "turn-1"): ActiveTelegramTurn {
 	return {

@@ -1,4 +1,6 @@
-import type { BrokerState, ClientGitRepositoryQueryResult, GitRepositoryAction, SessionRegistration, TelegramCallbackQuery, TelegramGitControlState, TelegramRoute } from "../shared/types.js";
+import type { ClientGitRepositoryQueryResult, GitRepositoryAction } from "../client/types.js";
+import type { TelegramCallbackQuery } from "../telegram/types.js";
+import type { BrokerState, SessionRegistration, TelegramGitControlState, TelegramRoute } from "./types.js";
 import { errorMessage, now } from "../shared/utils.js";
 import { getTelegramRetryAfterMs } from "../telegram/api.js";
 import type { TelegramCommandRouterDeps } from "./command-types.js";

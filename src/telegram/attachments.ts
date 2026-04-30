@@ -1,8 +1,9 @@
 import { stat } from "node:fs/promises";
 
-import { MAX_TELEGRAM_PHOTO_BYTES } from "../shared/config.js";
+import { MAX_TELEGRAM_PHOTO_BYTES } from "./policy.js";
 import { guessMediaType } from "../shared/format.js";
-import type { PendingTelegramTurn, QueuedAttachment, TelegramSentMessage } from "../shared/types.js";
+import type { PendingTelegramTurn, QueuedAttachment } from "../client/types.js";
+import type { TelegramSentMessage } from "./types.js";
 import { errorMessage } from "../shared/utils.js";
 import { getTelegramRetryAfterMs } from "./api.js";
 import { isSendPhotoContractError } from "./errors.js";

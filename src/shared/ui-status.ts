@@ -1,14 +1,24 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
 
-import type { BrokerState, TelegramConfig, TelegramRoute } from "./types.js";
+interface StatusConfig {
+	botToken?: string;
+}
+
+interface StatusBrokerState {
+	sessions: Record<string, { status: "connecting" | "idle" | "busy" | "offline" | "error" }>;
+}
+
+interface StatusRoute {
+	topicName: string;
+}
 
 export function telegramStatusText(options: {
 	theme: Theme;
 	visible: boolean;
-	config: TelegramConfig;
+	config: StatusConfig;
 	isBroker: boolean;
-	brokerState?: BrokerState;
-	connectedRoute?: TelegramRoute;
+	brokerState?: StatusBrokerState;
+	connectedRoute?: StatusRoute;
 	error?: string;
 }): string | undefined {
 	if (!options.visible) return undefined;

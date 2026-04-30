@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { SYSTEM_PROMPT_SUFFIX } from "../shared/config.js";
+import { SYSTEM_PROMPT_SUFFIX } from "../shared/prompt.js";
 import { isTelegramPrompt } from "../shared/format.js";
 
 export function registerPromptSuffixHook(pi: ExtensionAPI): void {

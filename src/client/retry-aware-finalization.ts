@@ -1,4 +1,4 @@
-import type { ActiveTelegramTurn, AssistantFinalPayload } from "../shared/types.js";
+import type { ActiveTelegramTurn, AssistantFinalPayload } from "./types.js";
 import { isRetryableAssistantError } from "../shared/assistant-errors.js";
 import { errorMessage } from "../shared/utils.js";
 

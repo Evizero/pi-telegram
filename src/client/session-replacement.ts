@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { SESSION_REPLACEMENT_HANDOFF_TTL_MS } from "../shared/config.js";
-import type { BrokerState, SessionRegistration, TelegramRoute } from "../shared/types.js";
+import { SESSION_REPLACEMENT_HANDOFF_TTL_MS } from "../broker/policy.js";
+import type { BrokerState, SessionRegistration, TelegramRoute } from "../broker/types.js";
 import { canonicalRouteKey, retargetTurnToRoute, routeMatchesTopicIdentity } from "../shared/routing.js";
 import { ensurePrivateDir, invalidDurableJson, isRecord, now, readJson, writeJson } from "../shared/utils.js";
 

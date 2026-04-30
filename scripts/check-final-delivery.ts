@@ -6,7 +6,9 @@ import assert from "node:assert/strict";
 
 import { AssistantFinalDeliveryLedger } from "../src/broker/finals.js";
 import { TelegramApiError } from "../src/telegram/api.js";
-import type { BrokerState, PendingAssistantFinalDelivery, PendingTelegramTurn, QueuedAttachment, TelegramSentMessage } from "../src/shared/types.js";
+import type { BrokerState, PendingAssistantFinalDelivery } from "../src/broker/types.js";
+import type { PendingTelegramTurn, QueuedAttachment } from "../src/client/types.js";
+import type { TelegramSentMessage } from "../src/telegram/types.js";
 import type { PreviewManager } from "../src/telegram/previews.js";
 import { now } from "../src/shared/utils.js";
 

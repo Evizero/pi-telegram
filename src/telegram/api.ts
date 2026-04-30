@@ -2,8 +2,10 @@ import { randomBytes } from "node:crypto";
 import { chmod, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { MAX_FILE_BYTES, MAX_TELEGRAM_DOWNLOAD_BYTES, TEMP_DIR } from "../shared/config.js";
-import type { TelegramApiResponse, TelegramGetFileResult } from "../shared/types.js";
+import { MAX_FILE_BYTES } from "../shared/file-policy.js";
+import { TEMP_DIR } from "../shared/paths.js";
+import { MAX_TELEGRAM_DOWNLOAD_BYTES } from "./policy.js";
+import type { TelegramApiResponse, TelegramGetFileResult } from "./types.js";
 import { sanitizeFileName } from "../shared/format.js";
 import { ensurePrivateDir } from "../shared/utils.js";
 import { telegramSessionTempDir } from "./temp-files.js";

@@ -96,7 +96,11 @@ The strongest drivers come directly from the intended purpose and requirements:
 - installing the extension should not make ordinary unconnected pi startup pay
   the cost of broker/client/Telegram runtime construction; the heavy runtime is
   justified when Telegram is invoked or a valid recovery handoff exists
-  (`StRS-inactive-startup-overhead`, `SyRS-lazy-inactive-runtime`).
+  (`StRS-inactive-startup-overhead`, `SyRS-lazy-inactive-runtime`);
+- maintainers need clear runtime ownership boundaries so data models and
+  configuration policy do not accumulate in broad shared buckets that obscure
+  which broker, client, pi, Telegram, or IPC concern a change affects
+  (`StRS-runtime-boundary-legibility`, `SyRS-shared-boundary-ownership`).
 
 ## Quality goals
 
@@ -771,18 +775,42 @@ between photo and document delivery.
 `telegram/turns.ts` owns durable Telegram turn construction and deterministic
 turn IDs.
 
-### Shared modules: `src/shared/`
+### Shared modules and bounded runtime contracts: `src/shared/` plus owner modules
 
-`shared/types.ts` defines the cross-module data model.
-`shared/config.ts` defines paths, size limits, timing constants, prompt suffix,
-and config read/write behavior.
-`shared/ipc.ts` owns local IPC envelope and request/response mechanics.
+Shared code is a low-level support surface, not the default home for every runtime
+concept. Stable cross-boundary concepts should have an explicit owner:
+Telegram Bot API DTOs belong with the Telegram boundary, broker durable-state
+records belong with broker/state ownership, local IPC envelopes and request/
+response contracts belong with IPC ownership, client turn/final lifecycle records
+belong with client lifecycle ownership, and command/control state records belong
+with the broker command/control modules that interpret them.
+
+The first split of this surface is implemented. `telegram/types.ts` owns
+Telegram DTOs and Telegram message-operation state; `broker/types.ts` owns
+broker durable state, routes, sessions, and command-control records;
+`client/types.ts` owns turn/final payloads and client IPC result contracts;
+`shared/ipc-types.ts` owns IPC envelopes; and `shared/config-types.ts` owns the
+persisted bridge configuration shape.
+
+Configuration policy is semantically grouped rather than collected in one global
+bag: `shared/paths.ts` owns mutable broker path scope, `shared/file-policy.ts`
+owns bridge file/attachment limits, `broker/policy.ts` owns broker/session timing
+and broker control TTL/update limits, `telegram/policy.ts` owns Telegram method
+limits, and `shared/prompt.ts` owns the prompt suffix. Changing one policy should
+not appear to change unrelated behavior.
+
+`shared/ipc.ts` owns local IPC transport mechanics.
 `shared/activity-lines.ts`, `shared/format.ts`, `shared/messages.ts`,
-`shared/ui-status.ts`, and `shared/utils.ts` own reusable activity-line
-presentation, formatting, message extraction, UI text, and small runtime helpers.
+`shared/routing.ts`, `shared/pairing.ts`, `shared/ui-status.ts`, and
+`shared/utils.ts` own reusable low-level activity-line presentation, formatting,
+message extraction, structural routing/pairing/status helpers, and small runtime
+helpers.
 
-Shared modules should stay cohesive and low-level.
-They should not grow broker policy or Telegram command semantics.
+Compatibility re-exports from broad shared files are acceptable only as migration
+aids. New concepts should be added to the owning bounded surface rather than
+expanding `shared/types.ts` or `shared/config.ts` by default. Shared modules must
+not grow broker policy, Telegram command semantics, or imports from broker,
+client, pi, or Telegram policy modules except for explicit compatibility barrels.
 
 ## Dependency direction and allowed exceptions
 
@@ -1136,6 +1164,17 @@ client-final-handoff composition while leaving broker polling/election, Telegram
 command semantics, route cleanup, and broker-owned final delivery behavior
 unchanged.
 
+### Shared boundary split
+
+`src/shared/types.ts` and `src/shared/config.ts` are explicit migration seams
+rather than target architecture. `shared/types.ts` now acts as a narrow
+transitional type barrel over owner modules, and `shared/config.ts` owns persisted
+config read/write plus a limited `CONFIG_PATH` compatibility export. Runtime code
+should import owner modules directly. The migration preserves JSON shapes,
+constant values, lazy-startup import behavior, and existing validation coverage;
+any retained compatibility surface should shrink over time and should not be
+used as the default place for new runtime concepts.
+
 ### Behavior-check harness pressure
 
 The repository's reliable local validation command is `npm run check`, which
@@ -1251,14 +1290,34 @@ ownership.
 - `src/pi/hooks.ts` and focused `src/pi/` hook modules — pi commands, pi events,
   prompt suffix, local-input mirroring, assistant finalization triggers, and
   `telegram_attach` tool integration.
-- `src/shared/config.ts` — config paths, broker paths, limits, timings, prompt
-  suffix, and config read/write.
-- `src/shared/types.ts` — cross-module runtime data model.
-- `src/shared/ipc.ts` — local IPC envelope and transport helpers.
+- `src/shared/config.ts` — persisted Telegram bridge config read/write and a
+  limited `CONFIG_PATH` compatibility export; unrelated policy constants should
+  not be added here by default.
+- `src/shared/paths.ts` — mutable broker path scope and local path constants.
+- `src/shared/file-policy.ts` — bridge file/attachment limits shared across
+  Telegram upload/download and local IPC surfaces.
+- `src/shared/prompt.ts` — Telegram bridge prompt suffix text.
+- `src/shared/config-types.ts` — persisted Telegram bridge config shape.
+- `src/shared/types.ts` — transitional compatibility barrel for the former broad
+  cross-module runtime data model; stable concepts should be imported from
+  Telegram, broker, client, or IPC owner modules.
+- `src/shared/ipc.ts` and `src/shared/ipc-types.ts` — local IPC transport helpers
+  plus envelope/response types.
 - `src/shared/activity-lines.ts`, `src/shared/format.ts`,
-  `src/shared/messages.ts`, `src/shared/ui-status.ts`, and `src/shared/utils.ts`
-  — activity-line presentation, formatting, event extraction, user text, and
-  small helpers.
+  `src/shared/messages.ts`, `src/shared/routing.ts`, `src/shared/pairing.ts`,
+  `src/shared/ui-status.ts`, and `src/shared/utils.ts` — activity-line
+  presentation, formatting, event extraction, structural routing/pairing/status
+  helpers, user text, and small helpers.
+- `src/broker/policy.ts` — broker/session timing, model/control TTL, and update
+  retention constants.
+- `src/broker/types.ts` — broker durable state, route/session records, outbox,
+  final-delivery progress, and command/control records.
+- `src/client/types.ts` — Telegram turn/final payloads plus client-side IPC
+  request/result contracts.
+- `src/telegram/policy.ts` — Telegram method-contract limits and Telegram
+  cleanup timing policy.
+- `src/telegram/types.ts` — Telegram Bot API DTOs and Telegram message-operation
+  state.
 - `src/telegram/api.ts` — low-level Telegram Bot API calls and downloads.
 - `src/telegram/retry.ts` — retry-after wrapper.
 - `src/telegram/previews.ts` — legacy/in-flight preview state cleanup and finalization compatibility.

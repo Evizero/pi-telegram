@@ -1,7 +1,8 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { QUEUED_CONTROL_TEXT } from "../shared/queued-control-text.js";
-import type { ActiveTelegramTurn, PendingManualCompactionOperation, PendingTelegramTurn, QueuedAttachment, TelegramRoute } from "../shared/types.js";
+import type { TelegramRoute } from "../broker/types.js";
+import type { ActiveTelegramTurn, PendingManualCompactionOperation, PendingTelegramTurn, QueuedAttachment } from "./types.js";
 import { randomId } from "../shared/utils.js";
 import { ManualCompactionTurnQueue } from "./manual-compaction.js";
 

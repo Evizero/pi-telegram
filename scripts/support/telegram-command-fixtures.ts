@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 
 import { TelegramCommandRouter } from "../../src/broker/commands.js";
-import type { BrokerState, PendingTelegramTurn, SessionRegistration, TelegramCallbackQuery, TelegramConfig, TelegramMessage } from "../../src/shared/types.js";
+import type { BrokerState, SessionRegistration } from "../../src/broker/types.js";
+import type { PendingTelegramTurn } from "../../src/client/types.js";
+import type { TelegramCallbackQuery, TelegramMessage } from "../../src/telegram/types.js";
+import type { TelegramConfig } from "../../src/shared/config-types.js";
 
 export type IpcCall = { type: string; payload: unknown; target?: string };
 export type TelegramCall = { method: string; body: Record<string, unknown> };

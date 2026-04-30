@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 
 import { createModelPickerState, parseModelPickerCallback, renderInitialModelPicker, renderModelPicker } from "../src/broker/model-picker.js";
-import type { ModelSummary, TelegramRoute } from "../src/shared/types.js";
+import type { TelegramRoute } from "../src/broker/types.js";
+import type { ModelSummary } from "../src/client/types.js";
 
 function route(): TelegramRoute {
 	return {

@@ -1,4 +1,4 @@
-import type { TelegramMessage } from "../shared/types.js";
+import type { TelegramMessage } from "../telegram/types.js";
 
 export function telegramCommandName(text: string): string {
 	const command = text.trim().split(/\s+/)[0]?.toLowerCase() ?? "";

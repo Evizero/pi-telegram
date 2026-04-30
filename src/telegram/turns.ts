@@ -1,7 +1,8 @@
 import { readFile, stat } from "node:fs/promises";
 
-import { TELEGRAM_PREFIX } from "../shared/config.js";
-import type { DownloadedTelegramFile, PendingTelegramTurn, TelegramFileInfo, TelegramMessage } from "../shared/types.js";
+import { TELEGRAM_PREFIX } from "./policy.js";
+import type { PendingTelegramTurn } from "../client/types.js";
+import type { DownloadedTelegramFile, TelegramFileInfo, TelegramMessage } from "./types.js";
 import { guessExtensionFromMime, guessMediaType, isImageMimeType } from "../shared/format.js";
 import { hashSecret, randomId } from "../shared/utils.js";
 

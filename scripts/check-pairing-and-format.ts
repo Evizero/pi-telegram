@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 
 import { formatLocalUserMirrorMessage, topicNameFor } from "../src/shared/format.js";
 import { clearPairingState, isMessageBeforePairingWindow, isPairingPending, PAIRING_MAX_FAILED_ATTEMPTS, PAIRING_PIN_TTL_MS, pairingCandidateFromText } from "../src/shared/pairing.js";
-import type { TelegramConfig, TelegramMessage } from "../src/shared/types.js";
+import type { TelegramMessage } from "../src/telegram/types.js";
+import type { TelegramConfig } from "../src/shared/config-types.js";
 
 function message(date?: number): TelegramMessage {
 	return {

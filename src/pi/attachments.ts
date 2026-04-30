@@ -4,8 +4,8 @@ import { basename } from "node:path";
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { MAX_ATTACHMENTS_PER_TURN, MAX_FILE_BYTES } from "../shared/config.js";
-import type { ActiveTelegramTurn, QueuedAttachment } from "../shared/types.js";
+import { MAX_ATTACHMENTS_PER_TURN, MAX_FILE_BYTES } from "../shared/file-policy.js";
+import type { ActiveTelegramTurn, QueuedAttachment } from "../client/types.js";
 
 export interface PiAttachmentHookDeps {
 	getActiveTelegramTurn: () => ActiveTelegramTurn | undefined;

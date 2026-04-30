@@ -4,28 +4,12 @@ import { join } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { CLIENT_HEARTBEAT_MS, BROKER_DIR } from "../shared/config.js";
-import type {
-	ActiveTelegramTurn,
-	AssistantFinalPayload,
-	BrokerLease,
-	CancelQueuedTurnRequest,
-	CancelQueuedTurnResult,
-	ClientDeliverTurnResult,
-	ClientGitRepositoryQueryRequest,
-	ClientGitRepositoryQueryResult,
-	ClientManualCompactionRequest,
-	ClientManualCompactionResult,
-	ConvertQueuedTurnToSteerRequest,
-	ConvertQueuedTurnToSteerResult,
-	IpcEnvelope,
-	ModelSummary,
-	PendingTelegramTurn,
-	QueuedAttachment,
-	SessionRegistration,
-	TelegramConfig,
-	TelegramRoute,
-} from "../shared/types.js";
+import { CLIENT_HEARTBEAT_MS } from "../broker/policy.js";
+import { BROKER_DIR } from "../shared/paths.js";
+import type { BrokerLease, SessionRegistration, TelegramRoute } from "../broker/types.js";
+import type { IpcEnvelope } from "../shared/ipc-types.js";
+import type { TelegramConfig } from "../shared/config-types.js";
+import type { ActiveTelegramTurn, AssistantFinalPayload, CancelQueuedTurnRequest, CancelQueuedTurnResult, ClientDeliverTurnResult, ClientGitRepositoryQueryRequest, ClientGitRepositoryQueryResult, ClientManualCompactionRequest, ClientManualCompactionResult, ConvertQueuedTurnToSteerRequest, ConvertQueuedTurnToSteerResult, ModelSummary, PendingTelegramTurn, QueuedAttachment } from "./types.js";
 import { ensurePrivateDir, errorMessage, now, randomId } from "../shared/utils.js";
 import { connectTelegramClient } from "./connection.js";
 import { ClientRuntime } from "./runtime.js";

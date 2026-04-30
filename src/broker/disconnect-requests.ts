@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { BrokerState, SessionRegistration, TelegramRoute } from "../shared/types.js";
+import type { BrokerState, SessionRegistration, TelegramRoute } from "./types.js";
 import { invalidDurableJson, isRecord, readJson } from "../shared/utils.js";
 
 export interface PendingDisconnectRequest {

@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { lstat } from "node:fs/promises";
 import { join } from "node:path";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { ClientGitRepositoryQueryRequest, ClientGitRepositoryQueryResult } from "../shared/types.js";
+import type { ClientGitRepositoryQueryRequest, ClientGitRepositoryQueryResult } from "./types.js";
 import { errorMessage } from "../shared/utils.js";
 
 const GIT_TIMEOUT_MS = 2000;

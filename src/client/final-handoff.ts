@@ -1,8 +1,9 @@
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { BROKER_DIR } from "../shared/config.js";
-import type { AssistantFinalPayload, BrokerLease, BrokerState, PendingTelegramTurn, TelegramRoute } from "../shared/types.js";
+import { BROKER_DIR } from "../shared/paths.js";
+import type { BrokerLease, BrokerState, TelegramRoute } from "../broker/types.js";
+import type { AssistantFinalPayload, PendingTelegramTurn } from "./types.js";
 import { ensurePrivateDir, invalidDurableJson, isRecord, now, readJson, writeJson } from "../shared/utils.js";
 import { getTelegramRetryAfterMs } from "../telegram/api.js";
 import { AssistantFinalRetryQueue } from "./final-delivery.js";

@@ -1,4 +1,7 @@
-import type { BrokerState, InlineKeyboardMarkup, PendingTelegramTurn, TelegramConfig, TelegramMessage } from "../shared/types.js";
+import type { PendingTelegramTurn } from "../client/types.js";
+import type { InlineKeyboardMarkup, TelegramMessage } from "../telegram/types.js";
+import type { TelegramConfig } from "../shared/config-types.js";
+import type { BrokerState } from "./types.js";
 import type { TelegramOutboxRunnerState } from "./telegram-outbox.js";
 
 export interface TelegramCommandRouterDeps {

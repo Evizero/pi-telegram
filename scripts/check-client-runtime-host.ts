@@ -4,7 +4,9 @@ import type { Server } from "node:http";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { ClientRuntimeHost, type ClientRuntimeHostDeps, type ClientRuntimeHostFinalHandoff, type ClientRuntimeHostFinalizer } from "../src/client/runtime-host.js";
-import type { AssistantFinalPayload, IpcEnvelope, PendingManualCompactionOperation, PendingTelegramTurn, TelegramRoute } from "../src/shared/types.js";
+import type { TelegramRoute } from "../src/broker/types.js";
+import type { AssistantFinalPayload, PendingManualCompactionOperation, PendingTelegramTurn } from "../src/client/types.js";
+import type { IpcEnvelope } from "../src/shared/ipc-types.js";
 
 type CompactCallbacks = { onComplete?: (result?: unknown) => void; onError?: (error: unknown) => void };
 

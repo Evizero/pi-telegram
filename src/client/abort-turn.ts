@@ -1,4 +1,4 @@
-import type { ActiveTelegramTurn, PendingTelegramTurn } from "../shared/types.js";
+import type { ActiveTelegramTurn, PendingTelegramTurn } from "./types.js";
 import { ClientTelegramTurnLifecycle } from "./turn-lifecycle.js";
 
 export interface ClientAbortTurnOptions {

@@ -1,4 +1,4 @@
-import type { AssistantFinalPayload } from "../shared/types.js";
+import type { AssistantFinalPayload } from "./types.js";
 import { now } from "../shared/utils.js";
 import { getTelegramRetryAfterMs } from "../telegram/api.js";
 export { isTerminalTelegramFinalDeliveryError, terminalTelegramFinalDeliveryReason } from "../telegram/final-errors.js";

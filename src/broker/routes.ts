@@ -1,4 +1,6 @@
-import type { BrokerState, SessionRegistration, TelegramConfig, TelegramForumTopic, TelegramRoute } from "../shared/types.js";
+import type { TelegramForumTopic } from "../telegram/types.js";
+import type { TelegramConfig } from "../shared/config-types.js";
+import type { BrokerState, SessionRegistration, TelegramRoute } from "./types.js";
 import { routeId } from "../shared/format.js";
 import { canonicalRouteKey, routeMatchesTopicIdentity } from "../shared/routing.js";
 import { now } from "../shared/utils.js";

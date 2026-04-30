@@ -1,6 +1,8 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { TelegramConfig, TelegramRoute, TelegramUser } from "../shared/types.js";
-import type { BrokerLease } from "../shared/types.js";
+import type { TelegramRoute } from "../broker/types.js";
+import type { TelegramUser } from "../telegram/types.js";
+import type { TelegramConfig } from "../shared/config-types.js";
+import type { BrokerLease } from "../broker/types.js";
 
 export interface TelegramClientConnectionDeps {
 	setLatestContext: (ctx: ExtensionContext) => string;

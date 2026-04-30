@@ -2,7 +2,8 @@ import type { ExtensionAPI, ExtensionContext, ExtensionHandler, RegisteredComman
 
 import { ActivityReporter } from "../../src/broker/activity.js";
 import type { RuntimePiHooksDeps } from "../../src/pi/hooks.js";
-import type { ActiveTelegramTurn, TelegramRoute } from "../../src/shared/types.js";
+import type { TelegramRoute } from "../../src/broker/types.js";
+import type { ActiveTelegramTurn } from "../../src/client/types.js";
 
 export type HookHandler = (event: unknown, ctx?: ExtensionContext) => Promise<unknown>;
 

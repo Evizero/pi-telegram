@@ -5,8 +5,10 @@ import { join } from "node:path";
 
 import { createBrokerHeartbeatState, BROKER_RENEWAL_CONTENTION_DIAGNOSTIC_THRESHOLD, runBrokerHeartbeatCycle, type BrokerDiagnosticEvent } from "../src/broker/heartbeat.js";
 import { BrokerRenewalContentionError, isBrokerRenewalContentionError, renewBrokerLease } from "../src/broker/lease.js";
-import { BROKER_DIR, BROKER_LEASE_MS, LOCK_PATH, TAKEOVER_LOCK_DIR, configureBrokerScope, configureBrokerScopeForBase } from "../src/shared/config.js";
-import type { BrokerLease, TelegramConfig } from "../src/shared/types.js";
+import { BROKER_LEASE_MS } from "../src/broker/policy.js";
+import { BROKER_DIR, LOCK_PATH, TAKEOVER_LOCK_DIR, configureBrokerScope, configureBrokerScopeForBase } from "../src/shared/paths.js";
+import type { BrokerLease } from "../src/broker/types.js";
+import type { TelegramConfig } from "../src/shared/config-types.js";
 import { InvalidDurableJsonError, ensurePrivateDir, now, readJson, writeJson } from "../src/shared/utils.js";
 
 const ownerId = "owner-renew";

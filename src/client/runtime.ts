@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { QUEUED_CONTROL_TEXT } from "../shared/queued-control-text.js";
-import type { ActiveTelegramTurn, AssistantFinalPayload, BrokerLease, CancelQueuedTurnRequest, CancelQueuedTurnResult, ClientGitRepositoryQueryRequest, ClientGitRepositoryQueryResult, ClientManualCompactionRequest, ClientManualCompactionResult, ConvertQueuedTurnToSteerRequest, ConvertQueuedTurnToSteerResult, ClientDeliverTurnResult, ModelSummary, PendingManualCompactionOperation, PendingTelegramTurn, TelegramRoute } from "../shared/types.js";
+import type { BrokerLease, TelegramRoute } from "../broker/types.js";
+import type { ActiveTelegramTurn, AssistantFinalPayload, CancelQueuedTurnRequest, CancelQueuedTurnResult, ClientGitRepositoryQueryRequest, ClientGitRepositoryQueryResult, ClientManualCompactionRequest, ClientManualCompactionResult, ConvertQueuedTurnToSteerRequest, ConvertQueuedTurnToSteerResult, ClientDeliverTurnResult, ModelSummary, PendingManualCompactionOperation, PendingTelegramTurn } from "./types.js";
 import { errorMessage, randomId } from "../shared/utils.js";
 import { clientAbortTelegramTurn } from "./abort-turn.js";
 import { clientCompactSession } from "./compact.js";

@@ -1,7 +1,12 @@
 import { extname } from "node:path";
 
-import { MAX_MESSAGE_LENGTH, TELEGRAM_PREFIX } from "./config.js";
-import type { SessionRegistration } from "./types.js";
+import { MAX_MESSAGE_LENGTH, TELEGRAM_PREFIX } from "./telegram-text-policy.js";
+
+interface SessionNameSource {
+	projectName: string;
+	gitBranch?: string;
+	piSessionName?: string;
+}
 import { hashSecret } from "./utils.js";
 
 export function isTelegramPrompt(prompt: string): boolean {
@@ -114,7 +119,7 @@ export function formatLocalUserMirrorMessage(text: string, imagesCount?: number)
 	return `[PI User]: ${text}${suffix}`;
 }
 
-export function topicNameFor(reg: Pick<SessionRegistration, "projectName" | "gitBranch" | "piSessionName" | "sessionId">): string {
+export function topicNameFor(reg: SessionNameSource & { sessionId: string }): string {
 	const normalizedBranch = reg.gitBranch?.trim();
 	const pieces = [reg.projectName];
 	if (normalizedBranch && normalizedBranch.toLowerCase() !== "main") pieces.push(normalizedBranch);

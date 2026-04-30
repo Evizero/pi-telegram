@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { ActivityRenderer, ActivityReporter, activityLineToHtml, thinkingActivityLine, toolActivityLine } from "../src/broker/activity.js";
-import { ACTIVITY_THROTTLE_MS } from "../src/shared/config.js";
+import { ACTIVITY_THROTTLE_MS } from "../src/broker/policy.js";
 import { createTypingLoopController } from "../src/telegram/typing.js";
 
 function assertIncludes(text: string, expected: string): void {

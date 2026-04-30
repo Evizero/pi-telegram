@@ -1,5 +1,7 @@
-import { MODEL_LIST_TTL_MS } from "../shared/config.js";
-import type { BrokerState, ModelSummary, SessionRegistration, TelegramCallbackQuery, TelegramModelPickerState, TelegramRoute } from "../shared/types.js";
+import { MODEL_LIST_TTL_MS } from "./policy.js";
+import type { ModelSummary } from "../client/types.js";
+import type { TelegramCallbackQuery } from "../telegram/types.js";
+import type { BrokerState, SessionRegistration, TelegramModelPickerState, TelegramRoute } from "./types.js";
 import { errorMessage, now } from "../shared/utils.js";
 import type { TelegramCommandRouterDeps } from "./command-types.js";
 import { createModelPickerState, exactModelSelector, parseModelPickerCallback, renderInitialModelPicker, renderModelPicker, renderProviderPicker } from "./model-picker.js";

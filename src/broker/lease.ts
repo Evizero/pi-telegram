@@ -1,8 +1,10 @@
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { BROKER_LEASE_MS, LOCK_DIR, LOCK_PATH, TAKEOVER_LOCK_DIR, TOKEN_PATH } from "../shared/config.js";
-import type { BrokerLease, TelegramConfig } from "../shared/types.js";
+import { LOCK_DIR, LOCK_PATH, TAKEOVER_LOCK_DIR, TOKEN_PATH } from "../shared/paths.js";
+import { BROKER_LEASE_MS } from "./policy.js";
+import type { TelegramConfig } from "../shared/config-types.js";
+import type { BrokerLease } from "./types.js";
 import { invalidDurableJson, isRecord, now, processExists, readJson, writeJson } from "../shared/utils.js";
 
 export const STALE_BROKER_ERROR_MESSAGE = "stale_broker";

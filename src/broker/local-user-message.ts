@@ -1,4 +1,4 @@
-import type { BrokerState, TelegramRoute } from "../shared/types.js";
+import type { BrokerState, TelegramRoute } from "./types.js";
 import { formatLocalUserMirrorMessage } from "../shared/format.js";
 
 export function routeForSessionLocalMessage(brokerState: BrokerState | undefined, targetSessionId: string, identity?: { routeId?: string; chatId?: number | string; messageThreadId?: number }): TelegramRoute | undefined {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import { TelegramApiError } from "../src/telegram/api.js";
 import { unregisterSessionFromBroker, retryPendingRouteCleanupsInBroker } from "../src/broker/sessions.js";
-import type { QueuedTurnControlState } from "../src/shared/types.js";
+import type { QueuedTurnControlState } from "../src/broker/types.js";
 import { session, state, topicRoute } from "./support/session-route-fixtures.js";
 
 

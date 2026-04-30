@@ -1,4 +1,7 @@
-import type { BrokerState, PendingTelegramTurn, SessionRegistration, TelegramConfig, TelegramMessage, TelegramRoute } from "../shared/types.js";
+import type { PendingTelegramTurn } from "../client/types.js";
+import type { TelegramMessage } from "../telegram/types.js";
+import type { TelegramConfig } from "../shared/config-types.js";
+import type { BrokerState, SessionRegistration, TelegramRoute } from "./types.js";
 import { topicNameFor } from "../shared/format.js";
 import { now } from "../shared/utils.js";
 import { ensureRouteForSessionInBroker, TelegramRoutingDisabledError } from "./routes.js";

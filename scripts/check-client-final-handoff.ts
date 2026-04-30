@@ -2,8 +2,9 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { configureBrokerScopeForBase, BROKER_DIR } from "../src/shared/config.js";
-import type { AssistantFinalPayload, BrokerLease, BrokerState, PendingAssistantFinalDelivery, PendingTelegramTurn, TelegramRoute } from "../src/shared/types.js";
+import { configureBrokerScopeForBase, BROKER_DIR } from "../src/shared/paths.js";
+import type { BrokerLease, BrokerState, PendingAssistantFinalDelivery, TelegramRoute } from "../src/broker/types.js";
+import type { AssistantFinalPayload, PendingTelegramTurn } from "../src/client/types.js";
 import { now } from "../src/shared/utils.js";
 import { ClientAssistantFinalHandoff } from "../src/client/final-handoff.js";
 

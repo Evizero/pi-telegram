@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { TelegramApiError } from "../src/telegram/api.js";
 import { retryPendingRouteCleanupsInBroker, markSessionOfflineInBroker } from "../src/broker/sessions.js";
 import { createRuntimeUpdateHandlers } from "../src/broker/updates.js";
-import type { BrokerState, QueuedTurnControlState, SessionRegistration } from "../src/shared/types.js";
+import type { BrokerState, QueuedTurnControlState, SessionRegistration } from "../src/broker/types.js";
 import { session, state, topicRoute } from "./support/session-route-fixtures.js";
 import { noopCommandRouter } from "./support/runtime-update-fixtures.js";
 

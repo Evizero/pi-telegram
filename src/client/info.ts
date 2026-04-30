@@ -1,7 +1,8 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { Api, Model } from "@mariozechner/pi-ai";
 import { formatTokens } from "../shared/format.js";
-import type { ActiveTelegramTurn, BrokerLease, ModelSummary, TelegramRoute } from "../shared/types.js";
+import type { BrokerLease, TelegramRoute } from "../broker/types.js";
+import type { ActiveTelegramTurn, ModelSummary } from "./types.js";
 
 export function clientStatusText(options: {
 	ctx: ExtensionContext | undefined;

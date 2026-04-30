@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { STATE_PATH } from "../shared/config.js";
-import type { BrokerState, TelegramRoute } from "../shared/types.js";
+import { STATE_PATH } from "../shared/paths.js";
+import type { BrokerState, TelegramRoute } from "../broker/types.js";
 import { errorMessage, readJson } from "../shared/utils.js";
 
 export interface PiCommandHookDeps {

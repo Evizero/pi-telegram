@@ -8,7 +8,7 @@ import { AssistantFinalRetryQueue } from "../src/client/final-delivery.js";
 import { shutdownTelegramClientRoute } from "../src/client/route-shutdown.js";
 import { processDisconnectRequestsInBroker, readPendingDisconnectRequestsFromDir, type PendingDisconnectRequest } from "../src/broker/disconnect-requests.js";
 import { honorExplicitDisconnectRequestInBroker } from "../src/broker/sessions.js";
-import type { QueuedTurnControlState, TelegramRoute } from "../src/shared/types.js";
+import type { QueuedTurnControlState, TelegramRoute } from "../src/broker/types.js";
 import { honorScopedDisconnect, selectorRoute, session, state, topicRoute } from "./support/session-route-fixtures.js";
 
 
@@ -28,9 +28,9 @@ async function checkShutdownRouteClearsPendingFinalRetryQueue(): Promise<void> {
 		text: "final",
 		attachments: [],
 	});
-	let activeTurn: import("../src/shared/types.js").ActiveTelegramTurn | undefined = { turnId: "turn-active", sessionId: "session-1", chatId: 111, messageThreadId: 9, replyToMessageId: 1, queuedAttachments: [], content: [{ type: "text", text: "hello" }], historyText: "hello" };
+	let activeTurn: import("../src/client/types.js").ActiveTelegramTurn | undefined = { turnId: "turn-active", sessionId: "session-1", chatId: 111, messageThreadId: 9, replyToMessageId: 1, queuedAttachments: [], content: [{ type: "text", text: "hello" }], historyText: "hello" };
 	let connectedRoute: TelegramRoute | undefined = topicRoute();
-	let queuedTurns: import("../src/shared/types.js").PendingTelegramTurn[] = [
+	let queuedTurns: import("../src/client/types.js").PendingTelegramTurn[] = [
 		{ turnId: "turn-queued", sessionId: "session-1", chatId: 111, messageThreadId: 9, replyToMessageId: 1, queuedAttachments: [], content: [{ type: "text", text: "queued" }], historyText: "queued" },
 	];
 	shutdownTelegramClientRoute({

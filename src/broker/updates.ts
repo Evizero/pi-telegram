@@ -1,8 +1,11 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { RECENT_UPDATE_LIMIT, SESSION_OFFLINE_MS, SESSION_RECONNECT_GRACE_MS, TELEGRAM_MEDIA_GROUP_DEBOUNCE_MS } from "../shared/config.js";
+import { TELEGRAM_MEDIA_GROUP_DEBOUNCE_MS } from "../telegram/policy.js";
+import { RECENT_UPDATE_LIMIT, SESSION_OFFLINE_MS, SESSION_RECONNECT_GRACE_MS } from "./policy.js";
 import { clearPairingState, isMessageBeforePairingWindow, isPairingPending, PAIRING_MAX_FAILED_ATTEMPTS, pairingCandidateFromText } from "../shared/pairing.js";
-import type { BrokerLease, BrokerState, TelegramCallbackQuery, TelegramConfig, TelegramMediaGroupState, TelegramMessage, TelegramUpdate } from "../shared/types.js";
+import type { TelegramCallbackQuery, TelegramMediaGroupState, TelegramMessage, TelegramUpdate } from "../telegram/types.js";
+import type { TelegramConfig } from "../shared/config-types.js";
+import type { BrokerLease, BrokerState } from "./types.js";
 import type { TelegramCommandRouter } from "./commands.js";
 import { telegramCommandName } from "./commands.js";
 import { errorMessage, hashSecret, now } from "../shared/utils.js";

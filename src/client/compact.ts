@@ -1,6 +1,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import type { PendingTelegramTurn, QueuedAttachment, TelegramRoute } from "../shared/types.js";
+import type { TelegramRoute } from "../broker/types.js";
+import type { PendingTelegramTurn, QueuedAttachment } from "./types.js";
 
 export interface ClientCompactOptions {
 	ctx: Pick<ExtensionContext, "compact"> | undefined;

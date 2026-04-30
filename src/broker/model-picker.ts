@@ -1,5 +1,7 @@
-import { MODEL_LIST_TTL_MS } from "../shared/config.js";
-import type { InlineKeyboardMarkup, ModelSummary, TelegramInlineKeyboardButton, TelegramModelPickerGroup, TelegramModelPickerState, TelegramRoute } from "../shared/types.js";
+import { MODEL_LIST_TTL_MS } from "./policy.js";
+import type { ModelSummary } from "../client/types.js";
+import type { InlineKeyboardMarkup, TelegramInlineKeyboardButton } from "../telegram/types.js";
+import type { TelegramModelPickerGroup, TelegramModelPickerState, TelegramRoute } from "./types.js";
 import { now, randomId } from "../shared/utils.js";
 
 export const MODEL_PICKER_CALLBACK_PREFIX = "mp1";

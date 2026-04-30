@@ -5,7 +5,8 @@ import { clientStatusText } from "../src/client/info.js";
 import { collectSessionRegistration } from "../src/client/session-registration.js";
 import { registerRuntimePiHooks } from "../src/pi/hooks.js";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { ActiveTelegramTurn, PendingTelegramTurn, TelegramRoute } from "../src/shared/types.js";
+import type { TelegramRoute } from "../src/broker/types.js";
+import type { ActiveTelegramTurn, PendingTelegramTurn } from "../src/client/types.js";
 
 function turn(id: string, deliveryMode?: PendingTelegramTurn["deliveryMode"]): PendingTelegramTurn {
 	return {

@@ -1,4 +1,4 @@
-import { MAX_MESSAGE_LENGTH, PREVIEW_THROTTLE_MS, TELEGRAM_DRAFT_ID_MAX } from "../shared/config.js";
+import { MAX_MESSAGE_LENGTH, PREVIEW_THROTTLE_MS, TELEGRAM_DRAFT_ID_MAX } from "./policy.js";
 import { chunkParagraphs } from "../shared/format.js";
 import { getTelegramRetryAfterMs } from "./api.js";
 import {
@@ -10,7 +10,7 @@ import {
 	shouldRetryTelegramMessageCleanup,
 } from "./errors.js";
 import { deleteTelegramMessage } from "./message-ops.js";
-import type { TelegramPreviewState, TelegramSentMessage } from "../shared/types.js";
+import type { TelegramPreviewState, TelegramSentMessage } from "./types.js";
 
 export class PreviewManager {
 	private draftSupport: "unknown" | "supported" | "unsupported" = "unknown";

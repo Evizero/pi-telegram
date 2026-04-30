@@ -1,7 +1,7 @@
 import { TelegramApiError } from "../../src/telegram/api.js";
 import { BrokerSessionRegistrationCoordinator } from "../../src/broker/session-registration.js";
 import { honorExplicitDisconnectRequestInBroker } from "../../src/broker/sessions.js";
-import type { BrokerState, SessionRegistration, TelegramRoute } from "../../src/shared/types.js";
+import type { BrokerState, SessionRegistration, TelegramRoute } from "../../src/broker/types.js";
 import type { PendingDisconnectRequest } from "../../src/broker/disconnect-requests.js";
 
 export function session(overrides: Partial<SessionRegistration> = {}): SessionRegistration {

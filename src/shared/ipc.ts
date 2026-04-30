@@ -1,8 +1,9 @@
 import { createServer, request as httpRequest, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { chmod, readFile, rm } from "node:fs/promises";
 
-import { BROKER_DIR, MAX_FILE_BYTES, TOKEN_PATH } from "./config.js";
-import type { IpcEnvelope, IpcResponse } from "./types.js";
+import { BROKER_DIR, TOKEN_PATH } from "./paths.js";
+import { MAX_FILE_BYTES } from "./file-policy.js";
+import type { IpcEnvelope, IpcResponse } from "./ipc-types.js";
 import { ensurePrivateDir, errorMessage, now, randomId } from "./utils.js";
 
 export async function postIpc<TResponse>(

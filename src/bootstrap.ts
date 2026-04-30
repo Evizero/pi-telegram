@@ -4,7 +4,9 @@ import { Type } from "@sinclair/typebox";
 import type { TelegramRuntime } from "./extension.js";
 import { executeTelegramAttachmentTool } from "./pi/attachments.js";
 import { registerPromptSuffixHook } from "./pi/prompt.js";
-import { MAX_ATTACHMENTS_PER_TURN, readConfig as readTelegramConfig, configureBrokerScope as configureTelegramBrokerScope, SESSION_REPLACEMENT_HANDOFFS_DIR, STATE_PATH } from "./shared/config.js";
+import { readConfig as readTelegramConfig } from "./shared/config.js";
+import { MAX_ATTACHMENTS_PER_TURN } from "./shared/file-policy.js";
+import { configureBrokerScope as configureTelegramBrokerScope, SESSION_REPLACEMENT_HANDOFFS_DIR, STATE_PATH } from "./shared/paths.js";
 import { errorMessage, randomId, readJson } from "./shared/utils.js";
 
 export interface TelegramBootstrapOptions {
@@ -163,7 +165,7 @@ export function registerTelegramBootstrap(pi: ExtensionAPI, options: TelegramBoo
 		handler: async (_args, ctx) => {
 			const loaded = await initializeRuntime(ctx);
 			loaded.hooks.setLatestCtx(ctx);
-			const state = loaded.hooks.getBrokerState() ?? (await readJson<import("./shared/types.js").BrokerState>(STATE_PATH));
+			const state = loaded.hooks.getBrokerState() ?? (await readJson<import("./broker/types.js").BrokerState>(STATE_PATH));
 			const lease = await loaded.hooks.readLease();
 			const total = state ? Object.keys(state.sessions).length : 0;
 			const online = state ? Object.values(state.sessions).filter((session) => session.status !== "offline").length : 0;

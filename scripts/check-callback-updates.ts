@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import { createRuntimeUpdateHandlers, type RuntimeUpdateDeps } from "../src/broker/updates.js";
 import { TelegramApiError } from "../src/telegram/api.js";
-import type { TelegramMessage, TelegramUpdate } from "../src/shared/types.js";
+import type { TelegramMessage, TelegramUpdate } from "../src/telegram/types.js";
 import { brokerState, liveLease, runtimeUpdateDeps, testExtensionContext } from "./support/runtime-update-fixtures.js";
 
 function callbackUpdate(): TelegramUpdate {

@@ -1,8 +1,9 @@
 import { readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-import { TELEGRAM_TEMP_SESSION_ORPHAN_TTL_MS, TEMP_DIR } from "../shared/config.js";
-import type { BrokerState } from "../shared/types.js";
+import { TEMP_DIR } from "../shared/paths.js";
+import { TELEGRAM_TEMP_SESSION_ORPHAN_TTL_MS } from "./policy.js";
+import type { BrokerState } from "../broker/types.js";
 
 export function telegramSessionTempDir(sessionId: string, tempDirRoot = TEMP_DIR): string {
 	return join(tempDirRoot, sessionId);

@@ -1,4 +1,5 @@
-import type { ActiveTelegramTurn, PendingTelegramTurn, TelegramRoute } from "../shared/types.js";
+import type { TelegramRoute } from "../broker/types.js";
+import type { ActiveTelegramTurn, PendingTelegramTurn } from "./types.js";
 
 export interface TelegramClientRouteShutdownDeps {
 	clearTurnLifecycle?: () => void;

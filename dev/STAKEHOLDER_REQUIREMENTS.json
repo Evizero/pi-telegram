@@ -462,6 +462,29 @@
           "queue-manual-compaction-after"
         ]
       }
+    },
+    {
+      "id": "StRS-runtime-boundary-legibility",
+      "origin": "derived",
+      "label": "Locate runtime ownership boundaries",
+      "statement": "Repository maintainers shall be able to locate the owning boundary for runtime data models and configuration policy without relying on broad shared buckets or chat history.",
+      "rationale": "The Telegram bridge now has distinct broker, client, pi, Telegram, IPC, and planning/runtime concerns. The source inbox item records maintainer concern that broad shared files make ownership and change impact hard to judge, which undermines future review against product purpose and Bot API constraints.",
+      "stakeholders": [
+        "repository-maintainer"
+      ],
+      "priority": 2,
+      "validation": {
+        "method": "review",
+        "criteria": "Review repository architecture, task planning, and module structure to confirm a maintainer can identify the intended owner for Telegram API DTOs, broker durable state, IPC contracts, session/turn lifecycle records, command-control state, and configuration policy without treating src/shared/types.ts or src/shared/config.ts as the default destination for every runtime concept."
+      },
+      "status": "draft",
+      "created": "2026-04-30",
+      "updated": "2026-04-30",
+      "sources": {
+        "inbox": [
+          "split-shared-types-and"
+        ]
+      }
     }
   ]
 }

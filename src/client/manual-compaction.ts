@@ -1,5 +1,5 @@
 import { QUEUED_CONTROL_TEXT } from "../shared/queued-control-text.js";
-import type { ActiveTelegramTurn, PendingTelegramTurn } from "../shared/types.js";
+import type { ActiveTelegramTurn, PendingTelegramTurn } from "./types.js";
 
 export interface ManualCompactionTurnQueueDeps {
 	getQueuedTelegramTurns: () => PendingTelegramTurn[];

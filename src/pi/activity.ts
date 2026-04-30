@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { thinkingActivityLine, toolActivityLine } from "../shared/activity-lines.js";
 import { getThinkingTitleFromEvent, isAssistantMessage } from "../shared/messages.js";
-import type { ActiveTelegramTurn } from "../shared/types.js";
+import type { ActiveTelegramTurn } from "../client/types.js";
 
 export interface PiActivityReporter {
 	post(payload: { turnId: string; activityId?: string; chatId: number | string; messageThreadId?: number; line: string }): void;
