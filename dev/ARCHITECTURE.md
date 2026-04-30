@@ -632,10 +632,12 @@ progress.
 
 ### pi integration: `src/pi/`
 
-`pi/hooks.ts` registers pi commands, tools, and event hooks.
-It owns the boundary where local pi events become Telegram activity/finals and
-where `telegram_attach` queues explicit outbound artifacts.
-It should not own Telegram Bot API mechanics or broker polling.
+`pi/hooks.ts` composes focused pi hook registrars for commands/status,
+`telegram_attach`, local-input mirroring, prompt suffixing, session lifecycle,
+activity mirroring, and assistant finalization. It owns the boundary where local
+pi events become Telegram activity/finals and where `telegram_attach` queues
+explicit outbound artifacts. It should not own Telegram Bot API mechanics or
+broker polling.
 
 `pi/diagnostics.ts` provides the pi-safe reporting adapter for extension
 background diagnostics. User-visible diagnostics should go through status,
@@ -643,11 +645,10 @@ notification, or displayed custom session-message surfaces as appropriate rather
 than raw terminal writes; non-actionable transient coordination noise should stay
 silent or status-only.
 
-Current-state note: `pi/hooks.ts` imports activity line helpers from
-`broker/activity.ts`.
-That dependency is narrow and presentation-model oriented, but it crosses the
-preferred folder boundary; future extraction should move shared activity DTOs or
-formatters to `shared/` if the dependency grows.
+Current-state note: pi-side activity construction uses shared activity-line
+formatters while `broker/activity.ts` owns Telegram rendering, debouncing, and
+typing-loop side effects. Pi hook modules should depend on shared activity
+contracts plus injected reporter interfaces, not on broker implementation modules.
 
 ### Telegram modules: `src/telegram/`
 
@@ -676,9 +677,9 @@ turn IDs.
 `shared/config.ts` defines paths, size limits, timing constants, prompt suffix,
 and config read/write behavior.
 `shared/ipc.ts` owns local IPC envelope and request/response mechanics.
-`shared/format.ts`, `shared/messages.ts`, `shared/ui-status.ts`, and
-`shared/utils.ts` own reusable formatting, message extraction, UI text, and
-small runtime helpers.
+`shared/activity-lines.ts`, `shared/format.ts`, `shared/messages.ts`,
+`shared/ui-status.ts`, and `shared/utils.ts` own reusable activity-line
+presentation, formatting, message extraction, UI text, and small runtime helpers.
 
 Shared modules should stay cohesive and low-level.
 They should not grow broker policy or Telegram command semantics.
@@ -706,12 +707,10 @@ closure state and dependency injection glue that would be over-abstracted if
 forced into a framework.
 When that glue becomes cohesive policy, it should move into the owning folder.
 
-Current-state exception: `src/pi/hooks.ts` imports activity-line helpers from
-`src/broker/activity.ts`.
-This is tolerated only as a narrow activity presentation dependency.
-The contract direction is to move shared activity types/formatting into
-`src/shared/` if pi-side activity construction becomes broader or if broker
-activity rendering stops being the natural owner.
+Current-state clarification: shared activity-line presentation now lives under
+`src/shared/activity-lines.ts`. `src/pi/` constructs activity lines through that
+shared contract and an injected reporter interface, while `src/broker/activity.ts`
+keeps ownership of Telegram rendering, debouncing, and typing-loop side effects.
 
 ## Key runtime scenarios
 
@@ -1073,14 +1072,15 @@ refreshes the selected chat/session's selector route, so unrouted Telegram
 messages and control commands keep their intended session after broker takeover
 within the selection window.
 
-### Pi-to-broker activity dependency
+### Pi activity presentation boundary
 
-`src/pi/hooks.ts` currently imports activity-line helpers from
-`src/broker/activity.ts`.
-This should remain narrow.
-If more pi-side code starts depending on broker activity internals, split the
-shared activity event model and formatting helpers into `src/shared/` while
-leaving Telegram rendering in `src/broker/activity.ts`.
+Pi-side activity mirroring constructs activity lines through
+`src/shared/activity-lines.ts` and sends them through an injected activity
+reporter interface. `src/broker/activity.ts` remains the owner of Telegram
+activity rendering, debouncing, activity completion, and typing-loop side
+effects. Future activity changes should keep this boundary: shared code may own
+small presentation contracts, but pi modules should not depend on broker
+implementation internals.
 
 ### Planning maturity
 
@@ -1097,7 +1097,7 @@ ownership.
 - `index.ts` — package entrypoint; should only register the extension.
 - `src/extension.ts` — runtime composition root, broker/client orchestration,
   state wiring, config setup, lease coordination, and cross-boundary callbacks.
-- `src/broker/activity.ts` — activity model and Telegram activity rendering.
+- `src/broker/activity.ts` — broker-side Telegram activity rendering and debouncing.
 - `src/broker/commands.ts` — thin Telegram command/callback dispatcher and route-aware control composition.
 - `src/broker/model-command.ts`, `src/broker/git-command.ts`, `src/broker/queued-turn-control-handler.ts`, and `src/broker/inline-controls.ts` — focused command/control semantics and shared inline-control lifecycle helpers.
 - `src/broker/sessions.ts` — broker-side offline/unregister cleanup.
@@ -1115,15 +1115,17 @@ ownership.
   outcome is known.
 - `src/client/info.ts` — session/model status text and model command helpers.
 - `src/client/session-registration.ts` — collection of local session metadata.
-- `src/pi/hooks.ts` — pi commands, pi events, prompt suffix, and
+- `src/pi/hooks.ts` and focused `src/pi/` hook modules — pi commands, pi events,
+  prompt suffix, local-input mirroring, assistant finalization triggers, and
   `telegram_attach` tool integration.
 - `src/shared/config.ts` — config paths, broker paths, limits, timings, prompt
   suffix, and config read/write.
 - `src/shared/types.ts` — cross-module runtime data model.
 - `src/shared/ipc.ts` — local IPC envelope and transport helpers.
-- `src/shared/format.ts`, `src/shared/messages.ts`, `src/shared/ui-status.ts`,
-  `src/shared/utils.ts` — formatting, event extraction, user text, and small
-  helpers.
+- `src/shared/activity-lines.ts`, `src/shared/format.ts`,
+  `src/shared/messages.ts`, `src/shared/ui-status.ts`, and `src/shared/utils.ts`
+  — activity-line presentation, formatting, event extraction, user text, and
+  small helpers.
 - `src/telegram/api.ts` — low-level Telegram Bot API calls and downloads.
 - `src/telegram/retry.ts` — retry-after wrapper.
 - `src/telegram/previews.ts` — legacy/in-flight preview state cleanup and finalization compatibility.

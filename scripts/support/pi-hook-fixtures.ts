@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext, ExtensionHandler, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ExtensionHandler, RegisteredCommand, ToolDefinition } from "@mariozechner/pi-coding-agent";
 
 import { ActivityReporter } from "../../src/broker/activity.js";
 import type { RuntimePiHooksDeps } from "../../src/pi/hooks.js";
@@ -9,6 +9,7 @@ export type HookHandler = (event: unknown, ctx?: ExtensionContext) => Promise<un
 export interface PiHarness {
 	handlers: Map<string, HookHandler[]>;
 	tools: ToolDefinition[];
+	commands: Map<string, Omit<RegisteredCommand, "name" | "sourceInfo">>;
 	pi: ExtensionAPI;
 }
 
@@ -45,16 +46,17 @@ export function testExtensionContext(): ExtensionContext {
 export function buildPiHarness(): PiHarness {
 	const handlers = new Map<string, HookHandler[]>();
 	const tools: ToolDefinition[] = [];
+	const commands = new Map<string, Omit<RegisteredCommand, "name" | "sourceInfo">>();
 	const pi = {
 		registerTool: (tool: ToolDefinition) => { tools.push(tool); },
-		registerCommand: () => undefined,
+		registerCommand: (name: string, options: Omit<RegisteredCommand, "name" | "sourceInfo">) => { commands.set(name, options); },
 		on: (event: string, handler: ExtensionHandler<unknown, unknown>) => {
 			const list = handlers.get(event) ?? [];
 			list.push(async (payload, ctx = testExtensionContext()) => await handler(payload, ctx));
 			handlers.set(event, list);
 		},
 	} as unknown as ExtensionAPI;
-	return { handlers, tools, pi };
+	return { handlers, tools, commands, pi };
 }
 
 export async function invokeHook(handlers: Map<string, HookHandler[]>, event: string, payload: unknown, ctx: ExtensionContext = testExtensionContext()): Promise<unknown> {
@@ -74,7 +76,6 @@ export function baseDeps(overrides: Partial<RuntimePiHooksDeps> = {}): RuntimePi
 		getConfig: () => ({}),
 		setLatestCtx: () => undefined,
 		getConnectedRoute: () => route(),
-		setConnectedRoute: () => undefined,
 		getActiveTelegramTurn: () => undefined,
 		hasDeferredTelegramTurn: () => false,
 		hasAwaitingTelegramFinalTurn: () => false,
@@ -94,8 +95,6 @@ export function baseDeps(overrides: Partial<RuntimePiHooksDeps> = {}): RuntimePi
 		postIpc: async <TResponse>() => undefined as TResponse,
 		promptForConfig: async () => false,
 		connectTelegram: async () => undefined,
-		unregisterSession: async () => undefined,
-		markSessionOffline: async () => undefined,
 		disconnectSessionRoute: async () => undefined,
 		prepareSessionReplacementHandoff: async () => false,
 		stopClientServer: async () => undefined,
@@ -104,7 +103,6 @@ export function baseDeps(overrides: Partial<RuntimePiHooksDeps> = {}): RuntimePi
 		hideTelegramStatus: () => undefined,
 		updateStatus: () => undefined,
 		readLease: async () => undefined,
-		sendAssistantFinalToBroker: async () => true,
 		finalizeActiveTelegramTurn: async () => "completed",
 		onAgentRetryStart: () => undefined,
 		onRetryMessageStart: () => undefined,

@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { ActivityRenderer, ActivityReporter } from "../src/broker/activity.js";
+import { registerTelegramAttachmentTool } from "../src/pi/attachments.js";
+import { registerTelegramCommands } from "../src/pi/commands.js";
 import { registerRuntimePiHooks } from "../src/pi/hooks.js";
+import { registerLocalInputMirrorHook } from "../src/pi/local-input.js";
+import { registerPromptSuffixHook } from "../src/pi/prompt.js";
+import { SYSTEM_PROMPT_SUFFIX, TELEGRAM_PREFIX } from "../src/shared/config.js";
 import type { ActiveTelegramTurn, TelegramRoute } from "../src/shared/types.js";
 import { activeTurn, baseDeps, buildPiHarness, noopActivityReporter, recordingActivityReporter, route, testExtensionContext } from "./support/pi-hook-fixtures.js";
 
@@ -19,6 +24,61 @@ async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
 	]);
 }
 
+async function checkPromptSuffixPreservesTelegramOriginContext(): Promise<void> {
+	const { handlers, pi } = buildPiHarness();
+	registerPromptSuffixHook(pi);
+
+	const localResult = await (handlers.get("before_agent_start")?.[0]?.({ prompt: "local prompt", systemPrompt: "base" }) ?? Promise.resolve()) as { systemPrompt?: string };
+	assert.equal(localResult.systemPrompt, `base${SYSTEM_PROMPT_SUFFIX}`);
+	assert.equal(localResult.systemPrompt?.includes("The current user message came from Telegram."), false);
+
+	const telegramResult = await (handlers.get("before_agent_start")?.[0]?.({ prompt: `${TELEGRAM_PREFIX} hello`, systemPrompt: "base" }) ?? Promise.resolve()) as { systemPrompt?: string };
+	assert.equal(telegramResult.systemPrompt, `base${SYSTEM_PROMPT_SUFFIX}\n- The current user message came from Telegram.`);
+}
+
+async function checkTelegramCommandRegistrarPreservesCommandBehavior(): Promise<void> {
+	const { commands, pi } = buildPiHarness();
+	const notifications: Array<{ message: string; severity?: string }> = [];
+	const ctx = { ui: { notify: (message: string, severity?: string) => { notifications.push({ message, severity }); } } } as never;
+	const connectCalls: Array<{ notify?: boolean }> = [];
+	let disconnectCalls = 0;
+	let hideStatusCalls = 0;
+	let latestCtxCalls = 0;
+	let statusUpdates = 0;
+	registerTelegramCommands(pi, {
+		getConfig: () => ({}),
+		setLatestCtx: () => { latestCtxCalls += 1; },
+		getConnectedRoute: () => route(),
+		getSessionId: () => "session-1",
+		getOwnerId: () => "owner-1",
+		getIsBroker: () => true,
+		getBrokerState: () => ({ schemaVersion: 1, sessions: { "session-1": { sessionId: "session-1", ownerId: "owner-1", pid: process.pid, cwd: "/tmp", projectName: "project", status: "idle", activeTurnId: undefined, queuedTurnCount: 0, lastHeartbeatMs: 1, connectedAtMs: 1, connectionStartedAtMs: 1, connectionNonce: "nonce", clientSocketPath: "/tmp/client.sock", topicName: "topic" } }, routes: {}, pendingTurns: {}, pendingAssistantFinals: {}, pendingMediaGroups: {}, pendingRouteCleanups: {}, telegramOutbox: {}, assistantPreviewMessages: {}, queuedTurnControls: {}, recentUpdateIds: [], completedTurnIds: [], createdAtMs: 1, updatedAtMs: 1 }),
+		promptForConfig: async () => true,
+		connectTelegram: async (_ctx, notify) => { connectCalls.push({ notify }); },
+		disconnectSessionRoute: async () => { disconnectCalls += 1; },
+		hideTelegramStatus: () => { hideStatusCalls += 1; },
+		updateStatus: () => { statusUpdates += 1; },
+		readLease: async () => ({ ownerId: "owner-1", leaseEpoch: 3, leaseUntilMs: 99 }),
+	});
+	assert.deepEqual([...commands.keys()].sort(), ["telegram-broker-status", "telegram-connect", "telegram-disconnect", "telegram-setup", "telegram-status", "telegram-topic-setup"]);
+
+	await commands.get("telegram-setup")?.handler("", ctx);
+	await commands.get("telegram-topic-setup")?.handler("", ctx);
+	await commands.get("telegram-connect")?.handler("", ctx);
+	await commands.get("telegram-disconnect")?.handler("", ctx);
+	await commands.get("telegram-status")?.handler("", ctx);
+	await commands.get("telegram-broker-status")?.handler("", ctx);
+
+	assert.deepEqual(connectCalls, [{ notify: false }, { notify: false }, { notify: undefined }]);
+	assert.equal(disconnectCalls, 1);
+	assert.equal(hideStatusCalls, 1);
+	assert.equal(statusUpdates, 0);
+	assert.equal(latestCtxCalls, 6);
+	assert.ok(notifications.some((entry) => entry.message.includes("/topicsetup") && entry.severity === "info"));
+	assert.ok(notifications.some((entry) => entry.message.includes("route: topic") && entry.severity === "info"));
+	assert.ok(notifications.some((entry) => entry.message.includes("sessions: 1/1") && entry.severity === "info"));
+}
+
 async function checkDeferredAgentEndClearsAbortCallback(): Promise<void> {
 	const { handlers, pi } = buildPiHarness();
 	let active: ActiveTelegramTurn | undefined = activeTurn();
@@ -28,7 +88,6 @@ async function checkDeferredAgentEndClearsAbortCallback(): Promise<void> {
 		getConfig: () => ({}),
 		setLatestCtx: () => undefined,
 		getConnectedRoute: () => route(),
-		setConnectedRoute: () => undefined,
 		getActiveTelegramTurn: () => active,
 		hasDeferredTelegramTurn: () => false,
 		hasAwaitingTelegramFinalTurn: () => false,
@@ -48,8 +107,6 @@ async function checkDeferredAgentEndClearsAbortCallback(): Promise<void> {
 		postIpc: async <TResponse>() => undefined as TResponse,
 		promptForConfig: async () => false,
 		connectTelegram: async () => undefined,
-		unregisterSession: async () => undefined,
-		markSessionOffline: async () => undefined,
 		disconnectSessionRoute: async () => undefined,
 		prepareSessionReplacementHandoff: async () => false,
 		stopClientServer: async () => undefined,
@@ -58,7 +115,6 @@ async function checkDeferredAgentEndClearsAbortCallback(): Promise<void> {
 		hideTelegramStatus: () => undefined,
 		updateStatus: () => undefined,
 		readLease: async () => undefined,
-		sendAssistantFinalToBroker: async () => true,
 		finalizeActiveTelegramTurn: async () => "deferred",
 		onAgentRetryStart: () => undefined,
 		onRetryMessageStart: () => undefined,
@@ -81,11 +137,8 @@ async function checkLocalInputFlushesDeferredWithoutStartingQueuedTelegramTurn()
 	let active: ActiveTelegramTurn | undefined;
 	let flushedOptions: { startNext?: boolean } | undefined;
 	const localMessages: Array<{ text: string; imagesCount?: number; routeId?: string; chatId?: number | string; messageThreadId?: number }> = [];
-	registerRuntimePiHooks(pi, {
-		getConfig: () => ({}),
-		setLatestCtx: () => undefined,
+	registerLocalInputMirrorHook(pi, {
 		getConnectedRoute: () => route(),
-		setConnectedRoute: () => undefined,
 		getActiveTelegramTurn: () => active,
 		hasDeferredTelegramTurn: () => true,
 		hasAwaitingTelegramFinalTurn: () => false,
@@ -95,40 +148,13 @@ async function checkLocalInputFlushesDeferredWithoutStartingQueuedTelegramTurn()
 			return "turn-1";
 		},
 		setActiveTelegramTurn: (turn) => { active = turn; },
-		setQueuedTelegramTurns: () => undefined,
-		setCurrentAbort: () => undefined,
 		getSessionId: () => "session-1",
-		getOwnerId: () => "owner-1",
-		getIsBroker: () => false,
-		getBrokerState: () => undefined,
 		getConnectedBrokerSocketPath: () => "/tmp/broker.sock",
-		activityReporter: noopActivityReporter(),
 		isRoutableRoute: (candidate): candidate is TelegramRoute => Boolean(candidate),
-		resolveAllowedAttachmentPath: async () => undefined,
 		postIpc: async <TResponse>(_socketPath: string, type: string, payload: unknown) => {
 			if (type === "local_user_message") localMessages.push(payload as { text: string; imagesCount?: number; routeId?: string; chatId?: number | string; messageThreadId?: number });
 			return undefined as TResponse;
 		},
-		promptForConfig: async () => false,
-		connectTelegram: async () => undefined,
-		unregisterSession: async () => undefined,
-		markSessionOffline: async () => undefined,
-		disconnectSessionRoute: async () => undefined,
-		prepareSessionReplacementHandoff: async () => false,
-		stopClientServer: async () => undefined,
-		shutdownClientRoute: () => undefined,
-		stopBroker: async () => undefined,
-		hideTelegramStatus: () => undefined,
-		updateStatus: () => undefined,
-		readLease: async () => undefined,
-		sendAssistantFinalToBroker: async () => true,
-		finalizeActiveTelegramTurn: async () => "completed",
-		onAgentRetryStart: () => undefined,
-		onRetryMessageStart: () => undefined,
-		startNextTelegramTurn: () => { throw new Error("input flush should not start next Telegram turn directly"); },
-		drainDeferredCompactionTurns: () => undefined,
-		onSessionStart: async () => undefined,
-		clearMediaGroups: () => undefined,
 	});
 
 	await (handlers.get("input")?.[0]?.({ source: "interactive", text: "local follow-up", images: [] }) ?? Promise.resolve());
@@ -141,11 +167,8 @@ async function checkLocalInputDuringLiveRetryDoesNotFlushDeferredTurn(): Promise
 	const { handlers, pi } = buildPiHarness();
 	let active: ActiveTelegramTurn | undefined = activeTurn("retrying");
 	let flushedOptions: { startNext?: boolean } | undefined;
-	registerRuntimePiHooks(pi, {
-		getConfig: () => ({}),
-		setLatestCtx: () => undefined,
+	registerLocalInputMirrorHook(pi, {
 		getConnectedRoute: () => route(),
-		setConnectedRoute: () => undefined,
 		getActiveTelegramTurn: () => active,
 		hasDeferredTelegramTurn: () => true,
 		hasAwaitingTelegramFinalTurn: () => false,
@@ -155,37 +178,10 @@ async function checkLocalInputDuringLiveRetryDoesNotFlushDeferredTurn(): Promise
 			return "turn-1";
 		},
 		setActiveTelegramTurn: (turn) => { active = turn; },
-		setQueuedTelegramTurns: () => undefined,
-		setCurrentAbort: () => undefined,
 		getSessionId: () => "session-1",
-		getOwnerId: () => "owner-1",
-		getIsBroker: () => false,
-		getBrokerState: () => undefined,
 		getConnectedBrokerSocketPath: () => "/tmp/broker.sock",
-		activityReporter: noopActivityReporter(),
 		isRoutableRoute: (candidate): candidate is TelegramRoute => Boolean(candidate),
-		resolveAllowedAttachmentPath: async () => undefined,
 		postIpc: async <TResponse>() => undefined as TResponse,
-		promptForConfig: async () => false,
-		connectTelegram: async () => undefined,
-		unregisterSession: async () => undefined,
-		markSessionOffline: async () => undefined,
-		disconnectSessionRoute: async () => undefined,
-		prepareSessionReplacementHandoff: async () => false,
-		stopClientServer: async () => undefined,
-		shutdownClientRoute: () => undefined,
-		stopBroker: async () => undefined,
-		hideTelegramStatus: () => undefined,
-		updateStatus: () => undefined,
-		readLease: async () => undefined,
-		sendAssistantFinalToBroker: async () => true,
-		finalizeActiveTelegramTurn: async () => "completed",
-		onAgentRetryStart: () => undefined,
-		onRetryMessageStart: () => undefined,
-		startNextTelegramTurn: () => { throw new Error("live retry flush should not start next Telegram turn directly"); },
-		drainDeferredCompactionTurns: () => undefined,
-		onSessionStart: async () => undefined,
-		clearMediaGroups: () => undefined,
 	});
 
 	await (handlers.get("input")?.[0]?.({ source: "interactive", text: "local takeover", images: [] }) ?? Promise.resolve());
@@ -362,48 +358,9 @@ async function checkTelegramAttachIsAtomicOnValidationFailure(): Promise<void> {
 		writeFileSync(goodPath, "ok");
 		const { tools, pi } = buildPiHarness();
 		let active: ActiveTelegramTurn | undefined = activeTurn("attach-turn");
-		registerRuntimePiHooks(pi, {
-			getConfig: () => ({}),
-			setLatestCtx: () => undefined,
-			getConnectedRoute: () => route(),
-			setConnectedRoute: () => undefined,
+		registerTelegramAttachmentTool(pi, {
 			getActiveTelegramTurn: () => active,
-			hasDeferredTelegramTurn: () => false,
-			hasAwaitingTelegramFinalTurn: () => false,
-			hasLiveAgentRun: () => false,
-			flushDeferredTelegramTurn: async () => undefined,
-			setActiveTelegramTurn: (turn) => { active = turn; },
-			setQueuedTelegramTurns: () => undefined,
-			setCurrentAbort: () => undefined,
-			getSessionId: () => "session-1",
-			getOwnerId: () => "owner-1",
-			getIsBroker: () => false,
-			getBrokerState: () => undefined,
-			getConnectedBrokerSocketPath: () => "/tmp/broker.sock",
-			activityReporter: noopActivityReporter(),
-			isRoutableRoute: (candidate): candidate is TelegramRoute => Boolean(candidate),
 			resolveAllowedAttachmentPath: async (inputPath) => inputPath === goodPath ? goodPath : undefined,
-			postIpc: async <TResponse>() => undefined as TResponse,
-			promptForConfig: async () => false,
-			connectTelegram: async () => undefined,
-			unregisterSession: async () => undefined,
-			markSessionOffline: async () => undefined,
-			disconnectSessionRoute: async () => undefined,
-			prepareSessionReplacementHandoff: async () => false,
-			stopClientServer: async () => undefined,
-			shutdownClientRoute: () => undefined,
-			stopBroker: async () => undefined,
-			hideTelegramStatus: () => undefined,
-			updateStatus: () => undefined,
-			readLease: async () => undefined,
-			sendAssistantFinalToBroker: async () => true,
-			finalizeActiveTelegramTurn: async () => "completed",
-			onAgentRetryStart: () => undefined,
-			onRetryMessageStart: () => undefined,
-			startNextTelegramTurn: () => undefined,
-			drainDeferredCompactionTurns: () => undefined,
-			onSessionStart: async () => undefined,
-			clearMediaGroups: () => undefined,
 		});
 		const attachTool = tools.find((tool) => tool.name === "telegram_attach");
 		assert.ok(attachTool);
@@ -424,7 +381,6 @@ async function checkSessionShutdownLetsRouteTeardownOwnQueueDrainingAndStillStop
 		getConfig: () => ({}),
 		setLatestCtx: () => undefined,
 		getConnectedRoute: () => route(),
-		setConnectedRoute: () => undefined,
 		getActiveTelegramTurn: () => undefined,
 		hasDeferredTelegramTurn: () => false,
 		hasAwaitingTelegramFinalTurn: () => false,
@@ -444,8 +400,6 @@ async function checkSessionShutdownLetsRouteTeardownOwnQueueDrainingAndStillStop
 		postIpc: async <TResponse>() => undefined as TResponse,
 		promptForConfig: async () => false,
 		connectTelegram: async () => undefined,
-		unregisterSession: async () => undefined,
-		markSessionOffline: async () => undefined,
 		disconnectSessionRoute: async () => {
 			disconnectCalls += 1;
 			throw new Error("disconnect failed");
@@ -457,7 +411,6 @@ async function checkSessionShutdownLetsRouteTeardownOwnQueueDrainingAndStillStop
 		hideTelegramStatus: () => undefined,
 		updateStatus: () => undefined,
 		readLease: async () => undefined,
-		sendAssistantFinalToBroker: async () => true,
 		finalizeActiveTelegramTurn: async () => "completed",
 		onAgentRetryStart: () => undefined,
 		onRetryMessageStart: () => undefined,
@@ -539,51 +492,21 @@ async function checkImageOnlyLocalInputStillMirrorsToTelegram(): Promise<void> {
 	const { handlers, pi } = buildPiHarness();
 	let active: ActiveTelegramTurn | undefined;
 	const localMessages: Array<{ text: string; imagesCount?: number; routeId?: string; chatId?: number | string; messageThreadId?: number }> = [];
-	registerRuntimePiHooks(pi, {
-		getConfig: () => ({}),
-		setLatestCtx: () => undefined,
+	registerLocalInputMirrorHook(pi, {
 		getConnectedRoute: () => route(),
-		setConnectedRoute: () => undefined,
 		getActiveTelegramTurn: () => active,
 		hasDeferredTelegramTurn: () => false,
 		hasAwaitingTelegramFinalTurn: () => false,
 		hasLiveAgentRun: () => false,
 		flushDeferredTelegramTurn: async () => undefined,
 		setActiveTelegramTurn: (turn) => { active = turn; },
-		setQueuedTelegramTurns: () => undefined,
-		setCurrentAbort: () => undefined,
 		getSessionId: () => "session-1",
-		getOwnerId: () => "owner-1",
-		getIsBroker: () => false,
-		getBrokerState: () => undefined,
 		getConnectedBrokerSocketPath: () => "/tmp/broker.sock",
-		activityReporter: noopActivityReporter(),
 		isRoutableRoute: (candidate): candidate is TelegramRoute => Boolean(candidate),
-		resolveAllowedAttachmentPath: async () => undefined,
 		postIpc: async <TResponse>(_socketPath: string, type: string, payload: unknown) => {
 			if (type === "local_user_message") localMessages.push(payload as { text: string; imagesCount?: number; routeId?: string; chatId?: number | string; messageThreadId?: number });
 			return undefined as TResponse;
 		},
-		promptForConfig: async () => false,
-		connectTelegram: async () => undefined,
-		unregisterSession: async () => undefined,
-		markSessionOffline: async () => undefined,
-		disconnectSessionRoute: async () => undefined,
-		prepareSessionReplacementHandoff: async () => false,
-		stopClientServer: async () => undefined,
-		shutdownClientRoute: () => undefined,
-		stopBroker: async () => undefined,
-		hideTelegramStatus: () => undefined,
-		updateStatus: () => undefined,
-		readLease: async () => undefined,
-		sendAssistantFinalToBroker: async () => true,
-		finalizeActiveTelegramTurn: async () => "completed",
-		onAgentRetryStart: () => undefined,
-		onRetryMessageStart: () => undefined,
-		startNextTelegramTurn: () => undefined,
-		drainDeferredCompactionTurns: () => undefined,
-		onSessionStart: async () => undefined,
-		clearMediaGroups: () => undefined,
 	});
 
 	await (handlers.get("input")?.[0]?.({ source: "interactive", text: "", images: [{ type: "image", image: "img" }] }) ?? Promise.resolve());
@@ -591,6 +514,8 @@ async function checkImageOnlyLocalInputStillMirrorsToTelegram(): Promise<void> {
 	assert.equal(active?.chatId, 123);
 }
 
+await checkPromptSuffixPreservesTelegramOriginContext();
+await checkTelegramCommandRegistrarPreservesCommandBehavior();
 await checkDeferredAgentEndClearsAbortCallback();
 await checkLocalInputFlushesDeferredWithoutStartingQueuedTelegramTurn();
 await checkLocalInputDuringLiveRetryDoesNotFlushDeferredTurn();
