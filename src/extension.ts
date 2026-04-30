@@ -13,6 +13,7 @@ import { createBrokerHeartbeatState, runBrokerHeartbeatCycle } from "./broker/he
 import { renewBrokerLease as renewBrokerLeaseFile, StaleBrokerError, tryAcquireBrokerLease } from "./broker/lease.js";
 import { targetChatIdForRoutes as routeTargetChatIdForRoutes, usesForumSupergroupRouting as routeUsesForumSupergroupRouting } from "./broker/routes.js";
 import { honorExplicitDisconnectRequestInBroker, unregisterSessionFromBroker, markSessionOfflineInBroker, retryPendingRouteCleanupsInBroker } from "./broker/sessions.js";
+import { createTelegramOutboxRunnerState, drainTelegramOutboxInBroker } from "./broker/telegram-outbox.js";
 import { BrokerSessionRegistrationCoordinator, isStaleSessionConnectionError } from "./broker/session-registration.js";
 import { createRuntimeUpdateHandlers } from "./broker/updates.js";
 import { resolveAllowedAttachmentPath as resolveSafeAttachmentPath } from "./client/attachment-path.js";
@@ -51,6 +52,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 	let brokerPollAbort: AbortController | undefined;
 	let brokerHeartbeatTimer: ReturnType<typeof setInterval> | undefined;
 	const brokerHeartbeatState = createBrokerHeartbeatState();
+	const telegramOutboxRunner = createTelegramOutboxRunnerState();
 	let sessionReplacementContext: SessionReplacementContext | undefined;
 	let localBrokerSocketPath = join(BROKER_DIR, `broker-${ownerId}.sock`);
 	let connectedBrokerSocketPath = localBrokerSocketPath;
@@ -196,6 +198,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		sendTextReply,
 		callTelegram,
 		callTelegramForQueuedControlCleanup: callTelegramOnce,
+		telegramOutbox: telegramOutboxRunner,
 		postIpc,
 		stopTypingLoop,
 		unregisterSession,
@@ -252,6 +255,17 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			}
 		}
 	}
+	async function retryTelegramOutbox(): Promise<void> {
+		await drainTelegramOutboxInBroker(telegramOutboxRunner, {
+			getBrokerState: () => brokerState,
+			loadBrokerState,
+			setBrokerState: (state) => { brokerState = state; },
+			persistBrokerState,
+			callTelegram: callTelegramOnce,
+			assertCanRun: assertCurrentBrokerLeaseForPersist,
+			logTerminalCleanupFailure: logTerminalRouteCleanupFailure,
+		});
+	}
 	function retryPendingRouteCleanups(): Promise<{ ok: true }> {
 		return retryPendingRouteCleanupsInBroker({
 			getBrokerState: () => brokerState,
@@ -260,6 +274,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			persistBrokerState,
 			callTelegram: callTelegramOnce,
 			assertCanDeleteRoute: assertCurrentBrokerLeaseForPersist,
+			telegramOutbox: telegramOutboxRunner,
 			logTerminalCleanupFailure: logTerminalRouteCleanupFailure,
 		});
 	}
@@ -398,6 +413,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			stopTypingLoop,
 			callTelegram: callTelegramOnce,
 			assertCanDeleteRoute: assertCurrentBrokerLeaseForPersist,
+			telegramOutbox: telegramOutboxRunner,
 			cancelPendingFinalDeliveries: (targetSessionId, turnIds) => turnIds ? assistantFinalLedger.cancelTurns(turnIds) : assistantFinalLedger.cancelSession(targetSessionId),
 			cleanupSessionTempDir,
 			logTerminalCleanupFailure: logTerminalRouteCleanupFailure,
@@ -509,9 +525,10 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 		const existing = await readJson<BrokerState>(STATE_PATH);
 		if (existing) {
 			delete (existing as BrokerState & { reloadIntents?: unknown }).reloadIntents;
+			existing.telegramOutbox ??= {};
 			return existing;
 		}
-		return { schemaVersion: 1, lastProcessedUpdateId: config.lastUpdateId, recentUpdateIds: [], sessions: {}, routes: {}, pendingMediaGroups: {}, pendingTurns: {}, pendingAssistantFinals: {}, pendingRouteCleanups: {}, assistantPreviewMessages: {}, queuedTurnControls: {}, completedTurnIds: [], createdAtMs: now(), updatedAtMs: now() };
+		return { schemaVersion: 1, lastProcessedUpdateId: config.lastUpdateId, recentUpdateIds: [], sessions: {}, routes: {}, pendingMediaGroups: {}, pendingTurns: {}, pendingAssistantFinals: {}, pendingRouteCleanups: {}, telegramOutbox: {}, assistantPreviewMessages: {}, queuedTurnControls: {}, completedTurnIds: [], createdAtMs: now(), updatedAtMs: now() };
 	}
 	async function assertCurrentBrokerLeaseForPersist(): Promise<void> {
 		const lease = await readLease();
@@ -568,6 +585,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 					await updateHandlers.markOfflineSessions();
 					await retryQueuedTurnControlFinalizations();
 					await retryPendingRouteCleanups();
+					await retryTelegramOutbox();
 					await sweepOrphanedTelegramTempDirs();
 					assistantFinalLedger.kick();
 				},
@@ -585,6 +603,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			await retryPendingTurns();
 			await retryQueuedTurnControlFinalizations();
 			await retryPendingRouteCleanups();
+			await retryTelegramOutbox();
 			await sweepOrphanedTelegramTempDirs();
 			assistantFinalLedger.kick();
 		});
@@ -704,6 +723,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			stopTypingLoop,
 			callTelegram: callTelegramOnce,
 			assertCanDeleteRoute: assertCurrentBrokerLeaseForPersist,
+			telegramOutbox: telegramOutboxRunner,
 			cleanupSessionTempDir,
 			logTerminalCleanupFailure: logTerminalRouteCleanupFailure,
 		});
@@ -719,6 +739,7 @@ export function registerTelegramExtension(pi: ExtensionAPI) {
 			stopTypingLoop,
 			callTelegram: callTelegramOnce,
 			assertCanDeleteRoute: assertCurrentBrokerLeaseForPersist,
+			telegramOutbox: telegramOutboxRunner,
 			cancelPendingFinalDeliveries: (targetSessionId, turnIds) => turnIds ? assistantFinalLedger.cancelTurns(turnIds) : assistantFinalLedger.cancelSession(targetSessionId),
 			cleanupSessionTempDir,
 			logTerminalCleanupFailure: logTerminalRouteCleanupFailure,

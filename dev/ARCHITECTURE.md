@@ -478,10 +478,11 @@ changed-owner, or changed-epoch leases still require controlled stand-down.
 `BrokerState` stores recent Telegram update IDs, last processed update ID,
 session registrations, routes, pending media groups, pending turns, queued-turn
 control records, visible assistant preview message references, pending
-assistant-final deliveries, completed turn IDs, and timestamps.
+assistant-final deliveries, pending Telegram outbox jobs, completed turn IDs,
+and timestamps.
 It is the durable handoff record for polling safety, bounded route continuity,
-broker turnover, pending work retry, queued follow-up controls, cleanup retry,
-and dedupe.
+broker turnover, pending work retry, queued follow-up controls, visible Telegram
+cleanup retry, and dedupe.
 
 Architecture contract and current implementation: selector-mode session
 selections created by `/use` are route-continuity state persisted in
@@ -527,9 +528,18 @@ queued turn before steering or cancelling it, then consume the pending turn
 through the same durable turn lifecycle used by normal delivery. When a queued
 turn becomes non-actionable without a callback, the broker should edit any known
 visible status message to remove action buttons and show a terminal state where
-Telegram editing succeeds. If visible cleanup is unavailable or retryable, the
-durable control state remains authoritative and stale callbacks must fail
-closed when the turn has started, expired, converted, cancelled, or disappeared.
+Telegram editing succeeds. The broker Telegram outbox owns retry timing for
+those visible status edits; the durable control state remains authoritative and
+stale callbacks must fail closed when the turn has started, expired, converted,
+cancelled, or disappeared even if the visible edit is delayed or terminal.
+
+`BrokerState.pendingRouteCleanups` remains the route-lifecycle cleanup intent
+record created when local routes are detached. The broker Telegram outbox owns
+the resulting Telegram topic deletion job, including retry-at state, explicit
+terminal outcomes, and replay after broker turnover. Local route unregister and
+session-replacement/grace-period preservation decisions stay in lifecycle code;
+the outbox only retries the visible Telegram side effects after a route has
+already been detached or preserved by that lifecycle decision.
 
 Assistant final payloads pair a pending turn with final text, stop/error state,
 and queued outbound attachments.
@@ -584,7 +594,20 @@ true lease loss still routes through controlled stand-down.
 
 `broker/sessions.ts` owns broker-side session offline and unregister cleanup.
 It distinguishes offline state from explicit unregister and ensures typing loops
-and route/topic cleanup follow the right lifecycle.
+and local route detach/preservation follow the right lifecycle. For detached
+routes, it records cleanup intent and hands visible queued-control finalization
+and Telegram topic deletion to the broker Telegram outbox instead of performing
+ad hoc retry loops inline.
+
+`broker/telegram-outbox.ts` owns the broker-side persisted Telegram side-effect
+outbox for cleanup-oriented side effects. Its current scope is queued-control
+status-message finalization and Telegram forum-topic deletion after route
+cleanup. It provides idempotent job IDs, legacy-state migration from older
+`pendingRouteCleanups` and queued-control retry markers, serialized drain
+behavior, retry-at / `retry_after` handling, terminal topic-cleanup diagnostics,
+and broker-lease assertion hooks. It deliberately does not own assistant final
+text chunk or attachment delivery; `broker/finals.ts` remains the FIFO final
+ledger for those higher-risk delivery steps.
 
 ### Client modules: `src/client/`
 

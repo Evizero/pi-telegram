@@ -3,8 +3,8 @@ title: "Consolidate durable Telegram side-effect retries into an outbox"
 type: "request"
 created: "2026-04-28"
 author: "Christof Stocker"
-status: "open"
-planned_as: []
+status: "planned"
+planned_as: ["introduce-broker-telegram-side-effect"]
 ---
 Source: simplification pass after Telegram voice note on 2026-04-28 asking to simplify without losing features or behaviors.
 

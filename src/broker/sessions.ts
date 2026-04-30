@@ -1,19 +1,16 @@
 import type { BrokerState, QueuedTurnControlState, TelegramRoute } from "../shared/types.js";
-import { errorMessage, now } from "../shared/utils.js";
-import { getTelegramRetryAfterMs } from "../telegram/api.js";
+import { now } from "../shared/utils.js";
 import {
-	isAlreadyDeletedTelegramTopic,
 	isMissingDeletedTelegramMessage,
-	isTerminalTelegramTopicCleanupError,
 	shouldPreserveTelegramMessageRefOnDeleteFailure,
-	telegramErrorText,
 } from "../telegram/errors.js";
-import { deleteTelegramMessage, editTelegramTextMessage } from "../telegram/message-ops.js";
+import { deleteTelegramMessage } from "../telegram/message-ops.js";
 import { disconnectRequestBelongsToCurrentConnection, disconnectRequestMatchesRoute, isRouteScopedDisconnectRequest, type PendingDisconnectRequest } from "./disconnect-requests.js";
 import { cleanupTargetsActiveRoute, detachRoutesForSessionAndQueueCleanup, queueRouteCleanup, turnBelongsToRoute } from "./routes.js";
-import { DEFAULT_QUEUED_CONTROL_EDIT_RETRY_MS, isTransientQueuedControlEditError, markQueuedTurnControlExpired, queuedControlBelongsToRoute, QUEUED_CONTROL_TEXT } from "./queued-controls.js";
+import { markQueuedTurnControlExpired, queuedControlBelongsToRoute, QUEUED_CONTROL_TEXT } from "./queued-controls.js";
+import { createTelegramOutboxRunnerState, drainTelegramOutboxInBroker, enqueueQueuedControlStatusEditJob, markRouteQueuedControlsForCleanup, migrateLegacyTelegramOutboxState, type TelegramOutboxRunnerState } from "./telegram-outbox.js";
 
-const DEFAULT_ROUTE_CLEANUP_RETRY_MS = 1_000;
+const defaultTelegramOutboxRunner = createTelegramOutboxRunnerState();
 
 interface SessionCleanupOptions {
 	targetSessionId: string;
@@ -25,6 +22,7 @@ interface SessionCleanupOptions {
 	stopTypingLoop: (turnId: string) => void;
 	callTelegram: <TResponse>(method: string, body: Record<string, unknown>) => Promise<TResponse>;
 	assertCanDeleteRoute?: () => Promise<void> | void;
+	telegramOutbox?: TelegramOutboxRunnerState;
 	cancelPendingFinalDeliveries?: (sessionId: string, turnIds?: string[]) => Promise<void> | void;
 	cleanupSessionTempDir?: (sessionId: string, brokerState: BrokerState) => Promise<void> | void;
 	logTerminalCleanupFailure?: (route: TelegramRoute, reason: string) => void;
@@ -37,6 +35,7 @@ interface RouteCleanupOptions {
 	persistBrokerState: () => Promise<void>;
 	callTelegram: <TResponse>(method: string, body: Record<string, unknown>) => Promise<TResponse>;
 	assertCanDeleteRoute?: () => Promise<void> | void;
+	telegramOutbox?: TelegramOutboxRunnerState;
 	logTerminalCleanupFailure?: (route: TelegramRoute, reason: string) => void;
 }
 
@@ -142,66 +141,29 @@ function markQueuedControlsCleared(brokerState: BrokerState, turnIds: string[], 
 	return controls;
 }
 
-async function finalizeQueuedControlMessages(options: Pick<SessionCleanupOptions, "callTelegram" | "persistBrokerState">, brokerState: BrokerState, controls: QueuedTurnControlState[]): Promise<{ deferred: boolean; retryAtMs?: number }> {
-	let changed = false;
-	let deferred = false;
-	let retryAtMs: number | undefined;
-	if (brokerState.queuedTurnControlCleanupRetryAtMs !== undefined) {
-		if (brokerState.queuedTurnControlCleanupRetryAtMs > now()) return { deferred: true, retryAtMs: brokerState.queuedTurnControlCleanupRetryAtMs };
-		delete brokerState.queuedTurnControlCleanupRetryAtMs;
-		changed = true;
-	}
-	const pendingRetryAtMs = controls.reduce<number | undefined>((earliest, control) => {
-		if (control.statusMessageRetryAtMs === undefined || control.statusMessageRetryAtMs <= now()) return earliest;
-		return earliest === undefined ? control.statusMessageRetryAtMs : Math.min(earliest, control.statusMessageRetryAtMs);
-	}, undefined);
-	if (pendingRetryAtMs !== undefined) {
-		brokerState.queuedTurnControlCleanupRetryAtMs = pendingRetryAtMs;
-		await options.persistBrokerState();
-		return { deferred: true, retryAtMs: pendingRetryAtMs };
-	}
-	for (const control of controls) {
-		if (control.statusMessageId === undefined || !control.completedText || control.statusMessageFinalizedAtMs !== undefined) continue;
-		if (control.statusMessageRetryAtMs !== undefined && control.statusMessageRetryAtMs > now()) {
-			deferred = true;
-			retryAtMs = retryAtMs === undefined ? control.statusMessageRetryAtMs : Math.min(retryAtMs, control.statusMessageRetryAtMs);
-			brokerState.queuedTurnControlCleanupRetryAtMs = retryAtMs;
-			changed = true;
-			break;
-		}
-		try {
-			await editTelegramTextMessage(options.callTelegram, control.chatId, control.statusMessageId, control.completedText);
-		} catch (error) {
-			const retryAfterMs = getTelegramRetryAfterMs(error);
-			if (retryAfterMs !== undefined || isTransientQueuedControlEditError(error)) {
-				control.statusMessageRetryAtMs = now() + (retryAfterMs ?? DEFAULT_QUEUED_CONTROL_EDIT_RETRY_MS) + (retryAfterMs !== undefined ? 250 : 0);
-				brokerState.queuedTurnControlCleanupRetryAtMs = control.statusMessageRetryAtMs;
-				retryAtMs = retryAtMs === undefined ? control.statusMessageRetryAtMs : Math.min(retryAtMs, control.statusMessageRetryAtMs);
-				control.updatedAtMs = now();
-				changed = true;
-				deferred = true;
-				break;
-			}
-		}
-		control.statusMessageRetryAtMs = undefined;
-		control.statusMessageFinalizedAtMs = now();
-		control.updatedAtMs = now();
-		changed = true;
-	}
-	if (changed) await options.persistBrokerState();
-	return { deferred, retryAtMs };
+function telegramOutboxRunner(options: Pick<SessionCleanupOptions, "telegramOutbox"> | Pick<RouteCleanupOptions, "telegramOutbox">): TelegramOutboxRunnerState {
+	return options.telegramOutbox ?? defaultTelegramOutboxRunner;
 }
 
-function deferPendingRouteCleanups(brokerState: BrokerState, retryAtMs: number | undefined): boolean {
-	if (retryAtMs === undefined) return false;
+async function drainTelegramCleanupOutbox(options: SessionCleanupOptions | RouteCleanupOptions, jobKinds?: Array<"queued_control_status_edit" | "route_topic_delete">): Promise<void> {
+	await drainTelegramOutboxInBroker(telegramOutboxRunner(options), {
+		getBrokerState: options.getBrokerState,
+		loadBrokerState: options.loadBrokerState,
+		setBrokerState: options.setBrokerState,
+		persistBrokerState: options.persistBrokerState,
+		callTelegram: options.callTelegram,
+		assertCanRun: options.assertCanDeleteRoute,
+		logTerminalCleanupFailure: options.logTerminalCleanupFailure,
+		jobKinds,
+	});
+}
+
+async function enqueueAndDrainQueuedControlFinalizations(options: SessionCleanupOptions | RouteCleanupOptions, brokerState: BrokerState, controls: QueuedTurnControlState[]): Promise<void> {
 	let changed = false;
-	for (const cleanup of Object.values(brokerState.pendingRouteCleanups ?? {})) {
-		if (cleanup.retryAtMs !== undefined && cleanup.retryAtMs >= retryAtMs) continue;
-		cleanup.retryAtMs = retryAtMs;
-		cleanup.updatedAtMs = now();
-		changed = true;
-	}
-	return changed;
+	for (const control of controls) changed = enqueueQueuedControlStatusEditJob(brokerState, control) || changed;
+	changed = migrateLegacyTelegramOutboxState(brokerState) || changed;
+	if (changed) await options.persistBrokerState();
+	await drainTelegramCleanupOutbox(options, ["queued_control_status_edit"]);
 }
 
 function detachRoutesForDisconnectRequest(brokerState: BrokerState, request: PendingDisconnectRequest): TelegramRoute[] {
@@ -212,10 +174,6 @@ function detachRoutesForDisconnectRequest(brokerState: BrokerState, request: Pen
 		delete brokerState.routes[id];
 	}
 	return removedRoutes;
-}
-
-function topicCleanupFailureReason(error: unknown): string {
-	return telegramErrorText(error);
 }
 
 async function clearVisiblePendingTurnPreviews(options: Pick<SessionCleanupOptions, "callTelegram">, brokerState: BrokerState, targetSessionId: string): Promise<void> {
@@ -248,58 +206,18 @@ async function cleanupSessionTempDirIfPossible(options: SessionCleanupOptions, b
 
 export async function retryPendingRouteCleanupsInBroker(options: RouteCleanupOptions): Promise<{ ok: true }> {
 	const brokerState = await ensureBrokerState(options);
-	let changed = false;
+	let changed = migrateLegacyTelegramOutboxState(brokerState);
 	for (const [cleanupId, entry] of Object.entries(brokerState.pendingRouteCleanups ?? {})) {
-		if (entry.retryAtMs !== undefined && entry.retryAtMs > now()) continue;
 		if (cleanupTargetsActiveRoute(brokerState, entry.route)) {
 			delete brokerState.pendingRouteCleanups![cleanupId];
 			changed = true;
 			continue;
 		}
-		const markedControls = markQueuedControlsCleared(brokerState, [], QUEUED_CONTROL_TEXT.cleared, (control) => queuedControlBelongsToRoute(control, entry.route));
-		if (markedControls.length > 0) {
-			changed = true;
-			await options.persistBrokerState();
-		}
-		const pendingQueuedControls = Object.values(brokerState.queuedTurnControls ?? {}).filter((control) => queuedControlBelongsToRoute(control, entry.route) && control.statusMessageId !== undefined && control.completedText !== undefined && control.statusMessageFinalizedAtMs === undefined);
-		const queuedControlCleanup = await finalizeQueuedControlMessages(options, brokerState, pendingQueuedControls);
-		if (queuedControlCleanup.deferred) {
-			entry.retryAtMs = queuedControlCleanup.retryAtMs;
-			brokerState.queuedTurnControlCleanupRetryAtMs = queuedControlCleanup.retryAtMs;
-			entry.updatedAtMs = now();
-			changed = true;
-			continue;
-		}
-		if (pendingQueuedControls.some((control) => control.statusMessageFinalizedAtMs === undefined)) continue;
-		await options.assertCanDeleteRoute?.();
-		if (brokerState.pendingRouteCleanups?.[cleanupId] !== entry) continue;
-		if (cleanupTargetsActiveRoute(brokerState, entry.route)) {
-			delete brokerState.pendingRouteCleanups![cleanupId];
-			changed = true;
-			continue;
-		}
-		try {
-			await options.callTelegram("deleteForumTopic", { chat_id: entry.route.chatId, message_thread_id: entry.route.messageThreadId });
-			delete brokerState.pendingRouteCleanups![cleanupId];
-			changed = true;
-		} catch (error) {
-			if (isAlreadyDeletedTelegramTopic(error)) {
-				delete brokerState.pendingRouteCleanups![cleanupId];
-				changed = true;
-				continue;
-			}
-			if (isTerminalTelegramTopicCleanupError(error)) {
-				delete brokerState.pendingRouteCleanups![cleanupId];
-				changed = true;
-				options.logTerminalCleanupFailure?.(entry.route, topicCleanupFailureReason(error));
-				continue;
-			}
-			entry.retryAtMs = now() + (getTelegramRetryAfterMs(error) ?? DEFAULT_ROUTE_CLEANUP_RETRY_MS) + 250;
-			entry.updatedAtMs = now();
-			changed = true;
-		}
+		const markedControls = markRouteQueuedControlsForCleanup(brokerState, entry.route);
+		changed = markedControls.length > 0 || changed;
 	}
 	if (changed) await options.persistBrokerState();
+	await drainTelegramCleanupOutbox(options);
 	return { ok: true };
 }
 
@@ -317,7 +235,7 @@ export async function honorExplicitDisconnectRequestInBroker(options: SessionCle
 		finalizedSessionControls = markQueuedControlsCleared(brokerState, [], QUEUED_CONTROL_TEXT.cleared, (control) => control.sessionId === targetSessionId);
 		if (targetRoutes.length === 0) {
 			await options.persistBrokerState();
-			await finalizeQueuedControlMessages(options, brokerState, finalizedSessionControls);
+			await enqueueAndDrainQueuedControlFinalizations(options, brokerState, finalizedSessionControls);
 			await cleanupSessionTempDirIfPossible(options, brokerState);
 			options.refreshTelegramStatus();
 			return { ok: true, honored: true };
@@ -329,13 +247,8 @@ export async function honorExplicitDisconnectRequestInBroker(options: SessionCle
 	const removedTurnIds = removeTurnStateForRoutes(brokerState, targetRoutes, options.stopTypingLoop);
 	const finalizedControls = requestTargetsCurrentConnection ? finalizedSessionControls : markQueuedControlsCleared(brokerState, removedTurnIds, QUEUED_CONTROL_TEXT.cleared, (control) => targetRoutes.some((route) => queuedControlBelongsToRoute(control, route)));
 	await options.persistBrokerState();
-	const queuedControlCleanup = await finalizeQueuedControlMessages(options, brokerState, finalizedControls);
-	if (queuedControlCleanup.deferred) {
-		brokerState.queuedTurnControlCleanupRetryAtMs = queuedControlCleanup.retryAtMs;
-		deferPendingRouteCleanups(brokerState, queuedControlCleanup.retryAtMs);
-		await options.persistBrokerState();
-	}
-	if (!queuedControlCleanup.deferred) await retryPendingRouteCleanupsInBroker(options);
+	await enqueueAndDrainQueuedControlFinalizations(options, brokerState, finalizedControls);
+	await retryPendingRouteCleanupsInBroker(options);
 	await cleanupSessionTempDirIfPossible(options, brokerState);
 	options.refreshTelegramStatus();
 	return { ok: true, honored: true };
@@ -348,13 +261,8 @@ export async function unregisterSessionFromBroker(options: SessionCleanupOptions
 	await options.cancelPendingFinalDeliveries?.(targetSessionId);
 	const finalizedControls = await removeSessionFromBrokerState(options, brokerState);
 	await options.persistBrokerState();
-	const queuedControlCleanup = await finalizeQueuedControlMessages(options, brokerState, finalizedControls);
-	if (queuedControlCleanup.deferred) {
-		brokerState.queuedTurnControlCleanupRetryAtMs = queuedControlCleanup.retryAtMs;
-		deferPendingRouteCleanups(brokerState, queuedControlCleanup.retryAtMs);
-		await options.persistBrokerState();
-	}
-	if (!queuedControlCleanup.deferred) await retryPendingRouteCleanupsInBroker(options);
+	await enqueueAndDrainQueuedControlFinalizations(options, brokerState, finalizedControls);
+	await retryPendingRouteCleanupsInBroker(options);
 	await cleanupSessionTempDirIfPossible(options, brokerState);
 	options.refreshTelegramStatus();
 	return { ok: true };
@@ -373,13 +281,8 @@ export async function markSessionOfflineInBroker(options: SessionCleanupOptions)
 	}
 	const finalizedControls = markQueuedControlsCleared(brokerState, [], QUEUED_CONTROL_TEXT.cleared, (control) => control.sessionId === targetSessionId);
 	await options.persistBrokerState();
-	const queuedControlCleanup = await finalizeQueuedControlMessages(options, brokerState, finalizedControls);
-	if (queuedControlCleanup.deferred) {
-		brokerState.queuedTurnControlCleanupRetryAtMs = queuedControlCleanup.retryAtMs;
-		deferPendingRouteCleanups(brokerState, queuedControlCleanup.retryAtMs);
-		await options.persistBrokerState();
-	}
-	if (!queuedControlCleanup.deferred) await retryPendingRouteCleanupsInBroker(options);
+	await enqueueAndDrainQueuedControlFinalizations(options, brokerState, finalizedControls);
+	await retryPendingRouteCleanupsInBroker(options);
 	await cleanupSessionTempDirIfPossible(options, brokerState);
 	options.refreshTelegramStatus();
 	return { ok: true };

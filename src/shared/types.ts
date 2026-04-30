@@ -284,6 +284,38 @@ export interface PendingRouteCleanup {
 	retryAtMs?: number;
 }
 
+export type TelegramOutboxJobKind = "queued_control_status_edit" | "route_topic_delete";
+export type TelegramOutboxJobStatus = "pending" | "delivering" | "completed" | "terminal";
+
+export interface TelegramOutboxJobBase {
+	id: string;
+	kind: TelegramOutboxJobKind;
+	status: TelegramOutboxJobStatus;
+	createdAtMs: number;
+	updatedAtMs: number;
+	retryAtMs?: number;
+	attempts: number;
+	terminalReason?: string;
+	completedAtMs?: number;
+}
+
+export interface QueuedControlStatusEditOutboxJob extends TelegramOutboxJobBase {
+	kind: "queued_control_status_edit";
+	controlToken: string;
+	chatId: number | string;
+	messageThreadId?: number;
+	messageId: number;
+	text: string;
+}
+
+export interface RouteTopicDeleteOutboxJob extends TelegramOutboxJobBase {
+	kind: "route_topic_delete";
+	cleanupId: string;
+	route: TelegramRoute;
+}
+
+export type TelegramOutboxJob = QueuedControlStatusEditOutboxJob | RouteTopicDeleteOutboxJob;
+
 export interface TelegramPreviewState {
 	mode: "draft" | "message";
 	draftId?: number;
@@ -411,6 +443,8 @@ export interface BrokerState {
 	pendingTurns?: Record<string, { turn: PendingTelegramTurn; updatedAtMs: number }>;
 	pendingAssistantFinals?: Record<string, PendingAssistantFinalDelivery>;
 	pendingRouteCleanups?: Record<string, PendingRouteCleanup>;
+	telegramOutbox?: Record<string, TelegramOutboxJob>;
+	telegramOutboxRetryAtMs?: number;
 	assistantPreviewMessages?: Record<string, AssistantPreviewMessageRef>;
 	selectorSelections?: Record<string, TelegramSelectorSelection>;
 	modelPickers?: Record<string, TelegramModelPickerState>;

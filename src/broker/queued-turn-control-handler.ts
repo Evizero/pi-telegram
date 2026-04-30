@@ -1,10 +1,11 @@
 import type { BrokerState, CancelQueuedTurnResult, ConvertQueuedTurnToSteerResult, PendingTelegramTurn, QueuedTurnControlState, SessionRegistration, TelegramCallbackQuery } from "../shared/types.js";
 import { errorMessage, now, randomId } from "../shared/utils.js";
-import { getTelegramRetryAfterMs } from "../telegram/api.js";
-import { editTelegramTextMessage } from "../telegram/message-ops.js";
 import type { TelegramCommandRouterDeps } from "./command-types.js";
 import { answerControlCallback } from "./inline-controls.js";
-import { callbackMatchesQueuedTurnControl, DEFAULT_QUEUED_CONTROL_EDIT_RETRY_MS, isTransientQueuedControlEditError, markExpiredControlVisible, markMissingPendingControlHandled, markQueuedTurnControlExpired, parseQueuedTurnControlCallback, pruneQueuedTurnControls, queuedControlBelongsToRoute, queuedControlNeedsVisibleFinalization, QUEUED_CONTROL_TEXT, queuedTurnControlCallbackData, QUEUED_TURN_CONTROL_TTL_MS, setQueuedControlTerminal, type QueuedTurnControlAction } from "./queued-controls.js";
+import { callbackMatchesQueuedTurnControl, markExpiredControlVisible, markMissingPendingControlHandled, markQueuedTurnControlExpired, parseQueuedTurnControlCallback, pruneQueuedTurnControls, queuedControlBelongsToRoute, queuedControlNeedsVisibleFinalization, QUEUED_CONTROL_TEXT, queuedTurnControlCallbackData, QUEUED_TURN_CONTROL_TTL_MS, setQueuedControlTerminal, type QueuedTurnControlAction } from "./queued-controls.js";
+import { createTelegramOutboxRunnerState, drainTelegramOutboxInBroker, enqueueQueuedControlStatusEditJob } from "./telegram-outbox.js";
+
+const defaultQueuedControlOutboxRunner = createTelegramOutboxRunnerState();
 
 export class QueuedTurnControlHandler {
 	constructor(private readonly deps: TelegramCommandRouterDeps) {}
@@ -142,25 +143,12 @@ export class QueuedTurnControlHandler {
 		const brokerState = this.deps.getBrokerState();
 		if (!brokerState?.queuedTurnControls || turnIds.length === 0) return false;
 		let changed = this.markExpired(turnIds, text);
-		if (changed) await this.deps.persistBrokerState();
-		if (brokerState.queuedTurnControlCleanupRetryAtMs !== undefined) {
-			if (brokerState.queuedTurnControlCleanupRetryAtMs > now()) return changed;
-			delete brokerState.queuedTurnControlCleanupRetryAtMs;
-			changed = true;
-			await this.deps.persistBrokerState();
-		}
 		for (const control of Object.values(brokerState.queuedTurnControls)) {
 			if (!turnIds.includes(control.turnId) || !queuedControlNeedsVisibleFinalization(control)) continue;
-			try {
-				changed = await this.finalizeStatusMessage(control, control.completedText!) || changed;
-				if (brokerState.queuedTurnControlCleanupRetryAtMs !== undefined && brokerState.queuedTurnControlCleanupRetryAtMs > now()) return changed;
-			} catch (error) {
-				if (getTelegramRetryAfterMs(error) === undefined) throw error;
-				brokerState.queuedTurnControlCleanupRetryAtMs = control.statusMessageRetryAtMs;
-				await this.deps.persistBrokerState();
-				throw error;
-			}
+			changed = enqueueQueuedControlStatusEditJob(brokerState, control) || changed;
 		}
+		if (changed) await this.deps.persistBrokerState();
+		await this.drainOutbox();
 		return changed;
 	}
 
@@ -168,34 +156,17 @@ export class QueuedTurnControlHandler {
 		const brokerState = this.deps.getBrokerState();
 		if (!brokerState?.queuedTurnControls) return false;
 		let changed = false;
-		if (brokerState.queuedTurnControlCleanupRetryAtMs !== undefined) {
-			if (brokerState.queuedTurnControlCleanupRetryAtMs > now()) return false;
-			delete brokerState.queuedTurnControlCleanupRetryAtMs;
-			changed = true;
-			await this.deps.persistBrokerState();
-		}
 		for (const control of Object.values(brokerState.queuedTurnControls)) {
 			const missingPendingTurn = brokerState.pendingTurns?.[control.turnId] === undefined;
 			let marked = false;
 			if (control.status === "expired" && !control.completedText) marked = markExpiredControlVisible(control, QUEUED_CONTROL_TEXT.noLongerWaiting);
 			else if (control.status === "offered" && (control.expiresAtMs < now() || missingPendingTurn)) marked = markQueuedTurnControlExpired(control, QUEUED_CONTROL_TEXT.noLongerWaiting);
 			else if (missingPendingTurn && (control.status === "converting" || control.status === "cancelling")) marked = markMissingPendingControlHandled(control);
-			if (marked) {
-				changed = true;
-				await this.deps.persistBrokerState();
-			}
-			if (queuedControlNeedsVisibleFinalization(control)) {
-				try {
-					changed = await this.finalizeStatusMessage(control, control.completedText!) || changed;
-					if (brokerState.queuedTurnControlCleanupRetryAtMs !== undefined && brokerState.queuedTurnControlCleanupRetryAtMs > now()) return true;
-				} catch (error) {
-					if (getTelegramRetryAfterMs(error) === undefined) throw error;
-					brokerState.queuedTurnControlCleanupRetryAtMs = control.statusMessageRetryAtMs;
-					await this.deps.persistBrokerState();
-					return true;
-				}
-			}
+			if (queuedControlNeedsVisibleFinalization(control)) changed = enqueueQueuedControlStatusEditJob(brokerState, control) || changed;
+			changed = marked || changed;
 		}
+		if (changed) await this.deps.persistBrokerState();
+		await this.drainOutbox();
 		return changed;
 	}
 
@@ -308,12 +279,6 @@ export class QueuedTurnControlHandler {
 	}
 
 	private async tryEditControlMessage(query: TelegramCallbackQuery, control: QueuedTurnControlState, text: string): Promise<void> {
-		const brokerState = this.deps.getBrokerState();
-		if (brokerState?.queuedTurnControlCleanupRetryAtMs !== undefined) {
-			if (brokerState.queuedTurnControlCleanupRetryAtMs > now()) return;
-			delete brokerState.queuedTurnControlCleanupRetryAtMs;
-			await this.deps.persistBrokerState();
-		}
 		const messageId = query.message?.message_id ?? control.statusMessageId;
 		if (messageId === undefined) return;
 		await this.finalizeStatusMessage(control, text, messageId);
@@ -322,32 +287,30 @@ export class QueuedTurnControlHandler {
 	private async finalizeStatusMessage(control: QueuedTurnControlState, text: string, messageId = control.statusMessageId): Promise<boolean> {
 		if (messageId === undefined) return false;
 		if (control.statusMessageFinalizedAtMs !== undefined && control.completedText === text) return false;
-		try {
-			await editTelegramTextMessage(this.deps.callTelegramForQueuedControlCleanup ?? this.deps.callTelegram, control.chatId, messageId, text);
-		} catch (error) {
-			const retryAfterMs = getTelegramRetryAfterMs(error);
-			if (retryAfterMs !== undefined) {
-				control.statusMessageRetryAtMs = now() + retryAfterMs + 250;
-				const brokerState = this.deps.getBrokerState();
-				if (brokerState) brokerState.queuedTurnControlCleanupRetryAtMs = control.statusMessageRetryAtMs;
-				control.updatedAtMs = now();
-				await this.deps.persistBrokerState();
-				throw error;
-			}
-			if (isTransientQueuedControlEditError(error)) {
-				control.statusMessageRetryAtMs = now() + DEFAULT_QUEUED_CONTROL_EDIT_RETRY_MS;
-				const brokerState = this.deps.getBrokerState();
-				if (brokerState) brokerState.queuedTurnControlCleanupRetryAtMs = control.statusMessageRetryAtMs;
-				control.updatedAtMs = now();
-				await this.deps.persistBrokerState();
-				return false;
-			}
-		}
+		control.statusMessageId = messageId;
 		control.completedText = text;
-		control.statusMessageRetryAtMs = undefined;
-		control.statusMessageFinalizedAtMs = now();
+		control.statusMessageFinalizedAtMs = undefined;
 		control.updatedAtMs = now();
-		await this.deps.persistBrokerState();
-		return true;
+		const brokerState = this.deps.getBrokerState();
+		if (!brokerState) return false;
+		const changed = enqueueQueuedControlStatusEditJob(brokerState, control);
+		if (changed) await this.deps.persistBrokerState();
+		await this.drainOutbox();
+		return control.statusMessageFinalizedAtMs !== undefined;
+	}
+
+	private async drainOutbox(): Promise<void> {
+		await drainTelegramOutboxInBroker(this.deps.telegramOutbox ?? defaultQueuedControlOutboxRunner, {
+			getBrokerState: this.deps.getBrokerState,
+			loadBrokerState: async () => {
+				const brokerState = this.deps.getBrokerState();
+				if (!brokerState) throw new Error("Broker state is not loaded");
+				return brokerState;
+			},
+			setBrokerState: () => undefined,
+			persistBrokerState: this.deps.persistBrokerState,
+			callTelegram: this.deps.callTelegramForQueuedControlCleanup ?? this.deps.callTelegram,
+			jobKinds: ["queued_control_status_edit"],
+		});
 	}
 }

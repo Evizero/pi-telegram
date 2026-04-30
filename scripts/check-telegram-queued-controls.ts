@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import { TelegramApiError } from "../src/telegram/api.js";
+import { routeTopicDeleteJobId } from "../src/broker/telegram-outbox.js";
 import type { PendingTelegramTurn, QueuedTurnControlState } from "../src/shared/types.js";
 import { callbackQuery, createRouter, message, queuedControlCallbackDataByText, state } from "./support/telegram-command-fixtures.js";
 import type { IpcCall, TelegramCall } from "./support/telegram-command-fixtures.js";
@@ -98,6 +99,38 @@ async function checkQueuedFollowUpControlFinalizesWhenTurnStartsNormally(): Prom
 	assert.equal(telegramCalls.some((call) => call.method === "answerCallbackQuery" && call.body.text === "This queued follow-up is no longer waiting."), true);
 }
 
+async function checkQueuedControlOutboxDrainDoesNotDeleteRouteTopics(): Promise<void> {
+	const brokerState = state();
+	const route = brokerState.routes["123:9"]!;
+	brokerState.routes = {};
+	brokerState.pendingRouteCleanups = { [route.routeId]: { route, createdAtMs: Date.now() - 10_000, updatedAtMs: Date.now() - 10_000 } };
+	brokerState.telegramOutbox = {
+		[routeTopicDeleteJobId(route.routeId)]: {
+			id: routeTopicDeleteJobId(route.routeId),
+			kind: "route_topic_delete",
+			status: "pending",
+			cleanupId: route.routeId,
+			route,
+			createdAtMs: Date.now() - 10_000,
+			updatedAtMs: Date.now() - 10_000,
+			attempts: 0,
+		},
+	};
+	const ipcCalls: IpcCall[] = [];
+	const sentReplies: string[] = [];
+	const telegramCalls: TelegramCall[] = [];
+	const router = createRouter(brokerState, ipcCalls, sentReplies, telegramCalls, () => 1, async <TResponse>(method: string, body: Record<string, unknown>) => {
+		telegramCalls.push({ method, body });
+		return true as TResponse;
+	});
+
+	await router.retryQueuedTurnControlFinalizations();
+
+	assert.deepEqual(telegramCalls.filter((call) => call.method === "deleteForumTopic"), []);
+	assert.equal(brokerState.pendingRouteCleanups[route.routeId] !== undefined, true);
+	assert.equal(brokerState.telegramOutbox[routeTopicDeleteJobId(route.routeId)]?.status, "pending");
+}
+
 async function checkQueuedControlRetryAfterDoesNotBlockCommands(): Promise<void> {
 	const brokerState = state();
 	const control: QueuedTurnControlState = {
@@ -159,7 +192,7 @@ async function checkQueuedControlRetryAfterDoesNotBlockCommands(): Promise<void>
 	assert.equal(secondControl.statusMessageFinalizedAtMs, undefined);
 }
 
-async function checkTransientQueuedControlCleanupDefersRemainingSweep(): Promise<void> {
+async function checkTransientQueuedControlCleanupDoesNotBlockRemainingSweep(): Promise<void> {
 	const brokerState = state();
 	const firstControl: QueuedTurnControlState = {
 		token: "transient-first",
@@ -202,9 +235,9 @@ async function checkTransientQueuedControlCleanupDefersRemainingSweep(): Promise
 
 	await router.retryQueuedTurnControlFinalizations();
 
-	assert.equal(telegramCalls.filter((call) => call.method === "editMessageText").length, 1);
+	assert.equal(telegramCalls.filter((call) => call.method === "editMessageText").length, 2);
 	assert.equal(firstControl.statusMessageFinalizedAtMs, undefined);
-	assert.equal(secondControl.statusMessageFinalizedAtMs, undefined);
+	assert.equal(typeof secondControl.statusMessageFinalizedAtMs, "number");
 	assert.ok((brokerState.queuedTurnControlCleanupRetryAtMs ?? 0) > Date.now());
 }
 
@@ -232,7 +265,7 @@ async function checkQueuedControlCleanupRetryAfterIsRetried(): Promise<void> {
 	await router.dispatch([message("queued cleanup retry", 48)]);
 	const control = Object.values(brokerState.queuedTurnControls ?? {})[0]!;
 
-	await assert.rejects(() => router.finalizeQueuedTurnControls([control.turnId], "Queued follow-up has started."), /Too Many Requests/);
+	await router.finalizeQueuedTurnControls([control.turnId], "Queued follow-up has started.");
 	assert.equal(control.status, "expired");
 	assert.equal(control.completedText, "Queued follow-up has started.");
 	assert.equal(control.statusMessageFinalizedAtMs, undefined);
@@ -241,6 +274,7 @@ async function checkQueuedControlCleanupRetryAfterIsRetried(): Promise<void> {
 	assert.equal(telegramCalls.filter((call) => call.method === "editMessageText" && call.body.text === "Queued follow-up has started.").length, 1);
 	control.statusMessageRetryAtMs = 0;
 	brokerState.queuedTurnControlCleanupRetryAtMs = 0;
+	brokerState.telegramOutboxRetryAtMs = 0;
 
 	await router.dispatch([message("/status", 49)]);
 
@@ -280,6 +314,7 @@ async function checkQueuedControlCleanupTransientEditFailureIsRetried(): Promise
 	assert.ok((control.statusMessageRetryAtMs ?? 0) > Date.now());
 	control.statusMessageRetryAtMs = 0;
 	brokerState.queuedTurnControlCleanupRetryAtMs = 0;
+	brokerState.telegramOutboxRetryAtMs = 0;
 
 	await router.dispatch([message("/status", 62)]);
 
@@ -438,6 +473,7 @@ async function checkStopCleanupRetryAfterDoesNotReplayAbort(): Promise<void> {
 	assert.equal(ipcCalls.filter((call) => call.type === "abort_turn").length, 1);
 	control.statusMessageRetryAtMs = 0;
 	brokerState.queuedTurnControlCleanupRetryAtMs = 0;
+	brokerState.telegramOutboxRetryAtMs = 0;
 
 	await router.dispatch([message("/status", 56)]);
 
@@ -593,9 +629,10 @@ async function checkCancelledControlEditRetryAfterIsRetried(): Promise<void> {
 	await router.dispatch([message("cancel edit retry", 49)]);
 	const cancelData = queuedControlCallbackDataByText(telegramCalls, "Cancel");
 
-	await assert.rejects(() => router.dispatchCallback(callbackQuery(cancelData)), /Too Many Requests/);
+	await router.dispatchCallback(callbackQuery(cancelData));
 	Object.values(brokerState.queuedTurnControls ?? {})[0]!.statusMessageRetryAtMs = 0;
 	brokerState.queuedTurnControlCleanupRetryAtMs = 0;
+	brokerState.telegramOutboxRetryAtMs = 0;
 	await router.dispatchCallback(callbackQuery(cancelData));
 
 	assert.equal(ipcCalls.filter((call) => call.type === "cancel_queued_turn").length, 1);
@@ -681,9 +718,10 @@ async function checkConvertedSteerControlEditRetryAfterIsRetried(): Promise<void
 	await router.dispatch([message("queue edit retry", 43)]);
 	const callbackData = queuedControlCallbackDataByText(telegramCalls, "Steer now");
 
-	await assert.rejects(() => router.dispatchCallback(callbackQuery(callbackData)), /Too Many Requests/);
+	await router.dispatchCallback(callbackQuery(callbackData));
 	Object.values(brokerState.queuedTurnControls ?? {})[0]!.statusMessageRetryAtMs = 0;
 	brokerState.queuedTurnControlCleanupRetryAtMs = 0;
+	brokerState.telegramOutboxRetryAtMs = 0;
 	await router.dispatchCallback(callbackQuery(callbackData));
 
 	assert.equal(ipcCalls.filter((call) => call.type === "convert_queued_turn_to_steer").length, 1);
@@ -848,11 +886,12 @@ async function checkStaleQueuedFollowUpControlDoesNotConvert(): Promise<void> {
 	assert.equal(telegramCalls.some((call) => call.method === "answerCallbackQuery" && call.body.show_alert === true), true);
 }
 
+await checkQueuedControlOutboxDrainDoesNotDeleteRouteTopics();
 await checkQueuedStatusRetryAfterRetriesWithoutRedeliveryDuplicate();
 await checkQueuedFollowUpSteerControlConvertsOnce();
 await checkQueuedFollowUpControlFinalizesWhenTurnStartsNormally();
 await checkQueuedControlRetryAfterDoesNotBlockCommands();
-await checkTransientQueuedControlCleanupDefersRemainingSweep();
+await checkTransientQueuedControlCleanupDoesNotBlockRemainingSweep();
 await checkQueuedControlCleanupRetryAfterIsRetried();
 await checkQueuedControlCleanupTransientEditFailureIsRetried();
 await checkLegacyExpiredControlFinalizesVisibleButtons();

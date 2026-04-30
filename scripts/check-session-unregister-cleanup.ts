@@ -114,6 +114,7 @@ async function checkQueuedControlRetryAfterDefersTopicCleanup(): Promise<void> {
 
 	queuedControl.statusMessageRetryAtMs = Date.now() - 1;
 	brokerState.queuedTurnControlCleanupRetryAtMs = Date.now() - 1;
+	brokerState.telegramOutboxRetryAtMs = Date.now() - 1;
 	brokerState.pendingRouteCleanups![topicRoute().routeId]!.retryAtMs = Date.now() - 1;
 	await retryPendingRouteCleanupsInBroker({
 		getBrokerState: () => brokerState,
@@ -191,6 +192,48 @@ async function checkRouteCleanupFinalizesUnmarkedQueuedControlsBeforeTopicDeleti
 	assert.deepEqual(Object.keys(brokerState.pendingRouteCleanups ?? {}), []);
 }
 
+async function checkUnregisterDoesNotDeleteOtherPendingRouteBeforeControlsMarked(): Promise<void> {
+	const otherRoute = { ...topicRoute("session-2"), routeId: "chat-1:10", messageThreadId: 10 };
+	const otherControl: QueuedTurnControlState = {
+		token: "other-control",
+		turnId: "other-turn",
+		sessionId: otherRoute.sessionId,
+		routeId: otherRoute.routeId,
+		chatId: otherRoute.chatId,
+		messageThreadId: otherRoute.messageThreadId,
+		statusMessageId: 90,
+		status: "offered",
+		createdAtMs: Date.now(),
+		updatedAtMs: Date.now(),
+		expiresAtMs: Date.now() + 60_000,
+	};
+	const brokerState = state({
+		pendingRouteCleanups: { [otherRoute.routeId]: { route: otherRoute, createdAtMs: Date.now() - 10_000, updatedAtMs: Date.now() - 10_000 } },
+		queuedTurnControls: { [otherControl.token]: otherControl },
+	});
+	const calls: Array<{ method: string; thread?: unknown; message?: unknown }> = [];
+	await unregisterSessionFromBroker({
+		targetSessionId: "session-1",
+		getBrokerState: () => brokerState,
+		loadBrokerState: async () => brokerState,
+		setBrokerState: () => undefined,
+		persistBrokerState: async () => undefined,
+		refreshTelegramStatus: () => undefined,
+		stopTypingLoop: () => undefined,
+		callTelegram: async <TResponse>(method: string, body: Record<string, unknown>) => {
+			calls.push({ method, thread: body.message_thread_id, message: body.message_id });
+			return true as TResponse;
+		},
+	});
+
+	const otherEditIndex = calls.findIndex((call) => call.method === "editMessageText" && call.message === 90);
+	const otherDeleteIndex = calls.findIndex((call) => call.method === "deleteForumTopic" && call.thread === 10);
+	assert.ok(otherEditIndex >= 0);
+	assert.ok(otherDeleteIndex > otherEditIndex);
+	assert.equal(otherControl.status, "expired");
+	assert.equal(typeof otherControl.statusMessageFinalizedAtMs, "number");
+}
+
 async function checkRetryPendingRouteCleanupCompletesAfterTransientFailure(): Promise<void> {
 	const brokerState = state({ sessions: {}, routes: {}, pendingTurns: {}, pendingAssistantFinals: {}, assistantPreviewMessages: {}, selectorSelections: {}, pendingRouteCleanups: { [topicRoute().routeId]: { route: topicRoute(), createdAtMs: Date.now() - 10_000, updatedAtMs: Date.now() - 10_000, retryAtMs: Date.now() - 1 } } });
 	const calls: Array<Record<string, unknown>> = [];
@@ -208,7 +251,7 @@ async function checkRetryPendingRouteCleanupCompletesAfterTransientFailure(): Pr
 
 	assert.deepEqual(calls, [{ chat_id: 111, message_thread_id: 9 }]);
 	assert.deepEqual(Object.keys(brokerState.pendingRouteCleanups ?? {}), []);
-	assert.equal(persisted, 1);
+	assert.ok(persisted >= 1);
 }
 
 async function checkAlreadyDeletedTopicCleanupIsIdempotent(): Promise<void> {
@@ -250,6 +293,7 @@ async function checkTerminalAuthFailureIsSurfacedAndCleared(): Promise<void> {
 await checkUnregisterQueuesRetryableTopicCleanupAndDropsSessionState();
 await checkQueuedControlRetryAfterDefersTopicCleanup();
 await checkRouteCleanupFinalizesUnmarkedQueuedControlsBeforeTopicDeletion();
+await checkUnregisterDoesNotDeleteOtherPendingRouteBeforeControlsMarked();
 await checkRetryPendingRouteCleanupCompletesAfterTransientFailure();
 await checkAlreadyDeletedTopicCleanupIsIdempotent();
 await checkTerminalAuthFailureIsSurfacedAndCleared();
