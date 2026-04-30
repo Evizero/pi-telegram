@@ -3,8 +3,8 @@ title: "Create shared lifecycle state-machine conventions for turns finals and h
 type: "request"
 created: "2026-04-28"
 author: "Christof Stocker"
-status: "open"
-planned_as: []
+status: "planned"
+planned_as: ["extract-client-telegram-turn-lifecycle"]
 ---
 Source: Telegram voice note transcribed on 2026-04-28. The user clarified that the earlier audit was too micro-detail oriented and asked to zoom out across files to judge whether the codebase is becoming incoherent, duplicated, divergent, or duct-taped together, and whether a cleanup is needed.
 

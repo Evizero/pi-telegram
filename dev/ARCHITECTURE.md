@@ -586,12 +586,16 @@ routing and session lists.
 These modules keep session identity and model metadata separate from Telegram
 command parsing.
 
-Client turn and finalization modules own execution-side lifecycle decisions:
-turn delivery, abort handling, manual-compaction gating, route shutdown, and
-retry-aware active-turn finalization belong under `src/client/` rather than in
-broker modules or Telegram API modules. The client may protect assistant-final
-handoff until the broker durably accepts the payload, but after acceptance the
-broker final ledger owns delivery, retry ordering, terminal outcomes, and visible
+Client turn and finalization modules own execution-side lifecycle decisions.
+`client/turn-lifecycle.ts` is the named owner for active Telegram turn state,
+queued follow-up state, awaiting-final gates, abort callbacks, completed and
+disconnected turn dedupe, outbound attachment queueing on an active turn, and
+the shared manual-compaction queue boundary used by turn delivery, abort, route
+shutdown, and pi hooks. Retry-aware active-turn finalization and client-side
+assistant-final handoff also belong under `src/client/` rather than in broker
+modules or Telegram API modules. The client may protect assistant-final handoff
+until the broker durably accepts the payload, but after acceptance the broker
+final ledger owns delivery, retry ordering, terminal outcomes, and visible
 progress.
 
 ### pi integration: `src/pi/hooks.ts`
@@ -952,21 +956,20 @@ requirements, and guidance together when the API contract changes.
 
 ### Composition root size
 
-`src/extension.ts` remains the largest file and is above the 1,000-line guard
-rail.
-It is acceptable only as a transitional composition root; it should shrink as
-future work extracts cohesive broker lease/state/session lifecycle, client turn
-lifecycle, and client final-handoff modules.
+`src/extension.ts` remains the largest file, but it is now below the 1,000-line
+guard rail after the client runtime host and turn-lifecycle extractions. It is
+still a transitional composition root; future work should keep shrinking it by
+extracting cohesive broker lease/state/session lifecycle and client final-handoff
+composition where those seams become clear.
 Extraction should preserve dependency injection and ownership boundaries rather
 than merely moving a god file to another name.
 
-The next planned maintainability slice is to extract an explicit client runtime
-host under `src/client/` for client server lifecycle, broker registration and
-heartbeat, route state, stale-client stand-down, client IPC dispatch, and
-start-next-turn gating. That slice should leave broker polling/election, broker
-IPC routing, Telegram command semantics, route cleanup, and broker-owned final
-delivery behavior unchanged. Later slices may extract broker runtime hosting,
-broker IPC routing, and state-store concerns after client ownership is clearer.
+Recent maintainability slices extracted the client runtime host and explicit
+client turn lifecycle under `src/client/`. Later slices may extract broker
+runtime hosting, broker IPC routing, state-store concerns, and narrower
+client-final-handoff composition while leaving broker polling/election, Telegram
+command semantics, route cleanup, and broker-owned final delivery behavior
+unchanged.
 
 ### Behavior-check harness pressure
 
@@ -1062,6 +1065,10 @@ ownership.
 - `src/broker/sessions.ts` — broker-side offline/unregister cleanup.
 - `src/broker/updates.ts` — Telegram polling, authorization gate, update offset,
   media groups, offline marking, and pending-turn retry.
+- `src/client/turn-lifecycle.ts` — named owner for active/queued/deferred
+  Telegram turn state, awaiting-final gating, current abort callbacks,
+  completed/disconnected turn dedupe, active-turn attachment queueing, and
+  start-next-turn coordination.
 - `src/client/final-delivery.ts` — current client-side assistant-final handoff
   retry queue; target ownership is pre-broker-acceptance handoff only, not
   durable Telegram final delivery.

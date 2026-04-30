@@ -5,7 +5,6 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { CLIENT_HEARTBEAT_MS, BROKER_DIR } from "../shared/config.js";
-import { QUEUED_CONTROL_TEXT } from "../shared/queued-control-text.js";
 import type {
 	ActiveTelegramTurn,
 	AssistantFinalPayload,
@@ -20,6 +19,7 @@ import type {
 	IpcEnvelope,
 	ModelSummary,
 	PendingTelegramTurn,
+	QueuedAttachment,
 	SessionRegistration,
 	TelegramConfig,
 	TelegramRoute,
@@ -28,8 +28,9 @@ import { ensurePrivateDir, errorMessage, now, randomId } from "../shared/utils.j
 import { connectTelegramClient } from "./connection.js";
 import { ClientRuntime } from "./runtime.js";
 import { collectSessionRegistration as buildSessionRegistration } from "./session-registration.js";
-import { ManualCompactionTurnQueue } from "./manual-compaction.js";
 import { shutdownTelegramClientRoute } from "./route-shutdown.js";
+import type { ManualCompactionTurnQueue } from "./manual-compaction.js";
+import { ClientTelegramTurnLifecycle } from "./turn-lifecycle.js";
 
 export interface ClientRuntimeHostFinalizer {
 	cancel(): void;
@@ -100,27 +101,16 @@ export class ClientRuntimeHost {
 	private clientSocketPath: string;
 	private activeClientSocketPath: string | undefined;
 	private connectedRoute: TelegramRoute | undefined;
-	private queuedTelegramTurns: PendingTelegramTurn[] = [];
-	private activeTelegramTurn: ActiveTelegramTurn | undefined;
-	private currentAbort: (() => void) | undefined;
-	private awaitingTelegramFinalTurnId: string | undefined;
-	private readonly completedTurnIds = new Set<string>();
-	private readonly disconnectedTurnIds = new Set<string>();
-	private readonly manualCompactionQueue: ManualCompactionTurnQueue;
+	private readonly turnLifecycle: ClientTelegramTurnLifecycle;
 	private readonly clientRuntime: ClientRuntime;
 
 	constructor(private readonly deps: ClientRuntimeHostDeps) {
 		this.clientSocketPath = join(BROKER_DIR, `client-${this.deps.ownerId}.sock`);
-		this.manualCompactionQueue = new ManualCompactionTurnQueue({
-			getQueuedTelegramTurns: () => this.queuedTelegramTurns,
-			setQueuedTelegramTurns: (turns) => { this.queuedTelegramTurns = turns; },
-			getActiveTelegramTurn: () => this.activeTelegramTurn,
-			hasAwaitingTelegramFinalTurn: () => this.awaitingTelegramFinalTurnId !== undefined,
-			setActiveTelegramTurn: (turn) => { this.activeTelegramTurn = turn; },
-			prepareTurnAbort: () => {
-				const ctx = this.deps.getLatestCtx();
-				if (ctx) this.currentAbort = () => ctx.abort();
-			},
+		this.turnLifecycle = new ClientTelegramTurnLifecycle({
+			getSessionId: this.deps.getSessionId,
+			getLatestCtx: this.deps.getLatestCtx,
+			getConnectedRoute: () => this.connectedRoute,
+			hasClientServer: () => this.clientServer !== undefined,
 			postTurnStarted: (turnId) => {
 				void this.deps.postIpc(this.deps.getConnectedBrokerSocketPath(), "turn_started", { turnId }, this.deps.getSessionId()).catch(() => undefined);
 			},
@@ -131,17 +121,11 @@ export class ClientRuntimeHost {
 		});
 		this.clientRuntime = new ClientRuntime({
 			pi: this.deps.pi,
-			completedTurnIds: this.completedTurnIds,
+			turnLifecycle: this.turnLifecycle,
 			getSessionId: this.deps.getSessionId,
 			getLatestCtx: this.deps.getLatestCtx,
 			getConnectedRoute: () => this.connectedRoute,
 			isRoutableRoute: this.deps.isRoutableRoute,
-			getActiveTelegramTurn: () => this.activeTelegramTurn,
-			setActiveTelegramTurn: (turn) => { this.activeTelegramTurn = turn; },
-			getQueuedTelegramTurns: () => this.queuedTelegramTurns,
-			getCurrentAbort: () => this.currentAbort,
-			setCurrentAbort: (abort) => { this.currentAbort = abort; },
-			getManualCompactionQueue: () => this.manualCompactionQueue,
 			activeTurnFinalizer: this.deps.activeTurnFinalizer,
 			findPendingFinal: (turnId) => this.deps.assistantFinalHandoff.find(turnId),
 			sendAssistantFinalToBroker: this.deps.sendAssistantFinalToBroker,
@@ -162,20 +146,22 @@ export class ClientRuntimeHost {
 	getConnectionStartedAtMs(): number { return this.clientConnectionStartedAtMs; }
 	getConnectedRoute(): TelegramRoute | undefined { return this.connectedRoute; }
 	setConnectedRoute(route: TelegramRoute | undefined): void { this.connectedRoute = route; }
-	getActiveTelegramTurn(): ActiveTelegramTurn | undefined { return this.activeTelegramTurn; }
-	setActiveTelegramTurn(turn: ActiveTelegramTurn | undefined): void { this.activeTelegramTurn = turn; }
-	getQueuedTelegramTurns(): PendingTelegramTurn[] { return this.queuedTelegramTurns; }
-	setQueuedTelegramTurns(turns: PendingTelegramTurn[]): void { this.queuedTelegramTurns = turns; }
-	getCurrentAbort(): (() => void) | undefined { return this.currentAbort; }
-	setCurrentAbort(abort: (() => void) | undefined): void { this.currentAbort = abort; }
-	hasAwaitingTelegramFinalTurn(): boolean { return this.awaitingTelegramFinalTurnId !== undefined; }
-	setAwaitingTelegramFinalTurn(turnId: string | undefined): void { this.awaitingTelegramFinalTurnId = turnId; }
-	clearAwaitingTelegramFinalTurn(turnId: string): void { if (this.awaitingTelegramFinalTurnId === turnId) this.awaitingTelegramFinalTurnId = undefined; }
-	getAwaitingTelegramFinalTurnId(): string | undefined { return this.awaitingTelegramFinalTurnId; }
-	getManualCompactionQueue(): ManualCompactionTurnQueue { return this.manualCompactionQueue; }
-	isTurnDisconnected(turnId: string): boolean { return this.disconnectedTurnIds.has(turnId); }
+	getActiveTelegramTurn(): ActiveTelegramTurn | undefined { return this.turnLifecycle.getActiveTurn(); }
+	setActiveTelegramTurn(turn: ActiveTelegramTurn | undefined): void { this.turnLifecycle.restoreActiveTurn(turn); }
+	getQueuedTelegramTurns(): PendingTelegramTurn[] { return this.turnLifecycle.getQueuedTurnsSnapshot(); }
+	setQueuedTelegramTurns(turns: PendingTelegramTurn[]): void { this.turnLifecycle.replaceQueuedTurns(turns); }
+	getCurrentAbort(): (() => void) | undefined { return this.turnLifecycle.getCurrentAbort(); }
+	setCurrentAbort(abort: (() => void) | undefined): void { this.turnLifecycle.setCurrentAbort(abort); }
+	queueActiveTelegramAttachments(attachments: QueuedAttachment[], maxAttachments: number): void { this.turnLifecycle.queueActiveTurnAttachments(attachments, maxAttachments); }
+	beginLocalInteractiveTurn(route: TelegramRoute, historyText: string): void { this.turnLifecycle.beginLocalInteractiveTurn(route, historyText); }
+	hasAwaitingTelegramFinalTurn(): boolean { return this.turnLifecycle.hasAwaitingTelegramFinalTurn(); }
+	setAwaitingTelegramFinalTurn(turnId: string | undefined): void { this.turnLifecycle.setAwaitingTelegramFinalTurn(turnId); }
+	clearAwaitingTelegramFinalTurn(turnId: string): void { this.turnLifecycle.clearAwaitingTelegramFinalTurn(turnId); }
+	getAwaitingTelegramFinalTurnId(): string | undefined { return this.turnLifecycle.getAwaitingTelegramFinalTurnId(); }
+	getManualCompactionQueue(): ManualCompactionTurnQueue { return this.turnLifecycle.getManualCompactionQueue(); }
+	isTurnDisconnected(turnId: string): boolean { return this.turnLifecycle.isTurnDisconnected(turnId); }
 	hasClientServer(): boolean { return this.clientServer !== undefined; }
-	hasLiveAgentRun(): boolean { return this.currentAbort !== undefined; }
+	hasLiveAgentRun(): boolean { return this.turnLifecycle.hasLiveAgentRun(); }
 
 	collectSessionRegistration(ctx: ExtensionContext): Promise<SessionRegistration> {
 		return buildSessionRegistration({
@@ -187,9 +173,9 @@ export class ClientRuntimeHost {
 			connectionNonce: this.clientConnectionNonce,
 			clientSocketPath: this.clientSocketPath,
 			piSessionName: this.deps.pi.getSessionName(),
-			activeTelegramTurn: this.activeTelegramTurn,
-			queuedTelegramTurns: this.queuedTelegramTurns,
-			manualCompactionInProgress: this.manualCompactionQueue.isActive(),
+			activeTelegramTurn: this.turnLifecycle.getActiveTurn(),
+			queuedTelegramTurns: this.turnLifecycle.getQueuedTurnsSnapshot(),
+			manualCompactionInProgress: this.turnLifecycle.getManualCompactionQueue().isActive(),
 			replacement: this.deps.getSessionReplacementContext(),
 		});
 	}
@@ -282,18 +268,8 @@ export class ClientRuntimeHost {
 	}
 
 	ensureCurrentTurnMirroredToTelegram(ctx: ExtensionContext | undefined, historyText: string): void {
-		if (!ctx || ctx.isIdle() || this.activeTelegramTurn || !this.deps.isRoutableRoute(this.connectedRoute)) return;
-		this.activeTelegramTurn = {
-			turnId: randomId("local"),
-			sessionId: this.deps.getSessionId(),
-			routeId: this.connectedRoute.routeId,
-			chatId: this.connectedRoute.chatId,
-			messageThreadId: this.connectedRoute.messageThreadId,
-			replyToMessageId: 0,
-			queuedAttachments: [],
-			content: [],
-			historyText,
-		};
+		if (!this.deps.isRoutableRoute(this.connectedRoute)) return;
+		this.turnLifecycle.ensureCurrentTurnMirroredToTelegram(ctx, historyText);
 	}
 
 	connectTelegram(ctx: ExtensionContext, notify = true): Promise<void> {
@@ -324,39 +300,28 @@ export class ClientRuntimeHost {
 
 	async standDownStaleClientConnection(options?: { acknowledgeBroker?: boolean }): Promise<void> {
 		try {
-			this.currentAbort?.();
+			this.turnLifecycle.getCurrentAbort()?.();
 		} catch {
 			// Best-effort abort during stale-connection stand-down.
 		}
 		const deferredPayload = this.deps.activeTurnFinalizer.consumeDeferredPayload();
 		this.deps.assistantFinalHandoff.setPersistedDeferredPayload(deferredPayload);
 		if (!deferredPayload) this.deps.activeTurnFinalizer.cancel();
-		if (this.activeTelegramTurn && this.activeTelegramTurn.turnId !== deferredPayload?.turn.turnId) {
-			await this.deps.assistantFinalHandoff.enqueueAbortedFinal(this.activeTelegramTurn);
-			this.rememberDisconnectedTurn(this.activeTelegramTurn.turnId);
+		const activeTurn = this.turnLifecycle.getActiveTurn();
+		if (activeTurn && activeTurn.turnId !== deferredPayload?.turn.turnId) {
+			await this.deps.assistantFinalHandoff.enqueueAbortedFinal(activeTurn);
+			this.turnLifecycle.rememberDisconnectedTurn(activeTurn.turnId);
 		}
 		await this.deps.assistantFinalHandoff.persistPending(this.deps.getSessionId());
-		this.queuedTelegramTurns = [];
-		for (const turn of this.manualCompactionQueue.clearPendingRemainder()) this.rememberDisconnectedTurn(turn.turnId);
-		this.manualCompactionQueue.reset();
-		this.awaitingTelegramFinalTurnId = undefined;
-		this.currentAbort = undefined;
-		this.activeTelegramTurn = undefined;
+		this.turnLifecycle.clearRouteTurnState();
 		if (options?.acknowledgeBroker) await this.deps.acknowledgeStaleClientConnection(this.clientConnectionNonce);
 		await this.stopClientServer();
 	}
 
 	discardTelegramClientRouteState(): void {
 		this.deps.activeTurnFinalizer.cancel();
-		this.currentAbort = undefined;
-		this.awaitingTelegramFinalTurnId = undefined;
-		if (this.activeTelegramTurn) this.rememberDisconnectedTurn(this.activeTelegramTurn.turnId);
-		for (const turn of this.queuedTelegramTurns) this.rememberDisconnectedTurn(turn.turnId);
-		for (const turn of this.manualCompactionQueue.clearPendingRemainder()) this.rememberDisconnectedTurn(turn.turnId);
-		this.manualCompactionQueue.reset();
 		shutdownTelegramClientRoute({
-			setQueuedTelegramTurns: (turns) => { this.queuedTelegramTurns = turns; },
-			setActiveTelegramTurn: (turn) => { this.activeTelegramTurn = turn; },
+			clearTurnLifecycle: () => this.turnLifecycle.clearRouteTurnState({ rememberActiveAsDisconnected: true }),
 			setConnectedRoute: (route) => { this.connectedRoute = route; },
 			clearAssistantFinalHandoff: () => this.deps.assistantFinalHandoff.clearQueue(),
 		});
@@ -367,11 +332,12 @@ export class ClientRuntimeHost {
 		try {
 			if (this.deps.activeTurnFinalizer.hasDeferredTurn()) await this.deps.activeTurnFinalizer.releaseDeferredTurn({ markCompleted: false, startNext: false, deliverAbortedFinal: true, requireDelivery: true });
 			await this.deps.assistantFinalHandoff.handoffPendingForShutdown();
-			if (this.activeTelegramTurn) {
+			const activeTurn = this.turnLifecycle.getActiveTurn();
+			if (activeTurn) {
 				try {
-					await this.deps.clearAssistantPreviewInBroker(this.activeTelegramTurn.turnId, this.activeTelegramTurn.chatId, this.activeTelegramTurn.messageThreadId, false);
+					await this.deps.clearAssistantPreviewInBroker(activeTurn.turnId, activeTurn.chatId, activeTurn.messageThreadId, false);
 				} catch {
-					await this.deps.assistantFinalHandoff.enqueueAbortedFinal(this.activeTelegramTurn);
+					await this.deps.assistantFinalHandoff.enqueueAbortedFinal(activeTurn);
 				}
 			}
 		} catch (error) {
@@ -379,15 +345,8 @@ export class ClientRuntimeHost {
 			throw error;
 		} finally {
 			this.deps.activeTurnFinalizer.cancel();
-			this.currentAbort = undefined;
-			this.awaitingTelegramFinalTurnId = undefined;
-			if (this.activeTelegramTurn) this.rememberDisconnectedTurn(this.activeTelegramTurn.turnId);
-			for (const turn of this.queuedTelegramTurns) this.rememberDisconnectedTurn(turn.turnId);
-			for (const turn of this.manualCompactionQueue.clearPendingRemainder()) this.rememberDisconnectedTurn(turn.turnId);
-			this.manualCompactionQueue.reset();
 			shutdownTelegramClientRoute({
-				setQueuedTelegramTurns: (turns) => { this.queuedTelegramTurns = turns; },
-				setActiveTelegramTurn: (turn) => { this.activeTelegramTurn = turn; },
+				clearTurnLifecycle: () => this.turnLifecycle.clearRouteTurnState({ rememberActiveAsDisconnected: true }),
 				setConnectedRoute: (route) => { this.connectedRoute = route; },
 				clearAssistantFinalHandoff: () => this.deps.assistantFinalHandoff.clearQueue(),
 				clearAssistantFinalQueue,
@@ -462,23 +421,7 @@ export class ClientRuntimeHost {
 	}
 
 	startNextTelegramTurn(): void {
-		if (this.manualCompactionQueue.isActive() || this.activeTelegramTurn || this.awaitingTelegramFinalTurnId || !this.connectedRoute || !this.clientServer) return;
-		const turn = this.queuedTelegramTurns.shift();
-		if (!turn) return;
-		const activeTurn = { ...turn, queuedAttachments: [] };
-		const previousAbort = this.currentAbort;
-		this.activeTelegramTurn = activeTurn;
-		const ctx = this.deps.getLatestCtx();
-		if (ctx) this.currentAbort = () => ctx.abort();
-		try {
-			this.deps.pi.sendUserMessage(turn.content, turn.deliveryMode === "followUp" ? { deliverAs: "followUp" } : undefined);
-		} catch (error) {
-			if (this.activeTelegramTurn?.turnId === turn.turnId) this.activeTelegramTurn = undefined;
-			this.currentAbort = previousAbort;
-			this.queuedTelegramTurns.unshift(turn);
-			throw error;
-		}
-		void this.deps.postIpc(this.deps.getConnectedBrokerSocketPath(), "turn_started", { turnId: turn.turnId }, this.deps.getSessionId()).catch(() => undefined);
+		this.turnLifecycle.startNextTelegramTurn();
 	}
 
 	clientStatusText(): Promise<string> {
@@ -501,11 +444,4 @@ export class ClientRuntimeHost {
 		return this.clientRuntime.setModel(selector, exact);
 	}
 
-	private rememberDisconnectedTurn(turnId: string): void {
-		this.disconnectedTurnIds.add(turnId);
-		if (this.disconnectedTurnIds.size > 1000) {
-			const oldestTurnId = this.disconnectedTurnIds.values().next().value;
-			if (oldestTurnId) this.disconnectedTurnIds.delete(oldestTurnId);
-		}
-	}
 }

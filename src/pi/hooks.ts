@@ -22,8 +22,10 @@ export interface RuntimePiHooksDeps {
 	hasAwaitingTelegramFinalTurn: () => boolean;
 	hasLiveAgentRun: () => boolean;
 	flushDeferredTelegramTurn: (options?: { startNext?: boolean }) => Promise<string | undefined>;
-	setActiveTelegramTurn: (turn: ActiveTelegramTurn | undefined) => void;
-	setQueuedTelegramTurns: (turns: PendingTelegramTurn[]) => void;
+	queueActiveTelegramAttachments?: (attachments: QueuedAttachment[], maxAttachments: number) => void;
+	beginLocalInteractiveTurn?: (route: TelegramRoute, historyText: string) => void;
+	setActiveTelegramTurn?: (turn: ActiveTelegramTurn | undefined) => void;
+	setQueuedTelegramTurns?: (turns: PendingTelegramTurn[]) => void;
 	setCurrentAbort: (abort: (() => void) | undefined) => void;
 	getSessionId: () => string;
 	getOwnerId: () => string;
@@ -74,10 +76,7 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 			paths: Type.Array(Type.String({ description: "Local file path to attach" }), { minItems: 1, maxItems: MAX_ATTACHMENTS_PER_TURN }),
 		}),
 		async execute(_toolCallId, params) {
-			const activeTelegramTurn = deps.getActiveTelegramTurn();
-			if (!activeTelegramTurn) throw new Error("telegram_attach can only be used while replying to an active Telegram turn");
 			if (!params.paths?.length) throw new Error("At least one attachment path is required");
-			if (activeTelegramTurn.queuedAttachments.length + params.paths.length > MAX_ATTACHMENTS_PER_TURN) throw new Error(`Attachment limit reached (${MAX_ATTACHMENTS_PER_TURN})`);
 			const validated: Array<{ path: string; fileName: string }> = [];
 			for (const inputPath of params.paths) {
 				const attachmentPath = await deps.resolveAllowedAttachmentPath(inputPath);
@@ -87,7 +86,13 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 				if (stats.size > MAX_FILE_BYTES) throw new Error(`File too large: ${inputPath}`);
 				validated.push({ path: attachmentPath, fileName: basename(attachmentPath) });
 			}
-			activeTelegramTurn.queuedAttachments.push(...validated);
+			if (deps.queueActiveTelegramAttachments) deps.queueActiveTelegramAttachments(validated, MAX_ATTACHMENTS_PER_TURN);
+			else {
+				const activeTelegramTurn = deps.getActiveTelegramTurn();
+				if (!activeTelegramTurn) throw new Error("telegram_attach can only be used while replying to an active Telegram turn");
+				if (activeTelegramTurn.queuedAttachments.length + validated.length > MAX_ATTACHMENTS_PER_TURN) throw new Error(`Attachment limit reached (${MAX_ATTACHMENTS_PER_TURN})`);
+				activeTelegramTurn.queuedAttachments.push(...validated);
+			}
 			return { content: [{ type: "text", text: `Queued ${validated.length} Telegram attachment(s).` }], details: { paths: validated.map((entry) => entry.path) } };
 		},
 	});
@@ -180,7 +185,8 @@ export function registerRuntimePiHooks(pi: ExtensionAPI, deps: RuntimePiHooksDep
 			messageThreadId: connectedRoute.messageThreadId,
 		}, deps.getSessionId()).catch(() => undefined);
 		if (!deps.getActiveTelegramTurn() && !deps.hasAwaitingTelegramFinalTurn() && !(flushedDeferredTurnId && deps.hasLiveAgentRun())) {
-			deps.setActiveTelegramTurn({
+			if (deps.beginLocalInteractiveTurn) deps.beginLocalInteractiveTurn(connectedRoute, text);
+			else deps.setActiveTelegramTurn?.({
 				turnId: randomId("local"),
 				sessionId: deps.getSessionId(),
 				routeId: connectedRoute.routeId,

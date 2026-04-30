@@ -7,20 +7,18 @@ import { clientCompactSession } from "./compact.js";
 import { clientQueryGitRepository as buildClientQueryGitRepository } from "./git-status.js";
 import { clientQueryModels as buildClientQueryModels, clientSetModel as setClientModel, clientStatusText as buildClientStatusText } from "./info.js";
 import { clientDeliverTelegramTurn } from "./turn-delivery.js";
+import { ClientTelegramTurnLifecycle } from "./turn-lifecycle.js";
 
 export interface ClientRuntimeDeps {
 	pi: ExtensionAPI;
-	completedTurnIds: Set<string>;
-	getSessionId: () => string;
-	getLatestCtx: () => ExtensionContext | undefined;
-	getConnectedRoute: () => TelegramRoute | undefined;
-	isRoutableRoute: (route: TelegramRoute | undefined) => route is TelegramRoute;
-	getActiveTelegramTurn: () => ActiveTelegramTurn | undefined;
-	setActiveTelegramTurn: (turn: ActiveTelegramTurn | undefined) => void;
-	getQueuedTelegramTurns: () => PendingTelegramTurn[];
-	getCurrentAbort: () => (() => void) | undefined;
-	setCurrentAbort: (abort: (() => void) | undefined) => void;
-	getManualCompactionQueue: () => {
+	turnLifecycle?: ClientTelegramTurnLifecycle;
+	completedTurnIds?: Set<string>;
+	getActiveTelegramTurn?: () => ActiveTelegramTurn | undefined;
+	setActiveTelegramTurn?: (turn: ActiveTelegramTurn | undefined) => void;
+	getQueuedTelegramTurns?: () => PendingTelegramTurn[];
+	getCurrentAbort?: () => (() => void) | undefined;
+	setCurrentAbort?: (abort: (() => void) | undefined) => void;
+	getManualCompactionQueue?: () => {
 		isActive(): boolean;
 		hasDeferredTurn(turnId: string): boolean;
 		enqueueDeferredTurn(turn: PendingTelegramTurn): boolean;
@@ -31,6 +29,10 @@ export interface ClientRuntimeDeps {
 		start(): void;
 		finish(): void;
 	};
+	getSessionId: () => string;
+	getLatestCtx: () => ExtensionContext | undefined;
+	getConnectedRoute: () => TelegramRoute | undefined;
+	isRoutableRoute: (route: TelegramRoute | undefined) => route is TelegramRoute;
 	activeTurnFinalizer: {
 		hasDeferredTurn(turnId?: string): boolean;
 		releaseDeferredTurn(options?: { markCompleted?: boolean; startNext?: boolean; deliverAbortedFinal?: boolean; requireDelivery?: boolean }): Promise<string | undefined>;
@@ -46,93 +48,141 @@ export interface ClientRuntimeDeps {
 }
 
 export class ClientRuntime {
-	constructor(private readonly deps: ClientRuntimeDeps) {}
+	private readonly turnLifecycle: ClientTelegramTurnLifecycle;
+
+	constructor(private readonly deps: ClientRuntimeDeps) {
+		this.turnLifecycle = deps.turnLifecycle ?? this.createLegacyLifecycle(deps);
+	}
 
 	rememberCompletedLocalTurn(turnId: string): void {
-		this.deps.completedTurnIds.add(turnId);
-		if (this.deps.completedTurnIds.size > 1000) {
-			const oldestTurnId = this.deps.completedTurnIds.values().next().value;
-			if (oldestTurnId) this.deps.completedTurnIds.delete(oldestTurnId);
+		this.turnLifecycle.rememberCompletedTurn(turnId);
+		this.deps.completedTurnIds?.add(turnId);
+	}
+
+	private syncLegacyLifecycleFromDeps(): void {
+		if (this.deps.turnLifecycle) return;
+		if (this.deps.getQueuedTelegramTurns) this.turnLifecycle.replaceQueuedTurns(this.deps.getQueuedTelegramTurns());
+		if (this.deps.completedTurnIds) this.turnLifecycle.replaceCompletedTurns(this.deps.completedTurnIds);
+		this.turnLifecycle.restoreActiveTurn(this.deps.getActiveTelegramTurn?.());
+		this.turnLifecycle.setCurrentAbort(this.deps.getCurrentAbort?.());
+	}
+
+	private createLegacyLifecycle(deps: ClientRuntimeDeps): ClientTelegramTurnLifecycle {
+		const lifecycle = new ClientTelegramTurnLifecycle({
+
+			getSessionId: deps.getSessionId,
+			getLatestCtx: deps.getLatestCtx,
+			getConnectedRoute: deps.getConnectedRoute,
+			hasClientServer: () => true,
+			postTurnStarted: () => undefined,
+			sendUserMessage: (content, options) => { void deps.pi.sendUserMessage(content, options); },
+			acknowledgeConsumedTurn: (turnId, text) => { void deps.acknowledgeConsumedTurn(turnId, text); },
+		});
+		lifecycle.replaceQueuedTurns(deps.getQueuedTelegramTurns?.() ?? []);
+		const activeTurn = deps.getActiveTelegramTurn?.();
+		if (activeTurn) lifecycle.restoreActiveTurn(activeTurn);
+		for (const turnId of deps.completedTurnIds ?? []) lifecycle.rememberCompletedTurn(turnId);
+		const manualQueue = deps.getManualCompactionQueue?.();
+		if (manualQueue) {
+			const lifecycleManualQueue = lifecycle.getManualCompactionQueue();
+			lifecycleManualQueue.isActive = manualQueue.isActive.bind(manualQueue);
+			lifecycleManualQueue.removeDeferredTurn = manualQueue.removeDeferredTurn.bind(manualQueue);
+			lifecycleManualQueue.hasDeferredTurn = manualQueue.hasDeferredTurn.bind(manualQueue);
+			lifecycleManualQueue.enqueueDeferredTurn = manualQueue.enqueueDeferredTurn.bind(manualQueue);
+			lifecycleManualQueue.peekPendingRemainder = manualQueue.peekPendingRemainder.bind(manualQueue);
+			lifecycleManualQueue.clearPendingRemainder = manualQueue.clearPendingRemainder.bind(manualQueue);
+			lifecycleManualQueue.cancelDeferredStart = manualQueue.cancelDeferredStart.bind(manualQueue);
+			lifecycleManualQueue.start = manualQueue.start.bind(manualQueue);
+			lifecycleManualQueue.finish = manualQueue.finish.bind(manualQueue);
 		}
+		const originalRestoreActive = lifecycle.restoreActiveTurn.bind(lifecycle);
+		lifecycle.restoreActiveTurn = (turn) => {
+			originalRestoreActive(turn);
+			deps.setActiveTelegramTurn?.(turn);
+		};
+		const originalSetAbort = lifecycle.setCurrentAbort.bind(lifecycle);
+		lifecycle.setCurrentAbort = (abort) => {
+			originalSetAbort(abort);
+			deps.setCurrentAbort?.(abort);
+		};
+		return lifecycle;
 	}
 
 	deliverTurn(turn: PendingTelegramTurn): Promise<ClientDeliverTurnResult> {
+		this.syncLegacyLifecycleFromDeps();
 		return clientDeliverTelegramTurn({
 			turn,
-			completedTurnIds: this.deps.completedTurnIds,
-			queuedTelegramTurns: this.deps.getQueuedTelegramTurns(),
-			getActiveTelegramTurn: this.deps.getActiveTelegramTurn,
+			turnLifecycle: this.turnLifecycle,
 			getCtx: this.deps.getLatestCtx,
-			isManualCompactionInProgress: () => this.deps.getManualCompactionQueue().isActive(),
-			hasDeferredCompactionTurn: (turnId) => this.deps.getManualCompactionQueue().hasDeferredTurn(turnId),
-			enqueueDeferredCompactionTurn: (deferredTurn) => this.deps.getManualCompactionQueue().enqueueDeferredTurn(deferredTurn),
 			findPendingFinal: this.deps.findPendingFinal,
 			sendAssistantFinalToBroker: this.deps.sendAssistantFinalToBroker,
 			acknowledgeConsumedTurn: this.deps.acknowledgeConsumedTurn,
-			ensureCurrentTurnMirroredToTelegram: this.deps.ensureCurrentTurnMirroredToTelegram,
+			ensureCurrentTurnMirroredToTelegram: (ctx, historyText) => {
+				this.deps.ensureCurrentTurnMirroredToTelegram(ctx, historyText);
+				if (!this.deps.turnLifecycle) {
+					const activeTurn = this.deps.getActiveTelegramTurn?.();
+					if (activeTurn) this.turnLifecycle.restoreActiveTurn(activeTurn);
+				}
+			},
 			sendUserMessage: (content, options) => { void this.deps.pi.sendUserMessage(content, options); },
 			startNextTelegramTurn: this.deps.startNextTelegramTurn,
 		});
 	}
 
 	async convertQueuedTurnToSteer(request: ConvertQueuedTurnToSteerRequest): Promise<ConvertQueuedTurnToSteerResult> {
-		if (this.deps.completedTurnIds.has(request.turnId)) return { status: "already_handled", text: "This queued follow-up was already handled.", turnId: request.turnId };
-		const activeTurn = this.deps.getActiveTelegramTurn();
+		this.syncLegacyLifecycleFromDeps();
+		if (this.turnLifecycle.hasCompletedTurn(request.turnId)) return { status: "already_handled", text: "This queued follow-up was already handled.", turnId: request.turnId };
+		const activeTurn = this.turnLifecycle.getActiveTurn();
 		const ctx = this.deps.getLatestCtx();
 		if (!activeTurn || !ctx || ctx.isIdle()) return { status: "stale", text: "There is no active turn to steer anymore.", turnId: request.turnId };
 		if (request.targetActiveTurnId && activeTurn.turnId !== request.targetActiveTurnId) return { status: "stale", text: "That queued follow-up no longer targets the active turn.", turnId: request.turnId };
-		const queuedTurns = this.deps.getQueuedTelegramTurns();
-		const queuedIndex = queuedTurns.findIndex((turn) => turn.turnId === request.turnId);
-		const removed = queuedIndex >= 0 ? queuedTurns.splice(queuedIndex, 1)[0] : this.deps.getManualCompactionQueue().removeDeferredTurn(request.turnId);
-		if (!removed) return { status: "not_found", text: "That queued follow-up is no longer waiting.", turnId: request.turnId };
+		const taken = this.turnLifecycle.takeQueuedOrDeferredTurn(request.turnId);
+		if (!taken) return { status: "not_found", text: "That queued follow-up is no longer waiting.", turnId: request.turnId };
 		try {
-			this.deps.pi.sendUserMessage(removed.content, { deliverAs: "steer" });
+			this.deps.pi.sendUserMessage(taken.turn.content, { deliverAs: "steer" });
 		} catch (error) {
-			if (queuedIndex >= 0) queuedTurns.splice(queuedIndex, 0, removed);
-			else this.deps.getManualCompactionQueue().enqueueDeferredTurn(removed);
+			this.turnLifecycle.restoreTakenQueuedOrDeferredTurn(taken);
 			throw error;
 		}
-		await this.deps.acknowledgeConsumedTurn(removed.turnId, QUEUED_CONTROL_TEXT.steered);
-		return { status: "converted", text: QUEUED_CONTROL_TEXT.steered, turnId: removed.turnId };
+		await this.deps.acknowledgeConsumedTurn(taken.turn.turnId, QUEUED_CONTROL_TEXT.steered);
+		this.turnLifecycle.rememberCompletedTurn(taken.turn.turnId);
+		return { status: "converted", text: QUEUED_CONTROL_TEXT.steered, turnId: taken.turn.turnId };
 	}
 
 	async cancelQueuedTurn(request: CancelQueuedTurnRequest): Promise<CancelQueuedTurnResult> {
-		if (this.deps.completedTurnIds.has(request.turnId)) return { status: "already_handled", text: "This queued follow-up was already handled.", turnId: request.turnId };
-		if (this.deps.getActiveTelegramTurn()?.turnId === request.turnId) return { status: "stale", text: "That follow-up has already started.", turnId: request.turnId };
-		const queuedTurns = this.deps.getQueuedTelegramTurns();
-		const queuedIndex = queuedTurns.findIndex((turn) => turn.turnId === request.turnId);
-		const removed = queuedIndex >= 0 ? queuedTurns.splice(queuedIndex, 1)[0] : this.deps.getManualCompactionQueue().removeDeferredTurn(request.turnId);
-		if (!removed) return { status: "not_found", text: "That queued follow-up is no longer waiting.", turnId: request.turnId };
-		await this.deps.acknowledgeConsumedTurn(removed.turnId, QUEUED_CONTROL_TEXT.cancelled);
+		this.syncLegacyLifecycleFromDeps();
+		if (this.turnLifecycle.hasCompletedTurn(request.turnId)) return { status: "already_handled", text: "This queued follow-up was already handled.", turnId: request.turnId };
+		if (this.turnLifecycle.getActiveTurn()?.turnId === request.turnId) return { status: "stale", text: "That follow-up has already started.", turnId: request.turnId };
+		const taken = this.turnLifecycle.takeQueuedOrDeferredTurn(request.turnId);
+		if (!taken) return { status: "not_found", text: "That queued follow-up is no longer waiting.", turnId: request.turnId };
+		await this.deps.acknowledgeConsumedTurn(taken.turn.turnId, QUEUED_CONTROL_TEXT.cancelled);
+		this.turnLifecycle.rememberCompletedTurn(taken.turn.turnId);
 		this.deps.startNextTelegramTurn();
-		return { status: "cancelled", text: QUEUED_CONTROL_TEXT.cancelled, turnId: removed.turnId };
+		return { status: "cancelled", text: QUEUED_CONTROL_TEXT.cancelled, turnId: taken.turn.turnId };
 	}
 
 	abortTurn(): Promise<{ text: string; clearedTurnIds: string[] }> {
+		this.syncLegacyLifecycleFromDeps();
 		const ctx = this.deps.getLatestCtx();
-		const activeTurn = this.deps.getActiveTelegramTurn();
+		const activeTurn = this.turnLifecycle.getActiveTurn();
 		const fallbackAbort = ctx && activeTurn && !this.deps.activeTurnFinalizer.hasDeferredTurn(activeTurn.turnId) ? () => ctx.abort() : undefined;
 		return clientAbortTelegramTurn({
-			queuedTelegramTurns: this.deps.getQueuedTelegramTurns(),
-			peekManualCompactionRemainder: () => this.deps.getManualCompactionQueue().peekPendingRemainder(),
-			clearManualCompactionRemainder: () => this.deps.getManualCompactionQueue().clearPendingRemainder(),
-			cancelDeferredCompactionStart: () => this.deps.getManualCompactionQueue().cancelDeferredStart(),
-			getActiveTelegramTurn: this.deps.getActiveTelegramTurn,
-			getAbortActiveTurn: () => this.deps.getCurrentAbort() ?? fallbackAbort,
+			turnLifecycle: this.turnLifecycle,
+			getAbortActiveTurn: () => this.turnLifecycle.getCurrentAbort() ?? fallbackAbort,
 			releaseDeferredTurn: (options) => this.deps.activeTurnFinalizer.releaseDeferredTurn(options),
-			rememberCompletedLocalTurn: (turnId) => this.rememberCompletedLocalTurn(turnId),
 		});
 	}
 
 	async statusText(sessionName: string): Promise<string> {
+		this.syncLegacyLifecycleFromDeps();
 		return buildClientStatusText({
 			ctx: this.deps.getLatestCtx(),
 			connectedRoute: this.deps.getConnectedRoute(),
 			sessionName,
 			lease: await this.deps.readLease(),
-			activeTelegramTurn: this.deps.getActiveTelegramTurn(),
-			queuedTurnCount: this.deps.getQueuedTelegramTurns().length,
-			manualCompactionInProgress: this.deps.getManualCompactionQueue().isActive(),
+			activeTelegramTurn: this.turnLifecycle.getActiveTurn(),
+			queuedTurnCount: this.turnLifecycle.queuedTurnCount(),
+			manualCompactionInProgress: this.turnLifecycle.getManualCompactionQueue().isActive(),
 		});
 	}
 
@@ -146,12 +196,12 @@ export class ClientRuntime {
 			createTurnId: () => randomId("cmd"),
 			formatError: errorMessage,
 			onStart: () => {
-				this.deps.getManualCompactionQueue().start();
+				this.turnLifecycle.getManualCompactionQueue().start();
 				const ctx = this.deps.getLatestCtx();
 				if (ctx) this.deps.updateStatus(ctx);
 			},
 			onSettled: () => {
-				this.deps.getManualCompactionQueue().finish();
+				this.turnLifecycle.getManualCompactionQueue().finish();
 				const ctx = onSettledStatus ?? this.deps.getLatestCtx();
 				if (ctx) this.deps.updateStatus(ctx);
 			},
