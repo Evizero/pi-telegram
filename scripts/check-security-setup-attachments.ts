@@ -11,7 +11,7 @@ import type { PendingTelegramTurn } from "../src/client/types.js";
 import type { TelegramConfig } from "../src/shared/config-types.js";
 import { promptForTelegramConfig } from "../src/telegram/setup.js";
 import { sendQueuedAttachment } from "../src/telegram/attachments.js";
-import { TelegramApiError } from "../src/telegram/api.js";
+import { TelegramApiError } from "../src/telegram/api-errors.js";
 
 async function checkWriteJsonCreatesPrivateFilesAndUsesPrivateCreateMode(): Promise<void> {
 	const root = await mkdtemp(join(tmpdir(), "pi-telegram-security-"));

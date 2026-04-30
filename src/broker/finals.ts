@@ -6,7 +6,7 @@ import type { AssistantFinalPayload, QueuedAttachment } from "../client/types.js
 import type { BrokerState, PendingAssistantFinalDelivery } from "./types.js";
 import { isStaleBrokerError } from "./lease.js";
 import { errorMessage, now } from "../shared/utils.js";
-import { getTelegramRetryAfterMs } from "../telegram/api.js";
+import { getTelegramRetryAfterMs } from "../telegram/api-errors.js";
 import { isTerminalTelegramFinalDeliveryError, terminalTelegramFinalDeliveryReason } from "../telegram/final-errors.js";
 import { sendQueuedAttachment } from "../telegram/attachments.js";
 import { isMissingDeletedTelegramMessage, shouldPreserveTelegramMessageRefOnDeleteFailure, shouldRetryTelegramMessageCleanup } from "../telegram/errors.js";

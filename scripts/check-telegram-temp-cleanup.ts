@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { markSessionOfflineInBroker, unregisterSessionFromBroker } from "../src/broker/sessions.js";
 import type { BrokerState, PendingAssistantFinalDelivery, SessionRegistration, TelegramRoute } from "../src/broker/types.js";
 import type { PendingTelegramTurn } from "../src/client/types.js";
-import { TelegramApiError } from "../src/telegram/api.js";
+import { TelegramApiError } from "../src/telegram/api-errors.js";
 import { cleanupDownloadedTelegramSessionTempDirIfUnused, sweepOrphanedDownloadedTelegramSessionTempDirs } from "../src/telegram/temp-files.js";
 
 function sessionRegistration(sessionId: string): SessionRegistration {

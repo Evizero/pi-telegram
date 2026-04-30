@@ -4,7 +4,8 @@ import { randomInt } from "node:crypto";
 import type { TelegramConfig, TelegramUser } from "./types.js";
 import { errorMessage, hashSecret, now } from "../shared/utils.js";
 import { formatPairingPin, PAIRING_PIN_TTL_MS } from "../shared/pairing.js";
-import { callTelegram, TelegramApiError } from "./api.js";
+import { callTelegram } from "./api.js";
+import { TelegramApiError } from "./api-errors.js";
 import { withTelegramRetry } from "./retry.js";
 
 export interface TelegramConfigPromptOptions {

@@ -1,6 +1,6 @@
 import { MAX_MESSAGE_LENGTH, PREVIEW_THROTTLE_MS, TELEGRAM_DRAFT_ID_MAX } from "./policy.js";
 import { chunkParagraphs } from "../shared/format.js";
-import { getTelegramRetryAfterMs } from "./api.js";
+import { getTelegramRetryAfterMs } from "./api-errors.js";
 import {
 	isDraftMethodUnsupported,
 	isMissingDeletedTelegramMessage,

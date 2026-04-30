@@ -3,7 +3,7 @@ import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { TelegramApiError } from "../src/telegram/api.js";
+import { TelegramApiError } from "../src/telegram/api-errors.js";
 import { AssistantFinalRetryQueue } from "../src/client/final-delivery.js";
 import { shutdownTelegramClientRoute } from "../src/client/route-shutdown.js";
 import { processDisconnectRequestsInBroker, readPendingDisconnectRequestsFromDir, type PendingDisconnectRequest } from "../src/broker/disconnect-requests.js";

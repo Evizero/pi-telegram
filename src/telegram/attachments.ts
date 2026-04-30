@@ -5,7 +5,7 @@ import { guessMediaType } from "../shared/format.js";
 import type { PendingTelegramTurn, QueuedAttachment } from "../client/types.js";
 import type { TelegramSentMessage } from "./types.js";
 import { errorMessage } from "../shared/utils.js";
-import { getTelegramRetryAfterMs } from "./api.js";
+import { getTelegramRetryAfterMs } from "./api-errors.js";
 import { isSendPhotoContractError } from "./errors.js";
 
 export { isSendPhotoContractError } from "./errors.js";

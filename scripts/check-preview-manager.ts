@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import type { TelegramPreviewState, TelegramSentMessage } from "../src/telegram/types.js";
 import { PreviewManager } from "../src/telegram/previews.js";
-import { TelegramApiError } from "../src/telegram/api.js";
+import { TelegramApiError } from "../src/telegram/api-errors.js";
 
 interface PreviewManagerInternals {
 	previews: Map<string, TelegramPreviewState>;

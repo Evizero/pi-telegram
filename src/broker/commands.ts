@@ -6,7 +6,7 @@ import type { TelegramCallbackQuery, TelegramMessage } from "../telegram/types.j
 import type { TelegramConfig } from "../shared/config-types.js";
 import type { BrokerState, SessionRegistration, TelegramRoute } from "./types.js";
 import { errorMessage, now } from "../shared/utils.js";
-import { getTelegramRetryAfterMs } from "../telegram/api.js";
+import { getTelegramRetryAfterMs } from "../telegram/api-errors.js";
 import type { TelegramCommandRouterDeps } from "./command-types.js";
 import { messagesWithFirstText, telegramCommandArgs, telegramCommandName } from "./command-text.js";
 import { TelegramGitCommandHandler } from "./git-command.js";

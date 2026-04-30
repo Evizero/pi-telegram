@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import { MAX_MESSAGE_LENGTH } from "../src/telegram/policy.js";
 import type { TelegramMessage } from "../src/telegram/types.js";
-import { TelegramApiError } from "../src/telegram/api.js";
+import { TelegramApiError } from "../src/telegram/api-errors.js";
 import { callbackQuery, callbackQueryForMessage, createRouter, gitCallbackDataByText, message, session, state } from "./support/telegram-command-fixtures.js";
 import type { IpcCall, TelegramCall } from "./support/telegram-command-fixtures.js";
 

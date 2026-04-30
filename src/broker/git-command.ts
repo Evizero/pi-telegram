@@ -2,7 +2,7 @@ import type { ClientGitRepositoryQueryResult, GitRepositoryAction } from "../cli
 import type { TelegramCallbackQuery } from "../telegram/types.js";
 import type { BrokerState, SessionRegistration, TelegramGitControlState, TelegramRoute } from "./types.js";
 import { errorMessage, now } from "../shared/utils.js";
-import { getTelegramRetryAfterMs } from "../telegram/api.js";
+import { getTelegramRetryAfterMs } from "../telegram/api-errors.js";
 import type { TelegramCommandRouterDeps } from "./command-types.js";
 import { createGitControlState, parseGitControlCallback, renderGitControlMenu } from "./git-controls.js";
 import { answerControlCallback, callbackMatchesControlMessage, controlRouteStillValid, tryEditCallbackMessage, tryEditOrSendControlResult, trySendControlReply } from "./inline-controls.js";

@@ -131,10 +131,11 @@ The architecture must preserve long polling instead of webhooks, `retry_after`
 semantics, update-offset durability, file limits, text limits, draft eligibility,
 forum-topic rules, and media-group batching.
 Telegram IO policy is centralized under `src/telegram/`: low-level API calls
-preserve structured and HTTP retry metadata, `errors.ts` owns Telegram error
-classification, and `message-ops.ts` owns shared send/edit/delete/callback
-message operations. Broker and client feature modules should call those policy
-helpers instead of adding local regular-expression classifiers or fallback logic;
+preserve structured and HTTP retry metadata through `api-errors.ts`, `errors.ts`
+owns Telegram error classification, and `message-ops.ts` owns shared
+send/edit/delete/callback message operations. Broker and client feature modules
+should call those policy helpers instead of adding local regular-expression
+classifiers or fallback logic;
 in particular, fallback from Markdown, edit, or photo upload must never consume a
 rate-limit window signaled by Telegram.
 
@@ -757,8 +758,12 @@ contracts plus injected reporter interfaces, not on broker implementation module
 ### Telegram modules: `src/telegram/`
 
 `telegram/api.ts` is the low-level Bot API and file-download boundary.
-It preserves structured Telegram API errors, optional `file_path`, retry signals,
-download limits, and private local file writes.
+It preserves optional `file_path`, download limits, and private local file writes,
+and delegates API error construction to the Telegram error owner.
+
+`telegram/api-errors.ts` owns `TelegramApiError`, Telegram API error construction,
+and retry-signal extraction from structured `retry_after`, HTTP `Retry-After`, and
+compatible generic error messages.
 
 `telegram/retry.ts` centralizes retry-after sleeping behavior around Telegram
 requests that can be safely retried.
@@ -1323,6 +1328,8 @@ ownership.
 - `src/telegram/types.ts` — Telegram Bot API DTOs and Telegram message-operation
   state.
 - `src/telegram/api.ts` — low-level Telegram Bot API calls and downloads.
+- `src/telegram/api-errors.ts` — Telegram API error type, API error construction,
+  and retry-signal extraction.
 - `src/telegram/retry.ts` — retry-after wrapper.
 - `src/telegram/previews.ts` — legacy/in-flight preview state cleanup and finalization compatibility.
 - `src/telegram/attachments.ts` — outbound attachment sending.

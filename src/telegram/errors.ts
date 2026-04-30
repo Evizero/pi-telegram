@@ -1,5 +1,5 @@
 import { errorMessage } from "../shared/utils.js";
-import { getTelegramRetryAfterMs, TelegramApiError } from "./api.js";
+import { getTelegramRetryAfterMs, TelegramApiError } from "./api-errors.js";
 
 export function telegramErrorDescription(error: TelegramApiError): string {
 	return error.description ?? error.message;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { TelegramApiError } from "../src/telegram/api.js";
+import { TelegramApiError } from "../src/telegram/api-errors.js";
 import { routeTopicDeleteJobId } from "../src/broker/telegram-outbox.js";
 import type { QueuedTurnControlState } from "../src/broker/types.js";
 import type { PendingTelegramTurn } from "../src/client/types.js";

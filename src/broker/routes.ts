@@ -4,7 +4,7 @@ import type { BrokerState, SessionRegistration, TelegramRoute } from "./types.js
 import { routeId } from "../shared/format.js";
 import { canonicalRouteKey, routeMatchesTopicIdentity } from "../shared/routing.js";
 import { now } from "../shared/utils.js";
-import { getTelegramRetryAfterMs } from "../telegram/api.js";
+import { getTelegramRetryAfterMs } from "../telegram/api-errors.js";
 
 export { canonicalRouteKey, routeBoundControlBelongsToRoute, routeMatchesTopicIdentity, retargetTurnToRoute, turnBelongsToRoute } from "../shared/routing.js";
 

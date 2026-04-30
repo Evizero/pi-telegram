@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MAX_MESSAGE_LENGTH } from "../src/telegram/policy.js";
-import { callTelegram, callTelegramMultipart, getTelegramRetryAfterMs, TelegramApiError } from "../src/telegram/api.js";
+import { callTelegram, callTelegramMultipart } from "../src/telegram/api.js";
+import { getTelegramRetryAfterMs, TelegramApiError } from "../src/telegram/api-errors.js";
 import {
 	isAlreadyDeletedTelegramTopic,
 	isMissingDeletedTelegramMessage,

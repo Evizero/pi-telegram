@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { TelegramApiError } from "../src/telegram/api.js";
+import { TelegramApiError } from "../src/telegram/api-errors.js";
 import { BrokerSessionRegistrationCoordinator } from "../src/broker/session-registration.js";
 import { ensureRouteForSessionInBroker } from "../src/broker/routes.js";
 import { retryPendingRouteCleanupsInBroker } from "../src/broker/sessions.js";

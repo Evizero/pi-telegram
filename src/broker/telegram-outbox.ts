@@ -1,6 +1,6 @@
 import type { BrokerState, QueuedTurnControlState, RouteTopicDeleteOutboxJob, TelegramOutboxJob, TelegramOutboxJobKind, TelegramRoute } from "./types.js";
 import { now } from "../shared/utils.js";
-import { getTelegramRetryAfterMs } from "../telegram/api.js";
+import { getTelegramRetryAfterMs } from "../telegram/api-errors.js";
 import {
 	isAlreadyDeletedTelegramTopic,
 	isTerminalTelegramTopicCleanupError,

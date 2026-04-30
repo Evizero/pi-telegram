@@ -1,4 +1,4 @@
-import { TelegramApiError } from "../../src/telegram/api.js";
+import { TelegramApiError } from "../../src/telegram/api-errors.js";
 import { BrokerSessionRegistrationCoordinator } from "../../src/broker/session-registration.js";
 import { honorExplicitDisconnectRequestInBroker } from "../../src/broker/sessions.js";
 import type { BrokerState, SessionRegistration, TelegramRoute } from "../../src/broker/types.js";

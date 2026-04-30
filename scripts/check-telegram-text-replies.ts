@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import { MAX_MESSAGE_LENGTH } from "../src/telegram/policy.js";
 import type { TelegramSentMessage } from "../src/telegram/types.js";
-import { TelegramApiError } from "../src/telegram/api.js";
+import { TelegramApiError } from "../src/telegram/api-errors.js";
 import { editTelegramTextMessage, sendTelegramMarkdownReply, sendTelegramTextReply, type TelegramJsonCall } from "../src/telegram/text.js";
 
 interface CapturedCall {

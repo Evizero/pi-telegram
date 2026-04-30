@@ -9,7 +9,7 @@ import type { BrokerLease, BrokerState } from "./types.js";
 import type { TelegramCommandRouter } from "./commands.js";
 import { telegramCommandName } from "./commands.js";
 import { errorMessage, hashSecret, now } from "../shared/utils.js";
-import { getTelegramRetryAfterMs } from "../telegram/api.js";
+import { getTelegramRetryAfterMs } from "../telegram/api-errors.js";
 import { isMissingDeletedTelegramMessage, shouldPreserveTelegramMessageRefOnDeleteFailure } from "../telegram/errors.js";
 import { answerTelegramCallbackQueryBestEffort, deleteTelegramMessage } from "../telegram/message-ops.js";
 import { runBrokerBackgroundTask } from "./background.js";

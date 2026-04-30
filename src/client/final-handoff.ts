@@ -5,7 +5,7 @@ import { BROKER_DIR } from "../shared/paths.js";
 import type { BrokerLease, BrokerState, TelegramRoute } from "../broker/types.js";
 import type { AssistantFinalPayload, PendingTelegramTurn } from "./types.js";
 import { ensurePrivateDir, invalidDurableJson, isRecord, now, readJson, writeJson } from "../shared/utils.js";
-import { getTelegramRetryAfterMs } from "../telegram/api.js";
+import { getTelegramRetryAfterMs } from "../telegram/api-errors.js";
 import { AssistantFinalRetryQueue } from "./final-delivery.js";
 
 export interface ClientAssistantFinalHandoffDeps {

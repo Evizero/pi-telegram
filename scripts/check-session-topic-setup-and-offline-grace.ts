@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { TelegramApiError } from "../src/telegram/api.js";
+import { TelegramApiError } from "../src/telegram/api-errors.js";
 import { createRuntimeUpdateHandlers } from "../src/broker/updates.js";
 import { SESSION_OFFLINE_MS, SESSION_RECONNECT_GRACE_MS } from "../src/broker/policy.js";
 import type { BrokerState } from "../src/broker/types.js";

@@ -1,7 +1,7 @@
 import type { InlineKeyboardMarkup, TelegramCallbackQuery, TelegramControlResultDeliveryProgress } from "../telegram/types.js";
 import type { BrokerState, TelegramRoute } from "./types.js";
 import { now } from "../shared/utils.js";
-import { getTelegramRetryAfterMs } from "../telegram/api.js";
+import { getTelegramRetryAfterMs } from "../telegram/api-errors.js";
 import { answerTelegramCallbackQueryBestEffort, editOrSendTelegramTextFully, editTelegramTextMessage, TelegramTextDeliveryProgressError } from "../telegram/message-ops.js";
 import type { TelegramCommandRouterDeps } from "./command-types.js";
 

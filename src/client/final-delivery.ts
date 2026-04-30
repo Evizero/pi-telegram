@@ -1,6 +1,6 @@
 import type { AssistantFinalPayload } from "./types.js";
 import { now } from "../shared/utils.js";
-import { getTelegramRetryAfterMs } from "../telegram/api.js";
+import { getTelegramRetryAfterMs } from "../telegram/api-errors.js";
 export { isTerminalTelegramFinalDeliveryError, terminalTelegramFinalDeliveryReason } from "../telegram/final-errors.js";
 
 export class AssistantFinalRetryQueue {

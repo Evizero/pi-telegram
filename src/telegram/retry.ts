@@ -1,4 +1,4 @@
-import { getTelegramRetryAfterMs } from "./api.js";
+import { getTelegramRetryAfterMs } from "./api-errors.js";
 
 export async function withTelegramRetry<T>(operation: (signal?: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T> {
 	while (true) {

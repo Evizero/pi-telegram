@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { TelegramApiError } from "../src/telegram/api.js";
+import { TelegramApiError } from "../src/telegram/api-errors.js";
 import { createTelegramOutboxRunnerState, drainTelegramOutboxInBroker, enqueueQueuedControlStatusEditJob, queuedControlStatusEditJobId, routeTopicDeleteJobId } from "../src/broker/telegram-outbox.js";
 import type { BrokerState, QueuedTurnControlState } from "../src/broker/types.js";
 import { state, topicRoute } from "./support/session-route-fixtures.js";
