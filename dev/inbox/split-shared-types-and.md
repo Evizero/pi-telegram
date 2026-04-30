@@ -19,3 +19,9 @@ Desired cleanup direction: split shared definitions by context, for example Tele
 ## Simplification pass note (2026-04-28)
 
 Related simplification: after runtime/control boundaries are clearer, split shared types and constants by bounded context rather than by convenience. This should reduce accidental imports and make policy constants live next to the behavior they govern.
+
+
+
+## Deep-dive update (2026-04-30)
+
+Mostly still current. Some small extractions now exist, such as centralized Telegram error helpers under `src/telegram/errors.ts`, but the broad concern remains: `src/shared/types.ts` still mixes Telegram DTOs, broker durable state, IPC contracts, model picker/Git control state, session state, turn/final lifecycle, and outbox jobs. `src/shared/config.ts` still mixes paths, Telegram limits, broker/session timing, model/control TTLs, temp cleanup, update limits, and prompt text. Treat this as a larger bounded-context refactor, not a quick mechanical split.
