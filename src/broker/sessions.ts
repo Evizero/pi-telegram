@@ -93,6 +93,48 @@ function rememberCompletedTurnId(brokerState: BrokerState, turnId: string): void
 	if (brokerState.completedTurnIds.length > 1000) brokerState.completedTurnIds.splice(0, brokerState.completedTurnIds.length - 1000);
 }
 
+function removeActiveActivityMessagesForTurns(brokerState: BrokerState, turnIds: string[]): void {
+	if (!brokerState.activeActivityMessages || turnIds.length === 0) return;
+	const turnIdSet = new Set(turnIds);
+	for (const [activityId, message] of Object.entries(brokerState.activeActivityMessages)) {
+		if (turnIdSet.has(message.turnId)) delete brokerState.activeActivityMessages[activityId];
+	}
+}
+
+function replacementSessionForActiveActivityMessage(brokerState: BrokerState, targetSessionId: string, message: { turnId: string; sessionId?: string; chatId: number | string; messageThreadId?: number }): string | undefined {
+	for (const session of Object.values(brokerState.sessions)) {
+		if (session.sessionId === targetSessionId || session.activeTurnId !== message.turnId) continue;
+		if (Object.values(brokerState.routes).some((route) => route.sessionId === session.sessionId && String(route.chatId) === String(message.chatId) && route.messageThreadId === message.messageThreadId)) return session.sessionId;
+	}
+	return undefined;
+}
+
+function removeActiveActivityMessagesForSession(brokerState: BrokerState, targetSessionId: string): void {
+	if (!brokerState.activeActivityMessages) return;
+	for (const [activityId, message] of Object.entries(brokerState.activeActivityMessages)) {
+		if (message.sessionId !== targetSessionId) continue;
+		const replacementSessionId = replacementSessionForActiveActivityMessage(brokerState, targetSessionId, message);
+		if (replacementSessionId) {
+			message.sessionId = replacementSessionId;
+			continue;
+		}
+		delete brokerState.activeActivityMessages[activityId];
+	}
+}
+
+function activeActivityMessageBelongsToRoute(message: { sessionId?: string; chatId: number | string; messageThreadId?: number }, route: TelegramRoute): boolean {
+	if (message.sessionId !== undefined && message.sessionId !== route.sessionId) return false;
+	if (message.sessionId === undefined && route.routeMode === "single_chat_selector") return false;
+	return String(message.chatId) === String(route.chatId) && message.messageThreadId === route.messageThreadId;
+}
+
+function removeActiveActivityMessagesForRoutes(brokerState: BrokerState, routes: TelegramRoute[]): void {
+	if (!brokerState.activeActivityMessages || routes.length === 0) return;
+	for (const [activityId, message] of Object.entries(brokerState.activeActivityMessages)) {
+		if (routes.some((route) => activeActivityMessageBelongsToRoute(message, route))) delete brokerState.activeActivityMessages[activityId];
+	}
+}
+
 function removeTurnStateForSession(brokerState: BrokerState, targetSessionId: string, stopTypingLoop: (turnId: string) => void): string[] {
 	const removedTurnIds: string[] = [];
 	for (const [turnId, pending] of Object.entries(brokerState.pendingTurns ?? {})) {
@@ -111,6 +153,7 @@ function removeTurnStateForSession(brokerState: BrokerState, targetSessionId: st
 		removedTurnIds.push(turnId);
 		if (brokerState.assistantPreviewMessages?.[turnId]) delete brokerState.assistantPreviewMessages[turnId];
 	}
+	removeActiveActivityMessagesForTurns(brokerState, removedTurnIds);
 	return removedTurnIds;
 }
 
@@ -154,6 +197,7 @@ function removeTurnStateForRoutes(brokerState: BrokerState, routes: TelegramRout
 		removedTurnIds.push(turnId);
 		if (brokerState.assistantPreviewMessages?.[turnId]) delete brokerState.assistantPreviewMessages[turnId];
 	}
+	removeActiveActivityMessagesForTurns(brokerState, removedTurnIds);
 	return removedTurnIds;
 }
 
@@ -231,6 +275,7 @@ async function removeSessionFromBrokerState(options: SessionCleanupOptions, brok
 	removeSelectorSelectionsForSession(brokerState, options.targetSessionId);
 	removePendingManualCompactionsForSession(brokerState, options.targetSessionId);
 	const removedTurnIds = removeTurnStateForSession(brokerState, options.targetSessionId, options.stopTypingLoop);
+	removeActiveActivityMessagesForSession(brokerState, options.targetSessionId);
 	return markQueuedControlsCleared(brokerState, removedTurnIds, QUEUED_CONTROL_TEXT.cleared, (control) => control.sessionId === options.targetSessionId);
 }
 
@@ -267,6 +312,7 @@ export async function honorExplicitDisconnectRequestInBroker(options: SessionCle
 		delete brokerState.sessions[targetSessionId];
 		removeSelectorSelectionsForSession(brokerState, targetSessionId);
 		removePendingManualCompactionsForSession(brokerState, targetSessionId);
+		removeActiveActivityMessagesForSession(brokerState, targetSessionId);
 		finalizedSessionControls = markQueuedControlsCleared(brokerState, [], QUEUED_CONTROL_TEXT.cleared, (control) => control.sessionId === targetSessionId);
 		if (targetRoutes.length === 0) {
 			await options.persistBrokerState();
@@ -281,6 +327,8 @@ export async function honorExplicitDisconnectRequestInBroker(options: SessionCle
 	for (const route of detachRoutesForDisconnectRequest(brokerState, request)) queueRouteCleanup(brokerState, route);
 	removePendingManualCompactionsForRoutes(brokerState, targetRoutes);
 	const removedTurnIds = removeTurnStateForRoutes(brokerState, targetRoutes, options.stopTypingLoop);
+	removeActiveActivityMessagesForTurns(brokerState, pendingFinalTurnIds);
+	removeActiveActivityMessagesForRoutes(brokerState, targetRoutes);
 	const finalizedControls = requestTargetsCurrentConnection ? finalizedSessionControls : markQueuedControlsCleared(brokerState, removedTurnIds, QUEUED_CONTROL_TEXT.cleared, (control) => targetRoutes.some((route) => queuedControlBelongsToRoute(control, route)));
 	await options.persistBrokerState();
 	await enqueueAndDrainQueuedControlFinalizations(options, brokerState, finalizedControls);
@@ -316,6 +364,7 @@ export async function markSessionOfflineInBroker(options: SessionCleanupOptions)
 	if (!pendingState.hasPendingAssistantFinals) {
 		await clearVisiblePendingTurnPreviews(options, brokerState, targetSessionId);
 		detachRoutesForSessionAndQueueCleanup(brokerState, targetSessionId);
+		removeActiveActivityMessagesForSession(brokerState, targetSessionId);
 	}
 	const finalizedControls = markQueuedControlsCleared(brokerState, [], QUEUED_CONTROL_TEXT.cleared, (control) => control.sessionId === targetSessionId);
 	await options.persistBrokerState();

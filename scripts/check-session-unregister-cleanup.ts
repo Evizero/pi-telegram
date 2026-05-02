@@ -22,6 +22,11 @@ async function checkUnregisterQueuesRetryableTopicCleanupAndDropsSessionState():
 		expiresAtMs: Date.now() + 60_000,
 	};
 	brokerState.queuedTurnControls = { [queuedControl.token]: queuedControl };
+	brokerState.activeActivityMessages = {
+		turn1: { turnId: "turn1", activityId: "turn1", sessionId: "session-1", chatId: 111, messageThreadId: 9, messageId: 80, lines: ["*⏳ working ..."], createdAtMs: Date.now(), updatedAtMs: Date.now() },
+		turn2: { turnId: "turn2", activityId: "turn2", sessionId: "session-1", chatId: 111, messageThreadId: 9, messageId: 81, lines: ["*📖 read file.ts"], createdAtMs: Date.now(), updatedAtMs: Date.now() },
+		other: { turnId: "other", activityId: "other", sessionId: "session-2", chatId: 111, messageThreadId: 10, messageId: 82, lines: ["*📖 read other.ts"], createdAtMs: Date.now(), updatedAtMs: Date.now() },
+	};
 	const stopped: string[] = [];
 	const cleanedTemps: string[] = [];
 	const editCalls: Array<Record<string, unknown>> = [];
@@ -56,6 +61,7 @@ async function checkUnregisterQueuesRetryableTopicCleanupAndDropsSessionState():
 	assert.deepEqual(Object.keys(brokerState.pendingTurns ?? {}), []);
 	assert.deepEqual(Object.keys(brokerState.pendingAssistantFinals ?? {}), []);
 	assert.deepEqual(Object.keys(brokerState.assistantPreviewMessages ?? {}), []);
+	assert.deepEqual(Object.keys(brokerState.activeActivityMessages ?? {}), ["other"]);
 	assert.deepEqual(stopped.sort(), ["turn1", "turn2"]);
 	assert.equal(queuedControl.status, "expired");
 	assert.equal(queuedControl.completedText, "Queued follow-up was cleared.");

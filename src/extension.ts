@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { BROKER_HEARTBEAT_MS, CLIENT_HEARTBEAT_MS } from "./broker/policy.js";
 import { BROKER_DIR, DISCONNECT_REQUESTS_DIR, LOCK_DIR, LOCK_PATH, SESSION_REPLACEMENT_HANDOFFS_DIR, STATE_PATH, TEMP_DIR } from "./shared/paths.js";
-import type { BrokerLease, BrokerState, SessionRegistration, TelegramRoute } from "./broker/types.js";
+import type { ActiveActivityMessageRef, BrokerLease, BrokerState, SessionRegistration, TelegramRoute } from "./broker/types.js";
 import type { PendingTelegramTurn, AssistantFinalPayload } from "./client/types.js";
 import type { IpcEnvelope } from "./shared/ipc-types.js";
 import type { TelegramMediaGroupState, TelegramMessage } from "./telegram/types.js";
@@ -159,11 +159,49 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 	let brokerStatePersistQueue = Promise.resolve();
 	const previewManager = new PreviewManager(callTelegram, sendMarkdownReply, rememberVisiblePreviewMessage, forgetVisiblePreviewMessage);
 	const activityReporter = new ActivityReporter((payload) => postIpc(connectedBrokerSocketPath, "activity_update", payload, sessionId));
-	const activityRenderer = new ActivityRenderer(callTelegram, startTypingLoopFor);
 	const reportPiDiagnostic = createPiDiagnosticReporter({
 		pi,
 		getLatestContext: () => latestCtx,
 		updateStatus,
+	});
+	const activityRenderer = new ActivityRenderer(callTelegramOnce, startTypingLoopFor, {
+		getDurableMessage: (activityId) => brokerState?.activeActivityMessages?.[activityId],
+		listDurableMessages: () => Object.values(brokerState?.activeActivityMessages ?? {}),
+		listDurableMessagesForTurn: (turnId) => Object.values(brokerState?.activeActivityMessages ?? {}).filter((message) => message.turnId === turnId),
+		saveDurableMessage: async (message) => {
+			brokerState ??= await loadBrokerState();
+			brokerState.activeActivityMessages ??= {};
+			if (!activeActivityRenderStillValid(message)) {
+				const current = brokerState.activeActivityMessages[message.activityId];
+				if (current && activeActivityDurableRefMatches(current, message)) {
+					delete brokerState.activeActivityMessages[message.activityId];
+					try {
+						await persistBrokerState();
+					} catch (error) {
+						brokerState.activeActivityMessages[message.activityId] = current;
+						throw error;
+					}
+				}
+				throw new Error(`Activity render state is no longer valid for ${message.activityId}`);
+			}
+			brokerState.activeActivityMessages[message.activityId] = message;
+			await persistBrokerState();
+		},
+		deleteDurableMessage: async (activityId, expected) => {
+			brokerState ??= await loadBrokerState();
+			const current = brokerState.activeActivityMessages?.[activityId];
+			if (!current) return;
+			if (expected && !activeActivityDurableRefMatches(current, expected)) return;
+			delete brokerState.activeActivityMessages![activityId];
+			try {
+				await persistBrokerState();
+			} catch (error) {
+				brokerState.activeActivityMessages![activityId] = current;
+				throw error;
+			}
+		},
+		canRenderMessage: activeActivityRenderStillValid,
+		reportDiagnostic: reportPiDiagnostic,
 	});
 	const assistantFinalLedger = new AssistantFinalDeliveryLedger({
 		getBrokerState: () => brokerState,
@@ -576,7 +614,7 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 		for (const [key, route] of Object.entries(value.routes)) validateBrokerRoute(path, route, `routes.${key}`);
 		if (typeof value.createdAtMs !== "number" || !Number.isFinite(value.createdAtMs)) invalidDurableJson(path, "createdAtMs must be a finite number");
 		if (typeof value.updatedAtMs !== "number" || !Number.isFinite(value.updatedAtMs)) invalidDurableJson(path, "updatedAtMs must be a finite number");
-		for (const [key, field] of Object.entries({ pendingMediaGroups: value.pendingMediaGroups, pendingTurns: value.pendingTurns, pendingAssistantFinals: value.pendingAssistantFinals, pendingRouteCleanups: value.pendingRouteCleanups, telegramOutbox: value.telegramOutbox, assistantPreviewMessages: value.assistantPreviewMessages, selectorSelections: value.selectorSelections, modelPickers: value.modelPickers, gitControls: value.gitControls, queuedTurnControls: value.queuedTurnControls, pendingManualCompactions: value.pendingManualCompactions })) {
+		for (const [key, field] of Object.entries({ pendingMediaGroups: value.pendingMediaGroups, pendingTurns: value.pendingTurns, pendingAssistantFinals: value.pendingAssistantFinals, pendingRouteCleanups: value.pendingRouteCleanups, telegramOutbox: value.telegramOutbox, assistantPreviewMessages: value.assistantPreviewMessages, activeActivityMessages: value.activeActivityMessages, selectorSelections: value.selectorSelections, modelPickers: value.modelPickers, gitControls: value.gitControls, queuedTurnControls: value.queuedTurnControls, pendingManualCompactions: value.pendingManualCompactions })) {
 			if (field !== undefined && !isRecord(field)) invalidDurableJson(path, `${key} must be an object when present`);
 		}
 		if (isRecord(value.pendingTurns)) {
@@ -627,6 +665,23 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 				validateOptionalFiniteNumber(path, preview.messageThreadId, `assistantPreviewMessages.${key}.messageThreadId`);
 				validateFiniteNumber(path, preview.messageId, `assistantPreviewMessages.${key}.messageId`);
 				validateFiniteNumber(path, preview.updatedAtMs, `assistantPreviewMessages.${key}.updatedAtMs`);
+			}
+		}
+		if (isRecord(value.activeActivityMessages)) {
+			for (const [key, message] of Object.entries(value.activeActivityMessages)) {
+				if (!isRecord(message)) invalidDurableJson(path, `activeActivityMessages.${key} must be an object`);
+				for (const required of ["turnId", "activityId"]) if (typeof message[required] !== "string") invalidDurableJson(path, `activeActivityMessages.${key}.${required} must be a string`);
+				validateOptionalString(path, message.sessionId, `activeActivityMessages.${key}.sessionId`);
+				validateChatId(path, message.chatId, `activeActivityMessages.${key}.chatId`);
+				validateOptionalFiniteNumber(path, message.messageThreadId, `activeActivityMessages.${key}.messageThreadId`);
+				validateOptionalFiniteNumber(path, message.messageId, `activeActivityMessages.${key}.messageId`);
+				validateOptionalBoolean(path, message.messageIdUnavailable, `activeActivityMessages.${key}.messageIdUnavailable`);
+				validateOptionalFiniteNumber(path, message.retryAtMs, `activeActivityMessages.${key}.retryAtMs`);
+				validateOptionalBoolean(path, message.deleteWhenEmpty, `activeActivityMessages.${key}.deleteWhenEmpty`);
+				if (!Array.isArray(message.lines)) invalidDurableJson(path, `activeActivityMessages.${key}.lines must be an array`);
+				validateStringArray(path, message.lines, `activeActivityMessages.${key}.lines`);
+				validateFiniteNumber(path, message.createdAtMs, `activeActivityMessages.${key}.createdAtMs`);
+				validateFiniteNumber(path, message.updatedAtMs, `activeActivityMessages.${key}.updatedAtMs`);
 			}
 		}
 		if (isRecord(value.selectorSelections)) {
@@ -875,10 +930,11 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 		if (existing) {
 			delete (existing as BrokerState & { reloadIntents?: unknown }).reloadIntents;
 			existing.telegramOutbox ??= {};
+			existing.activeActivityMessages ??= {};
 			existing.pendingManualCompactions ??= {};
 			return existing;
 		}
-		return { schemaVersion: 1, lastProcessedUpdateId: config.lastUpdateId, recentUpdateIds: [], sessions: {}, routes: {}, pendingMediaGroups: {}, pendingTurns: {}, pendingAssistantFinals: {}, pendingRouteCleanups: {}, telegramOutbox: {}, assistantPreviewMessages: {}, queuedTurnControls: {}, pendingManualCompactions: {}, completedTurnIds: [], createdAtMs: now(), updatedAtMs: now() };
+		return { schemaVersion: 1, lastProcessedUpdateId: config.lastUpdateId, recentUpdateIds: [], sessions: {}, routes: {}, pendingMediaGroups: {}, pendingTurns: {}, pendingAssistantFinals: {}, pendingRouteCleanups: {}, telegramOutbox: {}, assistantPreviewMessages: {}, activeActivityMessages: {}, queuedTurnControls: {}, pendingManualCompactions: {}, completedTurnIds: [], createdAtMs: now(), updatedAtMs: now() };
 	}
 	async function assertCurrentBrokerLeaseForPersist(): Promise<void> {
 		const lease = await readLease();
@@ -921,6 +977,7 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 		assistantFinalLedger.start();
 		brokerServer = await createIpcServer(localBrokerSocketPath, handleBrokerIpc);
 		isBroker = true;
+		activityRenderer.recoverDurableMessages();
 		brokerHeartbeatState.failures = 0;
 		brokerHeartbeatState.renewalContentions = 0;
 		brokerHeartbeatState.renewalContentionReported = false;
@@ -1048,7 +1105,7 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 		if (envelope.type === "assistant_message_start") return await handleAssistantMessageStart(envelope.payload as { turnId: string; chatId: number; messageThreadId?: number });
 		if (envelope.type === "assistant_preview") return await handleAssistantPreview(envelope.payload as { turnId: string; chatId: number; messageThreadId?: number; text: string });
 		if (envelope.type === "assistant_preview_clear") return await handleAssistantPreviewClear(envelope.payload as { turnId: string; chatId: number | string; messageThreadId?: number; stopTyping?: boolean });
-		if (envelope.type === "activity_update") return await activityRenderer.handleUpdate(envelope.payload as ActivityUpdatePayload);
+		if (envelope.type === "activity_update") return await activityRenderer.handleUpdate(envelope.payload as ActivityUpdatePayload, envelope.session_id);
 		if (envelope.type === "activity_complete") return await handleActivityComplete(envelope.payload as { turnId: string; activityId?: string });
 		if (envelope.type === "assistant_final") return await assistantFinalLedger.accept(envelope.payload as AssistantFinalPayload);
 		if (envelope.type === "turn_consumed") return await handleTurnConsumed(envelope.payload as { turnId: string; finalizeQueuedControlText?: string });
@@ -1125,6 +1182,36 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 		if (pending) await startTypingLoop(pending.turn);
 		await commandRouter.finalizeQueuedTurnControls([payload.turnId], QUEUED_CONTROL_TEXT.started);
 		return { ok: true };
+	}
+	function activeActivityDurableRefMatches(current: ActiveActivityMessageRef, expected: ActiveActivityMessageRef): boolean {
+		return current.turnId === expected.turnId
+			&& current.activityId === expected.activityId
+			&& current.sessionId === expected.sessionId
+			&& String(current.chatId) === String(expected.chatId)
+			&& current.messageThreadId === expected.messageThreadId
+			&& current.messageId === expected.messageId
+			&& current.messageIdUnavailable === expected.messageIdUnavailable;
+	}
+	function activeActivityRenderStillValid(message: ActiveActivityMessageRef): boolean {
+		const state = brokerState;
+		if (!state) return false;
+		if (state.completedTurnIds?.includes(message.turnId)) return false;
+		const turnMatchesActivity = (turn: { sessionId: string; chatId: number | string; messageThreadId?: number }) => {
+			if (message.sessionId !== undefined && turn.sessionId !== message.sessionId) return false;
+			return String(turn.chatId) === String(message.chatId) && turn.messageThreadId === message.messageThreadId;
+		};
+		const pendingTurn = state.pendingTurns?.[message.turnId];
+		if (pendingTurn) return turnMatchesActivity(pendingTurn.turn);
+		const pendingFinal = state.pendingAssistantFinals?.[message.turnId];
+		if (pendingFinal) return !pendingFinal.progress.activityCompleted && turnMatchesActivity(pendingFinal.turn);
+		if (message.sessionId !== undefined) {
+			const session = state.sessions[message.sessionId];
+			if (!session) return false;
+			if (session.activeTurnId !== undefined && session.activeTurnId !== message.turnId) return false;
+			return Object.values(state.routes).some((route) => route.sessionId === message.sessionId && String(route.chatId) === String(message.chatId) && route.messageThreadId === message.messageThreadId);
+		}
+		return Object.values(state.sessions).some((session) => session.activeTurnId === message.turnId)
+			&& Object.values(state.routes).some((route) => String(route.chatId) === String(message.chatId) && route.messageThreadId === message.messageThreadId);
 	}
 	function matchingDurablePreview(turnId: string, chatId: number | string, messageThreadId?: number): number | undefined {
 		const preview = brokerState?.assistantPreviewMessages?.[turnId];

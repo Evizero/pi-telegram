@@ -76,6 +76,9 @@ function state(): BrokerState {
 		pendingTurns: { "turn-1": { turn: turn("old-session"), updatedAtMs: 1 } },
 		pendingAssistantFinals: { "final-1": final("old-session") },
 		pendingRouteCleanups: { [oldRoute.routeId]: { route: oldRoute, createdAtMs: 1, updatedAtMs: 1 } },
+		activeActivityMessages: {
+			"turn-activity": { turnId: "turn-activity", activityId: "turn-activity", sessionId: "old-session", chatId: oldRoute.chatId, messageThreadId: oldRoute.messageThreadId, messageId: 80, lines: ["*📖 read active.ts"], createdAtMs: 1, updatedAtMs: 1 },
+		},
 		pendingManualCompactions: {
 			"compact-1": { operationId: "compact-1", sessionId: "old-session", routeId: oldRoute.routeId, chatId: oldRoute.chatId, messageThreadId: oldRoute.messageThreadId, status: "queued", createdAtMs: 1, updatedAtMs: 1 },
 		},
@@ -178,6 +181,9 @@ async function checkConsumeRetargetsBrokerState(): Promise<void> {
 		assert.equal(brokerState.routes["111:unrelated-session"].sessionId, "unrelated-session");
 		assert.equal(brokerState.pendingTurns?.["turn-1"].turn.sessionId, "new-session");
 		assert.equal(brokerState.pendingAssistantFinals?.["final-1"].turn.sessionId, "new-session");
+		assert.equal(brokerState.activeActivityMessages?.["turn-activity"].sessionId, "new-session");
+		assert.equal(brokerState.activeActivityMessages?.["turn-activity"].chatId, 111);
+		assert.equal(brokerState.activeActivityMessages?.["turn-activity"].messageThreadId, 9);
 		assert.equal(brokerState.pendingManualCompactions?.["compact-1"].sessionId, "new-session");
 		assert.equal(brokerState.pendingManualCompactions?.["compact-1"].routeId, "111:9");
 		assert.equal(brokerState.queuedTurnControls?.["control-1"].sessionId, "new-session");

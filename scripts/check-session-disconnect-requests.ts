@@ -163,6 +163,73 @@ async function exists(path: string): Promise<boolean> {
 	return await stat(path).then(() => true, () => false);
 }
 
+async function checkReplacementSessionRetainsActiveActivityRefDuringOldCleanup(): Promise<void> {
+	const requestedAtMs = Date.now();
+	const oldSession = session({ sessionId: "old-session", connectionNonce: "conn-old", connectionStartedAtMs: requestedAtMs - 2_000 });
+	const replacementSession = session({ sessionId: "new-session", connectionNonce: "conn-new", connectionStartedAtMs: requestedAtMs - 1_000, activeTurnId: "turn-active", status: "busy" });
+	const oldRoute = { ...topicRoute(oldSession.sessionId), createdAtMs: requestedAtMs - 1_500 };
+	const newRoute = { ...topicRoute(replacementSession.sessionId), createdAtMs: requestedAtMs - 900 };
+	const brokerState = state({
+		sessions: { [oldSession.sessionId]: oldSession, [replacementSession.sessionId]: replacementSession },
+		routes: { [oldRoute.routeId]: oldRoute, [`${newRoute.routeId}:new`]: newRoute },
+		pendingRouteCleanups: {},
+		pendingTurns: {},
+		pendingAssistantFinals: {},
+		assistantPreviewMessages: {},
+		activeActivityMessages: {
+			"turn-active": { turnId: "turn-active", activityId: "turn-active", sessionId: oldSession.sessionId, chatId: oldRoute.chatId, messageThreadId: oldRoute.messageThreadId, messageId: 80, lines: ["*📖 read active.ts"], createdAtMs: requestedAtMs, updatedAtMs: requestedAtMs },
+		},
+	});
+	await honorExplicitDisconnectRequestInBroker({
+		targetSessionId: oldSession.sessionId,
+		request: { sessionId: oldSession.sessionId, requestedAtMs, connectionNonce: oldSession.connectionNonce, connectionStartedAtMs: oldSession.connectionStartedAtMs, routeId: oldRoute.routeId, chatId: oldRoute.chatId, messageThreadId: oldRoute.messageThreadId, routeCreatedAtMs: oldRoute.createdAtMs },
+		getBrokerState: () => brokerState,
+		loadBrokerState: async () => brokerState,
+		setBrokerState: () => undefined,
+		persistBrokerState: async () => undefined,
+		refreshTelegramStatus: () => undefined,
+		stopTypingLoop: () => undefined,
+		callTelegram: async <TResponse>() => true as TResponse,
+	});
+
+	assert.equal(brokerState.activeActivityMessages?.["turn-active"]?.sessionId, replacementSession.sessionId);
+}
+
+async function checkSelectorRouteDisconnectKeepsOtherSessionActivityRefs(): Promise<void> {
+	const requestedAtMs = Date.now();
+	const currentSession = session({ sessionId: "session-1", connectionNonce: "conn-current", connectionStartedAtMs: requestedAtMs - 2_000 });
+	const otherSession = session({ sessionId: "session-2", connectionNonce: "conn-other", connectionStartedAtMs: requestedAtMs - 2_000 });
+	const targetRoute = { ...selectorRoute(currentSession.sessionId), createdAtMs: requestedAtMs - 1_000 };
+	const otherRoute = { ...selectorRoute(otherSession.sessionId), createdAtMs: requestedAtMs - 1_000 };
+	const brokerState = state({
+		sessions: { [currentSession.sessionId]: currentSession, [otherSession.sessionId]: otherSession },
+		routes: { [`${targetRoute.routeId}:${currentSession.sessionId}`]: targetRoute, [`${otherRoute.routeId}:${otherSession.sessionId}`]: otherRoute },
+		pendingRouteCleanups: {},
+		pendingTurns: {},
+		pendingAssistantFinals: {},
+		assistantPreviewMessages: {},
+		activeActivityMessages: {
+			target: { turnId: "target", activityId: "target", sessionId: currentSession.sessionId, chatId: targetRoute.chatId, messageId: 80, lines: ["*📖 read target.ts"], createdAtMs: requestedAtMs, updatedAtMs: requestedAtMs },
+			other: { turnId: "other", activityId: "other", sessionId: otherSession.sessionId, chatId: otherRoute.chatId, messageId: 81, lines: ["*📖 read other.ts"], createdAtMs: requestedAtMs, updatedAtMs: requestedAtMs },
+		},
+	});
+	await honorExplicitDisconnectRequestInBroker({
+		targetSessionId: currentSession.sessionId,
+		request: { sessionId: currentSession.sessionId, requestedAtMs, connectionNonce: currentSession.connectionNonce, connectionStartedAtMs: currentSession.connectionStartedAtMs, routeId: targetRoute.routeId, chatId: targetRoute.chatId, routeCreatedAtMs: targetRoute.createdAtMs },
+		getBrokerState: () => brokerState,
+		loadBrokerState: async () => brokerState,
+		setBrokerState: () => undefined,
+		persistBrokerState: async () => undefined,
+		refreshTelegramStatus: () => undefined,
+		stopTypingLoop: () => undefined,
+		callTelegram: async <TResponse>() => true as TResponse,
+	});
+
+	assert.equal(brokerState.activeActivityMessages?.target, undefined);
+	assert.ok(brokerState.activeActivityMessages?.other, "other selector session Activity ref must survive same-chat target cleanup");
+	assert.equal(brokerState.routes[`${otherRoute.routeId}:${otherSession.sessionId}`], otherRoute);
+}
+
 async function checkInvalidDisconnectRequestFilesDoNotBlockValidOnes(): Promise<void> {
 	const dir = await mkdtemp(join(tmpdir(), "pi-telegram-disconnect-"));
 	try {
@@ -274,6 +341,8 @@ await checkLateDisconnectRequestDoesNotDropOfflinePendingWork();
 await checkStaleDisconnectRequestIsClearedAfterReconnect();
 await checkRouteScopedDisconnectRequestRemovesOldRouteAfterReconnect();
 await checkRouteScopedStaleRequestCannotDeleteNewSelectorRoute();
+await checkReplacementSessionRetainsActiveActivityRefDuringOldCleanup();
+await checkSelectorRouteDisconnectKeepsOtherSessionActivityRefs();
 await checkInvalidDisconnectRequestFilesDoNotBlockValidOnes();
 await checkCurrentRouteDisconnectOnlyCancelsTargetRouteFinals();
 console.log("Session disconnect request checks passed");

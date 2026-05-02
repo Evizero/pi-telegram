@@ -201,6 +201,13 @@ function retargetBrokerStateForReplacement(brokerState: BrokerState, handoff: Se
 	for (const pending of Object.values(brokerState.pendingAssistantFinals ?? {})) {
 		pending.turn = retargetTurnToRoute(pending.turn, oldSessionId, registration.sessionId, route);
 	}
+	for (const message of Object.values(brokerState.activeActivityMessages ?? {})) {
+		if (message.sessionId !== oldSessionId) continue;
+		message.sessionId = registration.sessionId;
+		message.chatId = route.chatId;
+		message.messageThreadId = route.messageThreadId;
+		message.updatedAtMs = now();
+	}
 	for (const operation of Object.values(brokerState.pendingManualCompactions ?? {})) {
 		if (operation.sessionId !== oldSessionId) continue;
 		operation.sessionId = registration.sessionId;

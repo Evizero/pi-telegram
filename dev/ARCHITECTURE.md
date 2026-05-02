@@ -1251,9 +1251,15 @@ Pi-side activity mirroring constructs activity lines through
 `src/shared/activity-lines.ts` and sends them through an injected activity
 reporter interface. `src/broker/activity.ts` remains the owner of Telegram
 activity rendering, debouncing, activity completion, and typing-loop side
-effects. Future activity changes should keep this boundary: shared code may own
-small presentation contracts, but pi modules should not depend on broker
-implementation internals.
+effects. The broker persists minimal active Activity render references in
+`BrokerState.activeActivityMessages` so broker turnover or renderer reset can
+recover a known visible Activity message id and line history for the same
+logical turn instead of starting a replacement bubble. This durable render
+reference is not a second activity source of truth: pi modules still emit ordered
+activity updates, while the broker owns Telegram message identity, bounded
+ambiguous-send handling, and final/segmentation cleanup. Future activity changes
+should keep this boundary: shared code may own small presentation contracts, but
+pi modules should not depend on broker implementation internals.
 
 ### Planning maturity
 

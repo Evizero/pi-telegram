@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
-import { ActivityRenderer, ActivityReporter, activityLineToHtml, thinkingActivityLine, toolActivityLine } from "../src/broker/activity.js";
+import { ActivityRenderer, ActivityReporter, activityLineToHtml, thinkingActivityLine, toolActivityLine, type ActivityRendererDiagnostic, type ActivityRendererOptions } from "../src/broker/activity.js";
+import type { ActiveActivityMessageRef } from "../src/broker/types.js";
 import { ACTIVITY_THROTTLE_MS } from "../src/broker/policy.js";
+import { TelegramApiError } from "../src/telegram/api-errors.js";
 import { createTypingLoopController } from "../src/telegram/typing.js";
 
 function assertIncludes(text: string, expected: string): void {
@@ -29,7 +31,7 @@ function assertToolFormatting(): void {
 	assert.equal(activityLineToHtml(toolActivityLine("read", { path: "src/a&b<c>.ts" })), "<b>📖 read <code>src/a&amp;b&lt;c&gt;.ts</code></b>");
 }
 
-async function buildRenderer(startTypingLoopFor: () => void | Promise<void> = () => undefined) {
+async function buildRenderer(startTypingLoopFor: () => void | Promise<void> = () => undefined, options: ActivityRendererOptions = {}) {
 	const calls: Array<{ method: string; body: Record<string, unknown> }> = [];
 	let nextMessageId = 1;
 	const renderer = new ActivityRenderer(
@@ -39,11 +41,23 @@ async function buildRenderer(startTypingLoopFor: () => void | Promise<void> = ()
 			return {} as TResponse;
 		},
 		startTypingLoopFor,
+		options,
 	);
 	return { renderer, calls };
 }
 
-async function assertHiddenThinkingIsTransient(): Promise<void> {
+function durableActivityOptions(store: Record<string, ActiveActivityMessageRef>, diagnostics: ActivityRendererDiagnostic[] = []): ActivityRendererOptions {
+	return {
+		getDurableMessage: (activityId) => store[activityId],
+		listDurableMessages: () => Object.values(store),
+		listDurableMessagesForTurn: (turnId) => Object.values(store).filter((message) => message.turnId === turnId),
+		saveDurableMessage: (message) => { store[message.activityId] = message; },
+		deleteDurableMessage: (activityId) => { delete store[activityId]; },
+		reportDiagnostic: (diagnostic) => { diagnostics.push(diagnostic); },
+	};
+}
+
+async function assertHiddenThinkingPreservesSameTurnMessage(): Promise<void> {
 	const hiddenOnly = await buildRenderer();
 	await hiddenOnly.renderer.handleUpdate({ turnId: "turn-hidden-only", chatId: 1, line: thinkingActivityLine(false) });
 	await hiddenOnly.renderer.flush("turn-hidden-only");
@@ -51,7 +65,11 @@ async function assertHiddenThinkingIsTransient(): Promise<void> {
 	assertIncludes(String(hiddenOnly.calls[0].body.text), "<b>⏳ working ...</b>");
 	await hiddenOnly.renderer.handleUpdate({ turnId: "turn-hidden-only", chatId: 1, line: thinkingActivityLine(true) });
 	await hiddenOnly.renderer.flush("turn-hidden-only");
-	assert.equal(hiddenOnly.calls.at(-1)?.method, "deleteMessage");
+	assert.deepEqual(hiddenOnly.calls.map((entry) => entry.method), ["sendMessage"]);
+	await hiddenOnly.renderer.handleUpdate({ turnId: "turn-hidden-only", chatId: 1, line: toolActivityLine("read", { path: "after-hidden.ts" }) });
+	await hiddenOnly.renderer.flush("turn-hidden-only");
+	assert.deepEqual(hiddenOnly.calls.map((entry) => entry.method), ["sendMessage", "editMessageText"]);
+	assertIncludes(String(hiddenOnly.calls.at(-1)?.body.text), "📖 read <code>after-hidden.ts</code>");
 
 	const { renderer, calls } = await buildRenderer();
 	await renderer.handleUpdate({ turnId: "turn-hidden", chatId: 1, line: thinkingActivityLine(false) });
@@ -68,6 +86,227 @@ async function assertHiddenThinkingIsTransient(): Promise<void> {
 	assertIncludes(editedText, "📖 read <code>between.ts</code>");
 	assertNotIncludes(editedText, "🧠 thinking ...");
 	assertNotIncludes(editedText, "⏳ working ...");
+}
+
+async function assertActivitySendFailureDoesNotRepeatVisibleSends(): Promise<void> {
+	const calls: Array<{ method: string; body: Record<string, unknown> }> = [];
+	const diagnostics: ActivityRendererDiagnostic[] = [];
+	const store: Record<string, ActiveActivityMessageRef> = {};
+	const renderer = new ActivityRenderer(
+		async <TResponse>(method: string, body: Record<string, unknown>): Promise<TResponse> => {
+			calls.push({ method, body });
+			if (method === "sendMessage") throw new Error("ambiguous accepted send");
+			return {} as TResponse;
+		},
+		async () => undefined,
+		durableActivityOptions(store, diagnostics),
+	);
+	await renderer.handleUpdate({ turnId: "turn-send-ambiguous", chatId: 1, line: toolActivityLine("read", { path: "first.ts" }) });
+	await renderer.flush("turn-send-ambiguous");
+	assert.deepEqual(calls.map((entry) => entry.method), ["sendMessage"]);
+	assert.equal(store["turn-send-ambiguous"]?.messageIdUnavailable, true);
+	assert.ok(diagnostics.some((diagnostic) => diagnostic.message.includes("sendMessage")));
+
+	await renderer.handleUpdate({ turnId: "turn-send-ambiguous", chatId: 1, line: toolActivityLine("bash", { command: "npm test" }) });
+	await renderer.flush("turn-send-ambiguous");
+	assert.deepEqual(calls.map((entry) => entry.method), ["sendMessage"]);
+
+	const recovered = new ActivityRenderer(
+		async <TResponse>(method: string, body: Record<string, unknown>): Promise<TResponse> => {
+			calls.push({ method, body });
+			return {} as TResponse;
+		},
+		async () => undefined,
+		durableActivityOptions(store, diagnostics),
+	);
+	await recovered.handleUpdate({ turnId: "turn-send-ambiguous", chatId: 1, line: toolActivityLine("write", { path: "after-reset.ts" }) });
+	await recovered.flush("turn-send-ambiguous");
+	assert.deepEqual(calls.map((entry) => entry.method), ["sendMessage"]);
+}
+
+async function assertRetryAfterSendFailureCanRetryActivitySend(): Promise<void> {
+	const calls: Array<{ method: string; body: Record<string, unknown> }> = [];
+	let failWithRetryAfter = true;
+	const renderer = new ActivityRenderer(
+		async <TResponse>(method: string, body: Record<string, unknown>): Promise<TResponse> => {
+			calls.push({ method, body });
+			if (method === "sendMessage" && failWithRetryAfter) {
+				failWithRetryAfter = false;
+				throw new TelegramApiError("sendMessage", "Too Many Requests", 429, 0);
+			}
+			if (method === "sendMessage") return { message_id: 5 } as TResponse;
+			return {} as TResponse;
+		},
+		async () => undefined,
+	);
+	await renderer.handleUpdate({ turnId: "turn-send-retry-after", chatId: 1, line: toolActivityLine("read", { path: "retry.ts" }) });
+	await renderer.flush("turn-send-retry-after");
+	assert.equal(calls.filter((entry) => entry.method === "sendMessage").length, 1);
+	await renderer.flush("turn-send-retry-after");
+	assert.equal(calls.filter((entry) => entry.method === "sendMessage").length, 1);
+	await new Promise((resolve) => setTimeout(resolve, 270));
+	await renderer.flush("turn-send-retry-after");
+	assert.equal(calls.filter((entry) => entry.method === "sendMessage").length, 2);
+	assertIncludes(String(calls.at(-1)?.body.text), "retry.ts");
+}
+
+async function assertRecoveredRetryAfterActivityIsRearmed(): Promise<void> {
+	const calls: Array<{ method: string; body: Record<string, unknown> }> = [];
+	const store: Record<string, ActiveActivityMessageRef> = {
+		"turn-retry-recover": { turnId: "turn-retry-recover", activityId: "turn-retry-recover", chatId: 1, retryAtMs: Date.now() + 30, lines: [toolActivityLine("read", { path: "recover.ts" })], createdAtMs: Date.now(), updatedAtMs: Date.now() },
+	};
+	const renderer = new ActivityRenderer(
+		async <TResponse>(method: string, body: Record<string, unknown>): Promise<TResponse> => {
+			calls.push({ method, body });
+			if (method === "sendMessage") return { message_id: 9 } as TResponse;
+			return {} as TResponse;
+		},
+		async () => undefined,
+		durableActivityOptions(store),
+	);
+	renderer.recoverDurableMessages();
+	await waitFor(() => calls.some((entry) => entry.method === "sendMessage"), 500);
+	assertIncludes(String(calls.at(-1)?.body.text), "recover.ts");
+}
+
+async function assertRecoveredRetryAfterDeleteIsRearmed(): Promise<void> {
+	const calls: Array<{ method: string; body: Record<string, unknown> }> = [];
+	const store: Record<string, ActiveActivityMessageRef> = {
+		"turn-delete-retry": { turnId: "turn-delete-retry", activityId: "turn-delete-retry", chatId: 1, messageId: 12, retryAtMs: Date.now() + 30, deleteWhenEmpty: true, lines: [], createdAtMs: Date.now(), updatedAtMs: Date.now() },
+	};
+	const renderer = new ActivityRenderer(
+		async <TResponse>(method: string, body: Record<string, unknown>): Promise<TResponse> => {
+			calls.push({ method, body });
+			return {} as TResponse;
+		},
+		async () => undefined,
+		durableActivityOptions(store),
+	);
+	renderer.recoverDurableMessages();
+	await waitFor(() => calls.some((entry) => entry.method === "deleteMessage"), 500);
+	assert.equal(store["turn-delete-retry"], undefined);
+}
+
+async function assertInvalidatedActivityStateDoesNotFlushAfterCleanup(): Promise<void> {
+	const calls: Array<{ method: string; body: Record<string, unknown> }> = [];
+	const store: Record<string, ActiveActivityMessageRef> = {};
+	let renderValid = true;
+	const renderer = new ActivityRenderer(
+		async <TResponse>(method: string, body: Record<string, unknown>): Promise<TResponse> => {
+			calls.push({ method, body });
+			return { message_id: 1 } as TResponse;
+		},
+		async () => undefined,
+		{ ...durableActivityOptions(store), canRenderMessage: () => renderValid },
+	);
+	await renderer.handleUpdate({ turnId: "turn-cleaned-before-flush", chatId: 1, line: toolActivityLine("read", { path: "stale.ts" }) });
+	assert.ok(store["turn-cleaned-before-flush"], "scheduled activity should be durable before cleanup");
+	renderValid = false;
+	await new Promise((resolve) => setTimeout(resolve, ACTIVITY_THROTTLE_MS + 50));
+	assert.deepEqual(calls, []);
+	assert.equal(store["turn-cleaned-before-flush"], undefined);
+}
+
+async function assertStaleInvalidationDoesNotDeleteRetargetedDurableRef(): Promise<void> {
+	const store: Record<string, ActiveActivityMessageRef> = {};
+	const renderer = new ActivityRenderer(
+		async <TResponse>(): Promise<TResponse> => ({ message_id: 1 }) as TResponse,
+		async () => undefined,
+		{
+			getDurableMessage: (activityId) => store[activityId],
+			saveDurableMessage: (message) => { store[message.activityId] = message; },
+			deleteDurableMessage: (activityId, expected) => {
+				const current = store[activityId];
+				if (!current) return;
+				if (expected && current.sessionId !== expected.sessionId) return;
+				delete store[activityId];
+			},
+			canRenderMessage: (message) => message.sessionId !== "old-session",
+		},
+	);
+	await renderer.handleUpdate({ turnId: "turn-retargeted", chatId: 1, line: toolActivityLine("read", { path: "old.ts" }) }, "old-session");
+	store["turn-retargeted"] = { ...store["turn-retargeted"]!, sessionId: "new-session" };
+	await renderer.flush("turn-retargeted");
+	assert.equal(store["turn-retargeted"]?.sessionId, "new-session");
+}
+
+async function assertRecoveredActivityRetargetsCurrentSession(): Promise<void> {
+	const calls: Array<{ method: string; body: Record<string, unknown> }> = [];
+	const store: Record<string, ActiveActivityMessageRef> = {
+		"turn-replacement": { turnId: "turn-replacement", activityId: "turn-replacement", sessionId: "old-session", chatId: 1, messageId: 20, lines: [toolActivityLine("read", { path: "before.ts" })], createdAtMs: Date.now(), updatedAtMs: Date.now() },
+	};
+	const renderer = new ActivityRenderer(
+		async <TResponse>(method: string, body: Record<string, unknown>): Promise<TResponse> => {
+			calls.push({ method, body });
+			return {} as TResponse;
+		},
+		async () => undefined,
+		durableActivityOptions(store),
+	);
+	await renderer.handleUpdate({ turnId: "turn-replacement", chatId: 1, line: toolActivityLine("bash", { command: "npm test" }) }, "new-session");
+	await renderer.flush("turn-replacement");
+	assert.equal(store["turn-replacement"]?.sessionId, "new-session");
+	assert.deepEqual(calls.map((entry) => entry.method), ["editMessageText"]);
+}
+
+async function assertRendererResetRecoversDurableActivityMessage(): Promise<void> {
+	const calls: Array<{ method: string; body: Record<string, unknown> }> = [];
+	const store: Record<string, ActiveActivityMessageRef> = {};
+	let nextMessageId = 40;
+	const makeRenderer = () => new ActivityRenderer(
+		async <TResponse>(method: string, body: Record<string, unknown>): Promise<TResponse> => {
+			calls.push({ method, body });
+			if (method === "sendMessage") return { message_id: nextMessageId++ } as TResponse;
+			return {} as TResponse;
+		},
+		async () => undefined,
+		durableActivityOptions(store),
+	);
+	const first = makeRenderer();
+	await first.handleUpdate({ turnId: "turn-reset", chatId: 1, messageThreadId: 7, line: toolActivityLine("read", { path: "before-reset.ts" }) }, "session-a");
+	await first.flush("turn-reset");
+	assert.equal(calls.at(-1)?.method, "sendMessage");
+	assert.equal(store["turn-reset"]?.messageId, 40);
+
+	const recovered = makeRenderer();
+	await recovered.handleUpdate({ turnId: "turn-reset", chatId: 1, messageThreadId: 7, line: toolActivityLine("bash", { command: "npm run check" }) }, "session-a");
+	await recovered.flush("turn-reset");
+	assert.deepEqual(calls.map((entry) => entry.method), ["sendMessage", "editMessageText"]);
+	assert.equal(calls.at(-1)?.body.message_id, 40);
+	const editedText = String(calls.at(-1)?.body.text);
+	assertIncludes(editedText, "before-reset.ts");
+	assertIncludes(editedText, "npm run check");
+	assert.equal(calls.at(-1)?.body.message_thread_id, undefined);
+
+	const finalizerAfterReset = makeRenderer();
+	await finalizerAfterReset.complete("turn-reset");
+	assert.equal(calls.at(-1)?.method, "editMessageText");
+	assert.equal(store["turn-reset"], undefined);
+}
+
+async function assertDeleteFailureDoesNotCreateReplacementActivityBubble(): Promise<void> {
+	const calls: Array<{ method: string; body: Record<string, unknown> }> = [];
+	const diagnostics: ActivityRendererDiagnostic[] = [];
+	let nextMessageId = 1;
+	const terminalDeleteError = new TelegramApiError("deleteMessage", "Forbidden: bot was blocked", 403, undefined);
+	const renderer = new ActivityRenderer(
+		async <TResponse>(method: string, body: Record<string, unknown>): Promise<TResponse> => {
+			calls.push({ method, body });
+			if (method === "sendMessage") return { message_id: nextMessageId++ } as TResponse;
+			if (method === "deleteMessage") throw terminalDeleteError;
+			return {} as TResponse;
+		},
+		async () => undefined,
+		{ reportDiagnostic: (diagnostic) => { diagnostics.push(diagnostic); } },
+	);
+	await renderer.handleUpdate({ turnId: "turn-delete-fails", chatId: 1, line: thinkingActivityLine(false) });
+	await renderer.flush("turn-delete-fails");
+	await renderer.complete("turn-delete-fails");
+	await renderer.handleUpdate({ turnId: "turn-delete-fails", chatId: 1, line: toolActivityLine("read", { path: "stale.ts" }) });
+	await renderer.flush("turn-delete-fails");
+	assert.equal(calls.filter((entry) => entry.method === "sendMessage").length, 1);
+	assert.ok(calls.every((entry) => entry.method === "sendMessage" || entry.method === "deleteMessage"));
+	assert.ok(diagnostics.some((diagnostic) => diagnostic.message.includes("deleteMessage")));
 }
 
 async function assertHiddenThinkingPromotesToVisibleThinking(): Promise<void> {
@@ -368,7 +607,16 @@ async function assertBashCompletionMatchesLabelLessRow(): Promise<void> {
 }
 
 assertToolFormatting();
-await assertHiddenThinkingIsTransient();
+await assertHiddenThinkingPreservesSameTurnMessage();
+await assertActivitySendFailureDoesNotRepeatVisibleSends();
+await assertRetryAfterSendFailureCanRetryActivitySend();
+await assertRecoveredRetryAfterActivityIsRearmed();
+await assertRecoveredRetryAfterDeleteIsRearmed();
+await assertInvalidatedActivityStateDoesNotFlushAfterCleanup();
+await assertStaleInvalidationDoesNotDeleteRetargetedDurableRef();
+await assertRecoveredActivityRetargetsCurrentSession();
+await assertRendererResetRecoversDurableActivityMessage();
+await assertDeleteFailureDoesNotCreateReplacementActivityBubble();
 await assertHiddenThinkingPromotesToVisibleThinking();
 await assertVisibleThinkingReplacesInterleavedWorking();
 await assertCompleteRemovesActiveWorkingBeforeFinalFlush();

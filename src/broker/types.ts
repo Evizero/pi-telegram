@@ -51,6 +51,21 @@ export interface AssistantPreviewMessageRef {
 	updatedAtMs: number;
 }
 
+export interface ActiveActivityMessageRef {
+	turnId: string;
+	activityId: string;
+	sessionId?: string;
+	chatId: number | string;
+	messageThreadId?: number;
+	messageId?: number;
+	messageIdUnavailable?: boolean;
+	retryAtMs?: number;
+	deleteWhenEmpty?: boolean;
+	lines: string[];
+	createdAtMs: number;
+	updatedAtMs: number;
+}
+
 export interface PendingAssistantFinalDelivery extends AssistantFinalPayload {
 	status: "pending" | "delivering" | "terminal";
 	createdAtMs: number;
@@ -206,6 +221,7 @@ export interface BrokerState {
 	telegramOutbox?: Record<string, TelegramOutboxJob>;
 	telegramOutboxRetryAtMs?: number;
 	assistantPreviewMessages?: Record<string, AssistantPreviewMessageRef>;
+	activeActivityMessages?: Record<string, ActiveActivityMessageRef>;
 	selectorSelections?: Record<string, TelegramSelectorSelection>;
 	modelPickers?: Record<string, TelegramModelPickerState>;
 	gitControls?: Record<string, TelegramGitControlState>;

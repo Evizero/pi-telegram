@@ -2,7 +2,7 @@
   "meta": {
     "title": "pi-telegram",
     "version": "0.1.0",
-    "last_updated": "2026-04-30"
+    "last_updated": "2026-05-02"
   },
   "requirements": [
     {
@@ -1509,6 +1509,29 @@
         "inbox": [
           "split-shared-types-and",
           "centralize-ipc-limits-and"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-activity-message-continuity",
+      "origin": "derived",
+      "label": "Keep one turn activity message",
+      "statement": "When the current Activity message identity is known or recoverable, the system shall continue Telegram activity for one logical active turn by editing that visible activity message until final delivery, explicit activity segmentation, or another user-visible interleaving boundary requires a new activity message.",
+      "traces_to": [
+        "StRS-activity-final-feedback",
+        "StRS-delivery-continuity"
+      ],
+      "rationale": "Remote supervision depends on activity previews reading as one coherent busy-turn status. The captured bug shows that lost or cleared renderer message ids, hidden-thinking empty states, and broker turnover can leave old Activity bubbles visible while a new one starts during the same turn, which undermines progress continuity even when ordered activity collection is preserved. Telegram may not expose a reliable recovery path after an accepted send whose response was lost before any message_id was recorded, so the requirement distinguishes recoverable message identity from irreducible Bot API ambiguity.",
+      "acceptance_criteria": "Behavior checks cover same-turn hidden/untitled thinking start-end cycles, failed or ambiguous activity delete operations, broker/renderer restart or handoff conditions, and ambiguous initial activity send outcomes. When the Activity message identity is known or recoverable, continued activity for the same logical active turn edits or recovers that visible Activity message instead of issuing another visible Activity send, unless a final response, explicit activity segmentation, steering/control message, ordinary user-visible interleaving message, or terminal cleanup boundary occurs. For irreducibly ambiguous accepted sends where no message_id is available through Telegram or durable state, the implementation bounds duplicate-bubble churn and emits diagnostics or documents the residual limitation rather than silently repeating unbounded Activity sends.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "draft",
+      "created": "2026-05-02",
+      "updated": "2026-05-02",
+      "sources": {
+        "inbox": [
+          "activity-message-restarts-during"
         ]
       }
     }
