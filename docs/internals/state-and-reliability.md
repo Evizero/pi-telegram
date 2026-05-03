@@ -96,12 +96,13 @@ Telegram `/compact` is modeled as a session operation, not a message injected in
 
 ## Activity rendering
 
-Activity collection and Telegram rendering are separate:
+Activity collection and Telegram rendering are separate; see [Activity rendering](activity-rendering.md) for row-level presentation and lifecycle details.
 
 - pi hooks capture thinking/tool events;
-- the client reports activity to the broker;
+- the client reports activity to the broker in order;
 - broker `ActivityRenderer` debounces visible Telegram sends/edits and typing loops;
-- durable active activity message refs let the broker continue or clean activity around finals and broker turnover.
+- hidden/untitled thinking uses a transient `⏳ working ...` placeholder rather than persisting empty `🧠 thinking ...` history;
+- durable active activity message refs let the broker continue, retry, or clean activity around finals and broker turnover.
 
 Rendering may throttle, but collected activity meaning should not be discarded merely because Telegram updates are debounced or rate-limited.
 
@@ -174,6 +175,7 @@ Outbound attachments require explicit `telegram_attach` intent and path validati
 
 Behavior checks that cover this page include:
 
+- `scripts/check-activity-rendering.ts`
 - `scripts/check-durable-json-loading.ts`
 - `scripts/check-telegram-io-policy.ts`
 - `scripts/check-final-delivery.ts`

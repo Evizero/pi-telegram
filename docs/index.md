@@ -11,6 +11,7 @@ This directory is the current documentation baseline for `pi-telegram`. It is wr
 ## Internals
 
 - [Runtime architecture](internals/runtime-architecture.md) — lazy bootstrap, runtime composition, broker/client split, pi hooks, Telegram boundary, and module ownership.
+- [Activity rendering](internals/activity-rendering.md) — Telegram activity rows, thinking/tool presentation, final-ordering cleanup, and renderer recovery behavior.
 - [State and reliability](internals/state-and-reliability.md) — durable files, broker lease/state, pending turns, assistant finals, outbox jobs, route cleanup, retry windows, and recovery behavior.
 
 ## Authoritative project records

@@ -7,9 +7,19 @@
       "id": "inbox:activity-labels-should-show",
       "kind": "inbox",
       "slug": "activity-labels-should-show",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated into docs/internals/activity-rendering.md, with links from docs/index.md and docs/internals/state-and-reliability.md. The documentation records current Telegram activity row semantics, hidden-thinking supersession to transient working placeholders, final tool-label decisions, final-ordering cleanup, late-update guards, and retry/recovery behavior. Latest documentation review reported no findings."
+        }
+      ],
+      "processed_hash": "sha256:7abd7ea1e8b1333a2de5a6a66979124d6d0506a16cb2a5f6ece8aa6998990674",
+      "processed_at": "2026-05-03",
+      "processed_revision": "1a421d9496bfc1e9b20d95beca607ee7517a8c45",
+      "note": "Processed by Telegram activity rendering documentation chunk; latest review reported no findings."
     },
     "inbox:activity-message-restarts-during": {
       "id": "inbox:activity-message-restarts-during",
@@ -199,9 +209,19 @@
       "id": "inbox:hide-bash-label-in",
       "kind": "inbox",
       "slug": "hide-bash-label-in",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated into docs/internals/activity-rendering.md, with links from docs/index.md and docs/internals/state-and-reliability.md. The documentation records current Telegram activity row semantics, hidden-thinking supersession to transient working placeholders, final tool-label decisions, final-ordering cleanup, late-update guards, and retry/recovery behavior. Latest documentation review reported no findings."
+        }
+      ],
+      "processed_hash": "sha256:aefc3c2d1221ed5916eaf158b31b34c7c4e37cd50b4c129b6b9e4bc064dd0922",
+      "processed_at": "2026-05-03",
+      "processed_revision": "1a421d9496bfc1e9b20d95beca607ee7517a8c45",
+      "note": "Processed by Telegram activity rendering documentation chunk; latest review reported no findings."
     },
     "inbox:interactive-telegram-model-picker": {
       "id": "inbox:interactive-telegram-model-picker",
@@ -431,9 +451,19 @@
       "id": "inbox:telegram-activity-edits-can",
       "kind": "inbox",
       "slug": "telegram-activity-edits-can",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated into docs/internals/activity-rendering.md, with links from docs/index.md and docs/internals/state-and-reliability.md. The documentation records current Telegram activity row semantics, hidden-thinking supersession to transient working placeholders, final tool-label decisions, final-ordering cleanup, late-update guards, and retry/recovery behavior. Latest documentation review reported no findings."
+        }
+      ],
+      "processed_hash": "sha256:45ce5e41a3b82cd86d3903c3c16460f581e9cf650f853967901d78d77efa32f5",
+      "processed_at": "2026-05-03",
+      "processed_revision": "1a421d9496bfc1e9b20d95beca607ee7517a8c45",
+      "note": "Processed by Telegram activity rendering documentation chunk; latest review reported no findings."
     },
     "inbox:telegram-attachment-tmp-cleanup": {
       "id": "inbox:telegram-attachment-tmp-cleanup",
@@ -499,9 +529,19 @@
       "id": "inbox:telegram-placeholder-for-hidden",
       "kind": "inbox",
       "slug": "telegram-placeholder-for-hidden",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated into docs/internals/activity-rendering.md, with links from docs/index.md and docs/internals/state-and-reliability.md. The documentation records current Telegram activity row semantics, hidden-thinking supersession to transient working placeholders, final tool-label decisions, final-ordering cleanup, late-update guards, and retry/recovery behavior. Latest documentation review reported no findings."
+        }
+      ],
+      "processed_hash": "sha256:31144718bcfcf3b4f8cea090a56a3aabf4b7d407cdd2b96a366489bc8cb584d4",
+      "processed_at": "2026-05-03",
+      "processed_revision": "1a421d9496bfc1e9b20d95beca607ee7517a8c45",
+      "note": "Processed by Telegram activity rendering documentation chunk; latest review reported no findings."
     },
     "inbox:telegram-reload-should-be": {
       "id": "inbox:telegram-reload-should-be",
@@ -799,9 +839,19 @@
       "id": "task:improve-telegram-activity-labels-for",
       "kind": "task",
       "slug": "improve-telegram-activity-labels-for",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated into docs/internals/activity-rendering.md, with links from docs/index.md and docs/internals/state-and-reliability.md. The documentation records current Telegram activity row semantics, hidden-thinking supersession to transient working placeholders, final tool-label decisions, final-ordering cleanup, late-update guards, and retry/recovery behavior. Latest documentation review reported no findings."
+        }
+      ],
+      "processed_hash": "sha256:8041410dafcad94ba833f2a6c1847cce459c24b3cec1360e34e7dd25c08fd541",
+      "processed_at": "2026-05-03",
+      "processed_revision": "1a421d9496bfc1e9b20d95beca607ee7517a8c45",
+      "note": "Processed by Telegram activity rendering documentation chunk; latest review reported no findings."
     },
     "task:introduce-broker-telegram-side-effect": {
       "id": "task:introduce-broker-telegram-side-effect",
@@ -855,9 +905,19 @@
       "id": "task:polish-telegram-activity-rendering",
       "kind": "task",
       "slug": "polish-telegram-activity-rendering",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated into docs/internals/activity-rendering.md, with links from docs/index.md and docs/internals/state-and-reliability.md. The documentation records current Telegram activity row semantics, hidden-thinking supersession to transient working placeholders, final tool-label decisions, final-ordering cleanup, late-update guards, and retry/recovery behavior. Latest documentation review reported no findings."
+        }
+      ],
+      "processed_hash": "sha256:fb98825d3d0c408d50f4438b7de09de708aa5c188daed64d9d8a1826c6fdc37c",
+      "processed_at": "2026-05-03",
+      "processed_revision": "1a421d9496bfc1e9b20d95beca607ee7517a8c45",
+      "note": "Processed by Telegram activity rendering documentation chunk; latest review reported no findings."
     },
     "task:preserve-long-telegram-command-result": {
       "id": "task:preserve-long-telegram-command-result",
