@@ -80,7 +80,7 @@ An explicit disconnect unregisters the session, hides local status, and cleans u
 
 `pi-telegram` supports multiple connected sessions. A route is a temporary Telegram view into a connected pi session, not the durable pi session history.
 
-In automatic mode, the bridge uses per-session bot/private topics when Telegram supports them and falls back to selector-style routing when topics are unavailable or disabled by config.
+In automatic mode, the bridge uses per-session bot/private topics when Telegram supports them and falls back to selector-style routing only when topics are unavailable and selector fallback is enabled. If routing is disabled by config, the bridge detaches existing routes and rejects new Telegram reachability instead of silently keeping stale routes.
 
 ### Selector-style fallback routing
 
@@ -91,7 +91,7 @@ In a bot DM or configured selector chat:
 /use <number>
 ```
 
-The selected session receives later unrouted messages for a bounded selection window. `/sessions` shows active sessions plus recently visible offline sessions, hides long-offline stale entries, and adds a short session-id suffix only when visible names collide. Use `/sessions` again if a session disappears, reconnects, or several sessions have similar names.
+The selected session receives later unrouted messages from that same chat for a bounded selection window. `/use` materializes a selector route for the selected session in the source chat; it does not make similarly numbered threads or other chats target that session. `/sessions` shows active sessions plus recently visible offline sessions, hides long-offline stale entries, and adds a short session-id suffix only when visible names collide. Use `/sessions` again if a session disappears, reconnects, or several sessions have similar names.
 
 ### Forum-supergroup topic routing
 

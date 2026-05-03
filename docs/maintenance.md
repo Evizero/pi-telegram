@@ -102,7 +102,7 @@ Before changing Bot API integration, read [`telegram-bot-api.md`](telegram-bot-a
 | Busy turns and queued controls | `src/broker/commands.ts`, `src/broker/queued-*`, `src/shared/queued-control-text.ts`, `src/client/turn-*` | `check-telegram-command-routing.ts`, `check-telegram-queued-controls.ts`, `check-client-turn-delivery.ts`, `check-manual-compaction.ts`, `check-session-unregister-cleanup.ts`, `check-telegram-outbox.ts` |
 | Pi hook boundary | `src/pi/hooks.ts`, `src/pi/*`, `src/shared/activity-lines.ts`, `src/broker/activity.ts` | `check-runtime-pi-hooks.ts`, `check-activity-rendering.ts` |
 | Final delivery | `src/broker/finals.ts`, `src/client/final-handoff.ts`, `src/client/retry-aware-finalization.ts` | `check-final-delivery.ts`, `check-client-final-handoff.ts`, `check-retry-aware-finalization.ts` |
-| Session lifecycle/routes | `src/broker/session-registration.ts`, `src/broker/sessions.ts`, `src/client/session-replacement.ts` | `check-session-route-registration.ts`, `check-session-unregister-cleanup.ts`, `check-session-replacement-handoff.ts` |
+| Session lifecycle/routes | `src/broker/routes.ts`, `src/broker/session-registration.ts`, `src/broker/sessions.ts`, `src/client/session-replacement.ts`, `src/shared/routing.ts` | `check-session-route-registration.ts`, `check-session-unregister-cleanup.ts`, `check-session-replacement-handoff.ts` |
 | Attachments/security | `src/shared/utils.ts`, `src/shared/config.ts`, `src/telegram/api.ts`, `src/telegram/attachments.ts`, `src/client/attachment-path.ts`, `src/pi/attachments.ts` | `check-security-setup-attachments.ts`, `check-telegram-temp-cleanup.ts` |
 | Model and Git controls | `src/broker/model-*`, `src/broker/git-*`, `src/client/git-status.ts` | `check-model-picker.ts`, `check-telegram-model-picker.ts`, `check-telegram-git-controls.ts`, `check-client-git-status.ts` |
 | Broker lease/background | `src/broker/lease.ts`, `src/broker/heartbeat.ts`, `src/broker/background.ts` | `check-broker-background.ts`, `check-broker-renewal-contention.ts` |
@@ -115,6 +115,7 @@ Before changing Bot API integration, read [`telegram-bot-api.md`](telegram-bot-a
 - Prefer narrow modules with explicit owners over broad helpers.
 - Keep local IPC timeout/body-size policy in `src/shared/ipc-policy.ts`; do not derive broker/client IPC envelope limits from Telegram attachment-size constants.
 - Keep retry loops idempotent and state-backed.
+- Preserve route identity as session + route mode + chat + optional thread; do not reuse or clean up routes by chat ID alone.
 - Treat `retry_after` as scheduling state, not as an error to hide.
 - Preserve FIFO final delivery and visible progress records.
 - Do not make client-side final persistence a second broker final ledger.

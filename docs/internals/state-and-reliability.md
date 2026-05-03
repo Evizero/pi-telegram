@@ -165,7 +165,26 @@ Assistant final delivery stays in `src/broker/finals.ts` because final chunks/at
 
 ## Route and session lifecycle
 
-Routes are connection-scoped Telegram views:
+Routes are connection-scoped Telegram views. A route is identified by session,
+chat, route mode, and optional `message_thread_id`; matching by chat alone is not
+enough to reuse or target it safely.
+
+Route registration computes the expected route target from the current Telegram
+routing config. Existing routes are reused only when they match the expected
+mode, chat, and thread shape; disabled routing detaches current routes and rejects
+reachability instead of preserving stale routes. Selector-mode `/use` selections
+are scoped to the source chat and ensure a selector route for that same chat.
+Forum-topic fallback requires both the stored chat identity and the
+`message_thread_id`, so same-numbered threads in different chats do not collide.
+
+Route replacement is fail-safe: the broker creates or selects the new expected
+route before detaching old routes, queues cleanup only for superseded topic
+routes, and clears pending cleanup when a route becomes active again. Session
+replacement handoff retargets route-bound pending turns, assistant finals,
+activity, manual compactions, queued controls, and selector selections to the
+replacement session while leaving unrelated routes alone.
+
+Lifecycle rules:
 
 - explicit disconnect unregisters and cleans up immediately;
 - normal shutdown unregisters and cleans up unless a native session replacement handoff succeeds;
@@ -219,6 +238,8 @@ Behavior checks that cover this page include:
 - `scripts/check-manual-compaction.ts`
 - `scripts/check-client-compact.ts`
 - `scripts/check-session-disconnect-requests.ts`
+- `scripts/check-session-route-registration.ts`
+- `scripts/check-session-unregister-cleanup.ts`
 - `scripts/check-session-replacement-handoff.ts`
 - `scripts/check-session-topic-setup-and-offline-grace.ts`
 - `scripts/check-telegram-temp-cleanup.ts`

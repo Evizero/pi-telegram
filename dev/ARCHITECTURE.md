@@ -314,9 +314,10 @@ into permanent history.
 Current-state clarification: pending turns, media groups, selector selections,
 and assistant finals have this durable handoff shape today. Assistant finals
 resume from their broker delivery ledger rather than from the client-side IPC
-request that originally handed off the final. Route cleanup on session close or
-expired reconnect grace is a planned correction to the current offline-preserve
-behavior.
+request that originally handed off the final. Route cleanup on explicit close,
+normal shutdown, and expired reconnect grace is represented as broker cleanup
+intent and retried through the cleanup outbox after route lifecycle code has
+classified the Telegram view as no longer active.
 
 ### Session close or crash cleanup
 
@@ -603,11 +604,20 @@ execution out of pi.
 
 ### Telegram route
 
-`TelegramRoute` binds a pi session to a chat and optional `message_thread_id`.
-Routes may represent private bot topics, forum-supergroup topics, or a
-single-chat selector mode.
-Every send path that belongs to a routed session must preserve this route
-context.
+`TelegramRoute` binds a pi session to a chat, route mode, and optional
+`message_thread_id`. Routes may represent private bot topics,
+forum-supergroup topics, or a single-chat selector mode. Every send path that
+belongs to a routed session must preserve this route context.
+
+Route ownership is explicit policy, not a loose chat-ID match. Registration
+computes the route shape expected by current Telegram config, reuses an existing
+route only when the chat, thread shape, and route mode match that expected
+shape, and treats disabled routing as a detach/reject condition rather than a
+reason to keep stale reachability. Selector selections are scoped to the source
+chat and materialize selector routes for that chat; topic fallback requires the
+stored chat identity plus `message_thread_id`. Route replacement creates or
+selects the new route before detaching old routes so route-creation failures do
+not strand the session or queue cleanup for the still-valid previous route.
 
 ### Pending turn and assistant final
 
@@ -680,14 +690,25 @@ media-group batching, polling offset initialization, webhook removal before
 polling, offline marking, and retrying pending turns.
 
 `broker/commands.ts` is the thin Telegram command/callback dispatcher and route-aware
-composition point for operator controls. Focused command/control modules own the
-cohesive semantics behind that dispatcher: `broker/model-command.ts` owns `/model`
-and model-picker callbacks, `broker/git-command.ts` owns `/git` menus and Git
-action callbacks, `broker/queued-turn-control-handler.ts` owns queued follow-up
+composition point for operator controls. It resolves messages through stored
+route identity, keeps selector choices per source chat, and records the selected
+`routeId` on delivered turns. Focused command/control modules own the cohesive
+semantics behind that dispatcher: `broker/model-command.ts` owns `/model` and
+model-picker callbacks, `broker/git-command.ts` owns `/git` menus and Git action
+callbacks, `broker/queued-turn-control-handler.ts` owns queued follow-up
 steer/cancel control lifecycle, and `broker/inline-controls.ts` centralizes common
 tokenized inline-control message binding, route/session validation, callback
 acknowledgement, and edit-or-send policy. These broker modules must continue to
 use `src/telegram/` IO policy helpers rather than local Telegram error classifiers.
+
+`broker/routes.ts` owns broker-side route policy: expected route target
+calculation from Telegram config, disabled-route rejection, route reuse
+eligibility, replacement ordering, detached-route cleanup helpers, and
+active-route cleanup protection. Shared route identity primitives that must also
+be available to client handoff code live in `src/shared/routing.ts`;
+broker-specific route lifecycle policy stays in `broker/routes.ts`. Other broker
+lifecycle paths may still create route-cleanup intent after they have made their
+own final-drain or topic-setup rollback decision.
 
 `broker/activity.ts` separates activity collection from Telegram rendering.
 `ActivityReporter` sends ordered activity updates to the broker; `ActivityRenderer`
@@ -1028,8 +1049,8 @@ socket filenames, owner IDs, leases, and heartbeat liveness.
 Logical session identifiers are appropriate for broker registration, bounded
 route reuse, replacement handoff, and selector choices.
 Current implementation keeps those identities separate so offline-and-reconnect
-can reuse route state. Session replacement handoff is a planned extension of the
-same boundary: replacement should continue Telegram reachability only when the
+can reuse route state. Session replacement handoff is an implemented extension of
+the same boundary: replacement continues Telegram reachability only when the
 replacement runtime starts successfully, while terminal close/death still cleans
 up after the appropriate lifecycle boundary. Telegram-triggered runtime reload
 and reload reattachment are intentionally unsupported until pi exposes a safe
@@ -1289,8 +1310,10 @@ ownership.
   composition root, broker/client orchestration, state wiring, config setup,
   lease coordination, and cross-boundary callbacks after demand loading.
 - `src/broker/activity.ts` — broker-side Telegram activity rendering and debouncing.
-- `src/broker/commands.ts` — thin Telegram command/callback dispatcher and route-aware control composition.
+- `src/broker/commands.ts` — thin Telegram command/callback dispatcher, selector-chat route resolution, and route-aware control composition.
 - `src/broker/model-command.ts`, `src/broker/git-command.ts`, `src/broker/queued-turn-control-handler.ts`, and `src/broker/inline-controls.ts` — focused command/control semantics and shared inline-control lifecycle helpers.
+- `src/broker/routes.ts` — broker-side expected-route policy, route reuse/replacement helpers, detached-route cleanup helpers, and active-route cleanup protection.
+- `src/broker/session-registration.ts` — session register/heartbeat coordination with per-session route ensure locks and replacement handoff consumption.
 - `src/broker/sessions.ts` — broker-side offline/unregister cleanup.
 - `src/broker/updates.ts` — Telegram polling, authorization gate, update offset,
   media groups, offline marking, and pending-turn retry.

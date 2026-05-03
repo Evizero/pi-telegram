@@ -102,10 +102,11 @@ Key broker files:
 | File | Responsibility |
 | --- | --- |
 | `src/broker/updates.ts` | Polling, webhook deletion, update authorization, pairing, media groups, offset durability. |
-| `src/broker/commands.ts` | Telegram command/callback routing and session-control orchestration. |
+| `src/broker/commands.ts` | Telegram command/callback routing, selector-chat resolution, and session-control orchestration. |
+| `src/broker/routes.ts` | Expected route target policy, route reuse/replacement helpers, detached-route cleanup helpers, and active-route cleanup protection. |
 | `src/broker/lease.ts` | File-based broker election and lease renewal classification. |
 | `src/broker/heartbeat.ts` | Broker heartbeat cycle and contention diagnostics. |
-| `src/broker/session-registration.ts` | Register/re-register sessions and coordinate routes. |
+| `src/broker/session-registration.ts` | Register/re-register sessions, serialize per-session route ensure work, and consume replacement handoffs. |
 | `src/broker/sessions.ts` | Offline/unregister lifecycle and route cleanup intent. |
 | `src/broker/activity.ts` | Activity collection/rendering to Telegram. |
 | `src/broker/finals.ts` | Durable assistant-final ledger and FIFO delivery. |
@@ -192,12 +193,14 @@ Feature modules should call these policy helpers instead of parsing Telegram err
 - `config.ts` / `config-types.ts` — persisted bridge config;
 - `ipc.ts`, `ipc-types.ts`, `ipc-policy.ts` — local IPC transport, envelopes, request timeout, and JSON body-size limits;
 - `file-policy.ts` — bridge attachment limits;
-- `activity-lines.ts`, `format.ts`, `messages.ts`, `routing.ts`, `pairing.ts`, `ui-status.ts` — reusable presentation and parsing helpers;
+- `activity-lines.ts`, `format.ts`, `messages.ts`, `routing.ts`, `pairing.ts`, `ui-status.ts` — reusable presentation, parsing, and route-identity helpers;
 - `types.ts` — compatibility re-exports only where still needed.
 
 New broker, client, Telegram, or pi concepts should go to their owning folder first. Avoid expanding broad shared buckets.
 
 `ipc-policy.ts` is the narrow owner for local IPC envelope limits. The request timeout remains 5 seconds and the JSON body cap remains 100 MiB, but those values are not derived from `file-policy.ts`; Telegram attachment-size changes must not silently change local broker/client IPC behavior.
+
+`routing.ts` is shared only for route-identity primitives that cross broker and client boundaries: canonical route keys, route/cleanup identity comparison, turn/control route matching, and replacement handoff retargeting. Expected-route calculation from Telegram config, disabled-route handling, route reuse eligibility, route replacement ordering, detached-route cleanup helpers, and active-route cleanup protection remain broker-owned in `src/broker/routes.ts`. Other broker lifecycle paths, such as final-drain and topic-setup rollback, may also create route-cleanup intent after their own lifecycle decision has detached or restored routes.
 
 ## Dependency rules of thumb
 
@@ -217,6 +220,7 @@ Behavior checks under `scripts/check-*.ts` protect this architecture. Important 
 - `scripts/check-runtime-pi-hooks.ts`
 - `scripts/check-client-runtime-host.ts`
 - `scripts/check-telegram-command-routing.ts`
+- `scripts/check-session-route-registration.ts`
 - `scripts/check-shared-boundaries.ts`
 - `scripts/check-ipc-policy.ts`
 - `scripts/check-final-delivery.ts`

@@ -206,9 +206,19 @@
       "id": "inbox:centralize-route-ownership-retargeting",
       "kind": "inbox",
       "slug": "centralize-route-ownership-retargeting",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated route ownership helper cleanup into architecture and docs. The docs now identify broker/routes.ts as the owner for expected route target policy, route reuse/replacement helpers, detached-route cleanup helpers, and active-route cleanup protection, with shared route identity primitives in shared/routing.ts. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:fe261a8071ef9f60f5051ce0b95b2719b586ea8ecd3156ff8c9964b2ad80dfd4",
+      "processed_at": "2026-05-03",
+      "processed_revision": "ec8a357869557d3b8e631a93fa8799e29c497cb9",
+      "note": "Route ownership and retargeting helper knowledge curated into architecture/runtime/state/maintenance docs; latest review reported No findings."
     },
     "inbox:centralize-telegram-io-policy": {
       "id": "inbox:centralize-telegram-io-policy",
@@ -508,17 +518,37 @@
       "id": "inbox:route-reuse-should-respect",
       "kind": "inbox",
       "slug": "route-reuse-should-respect",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the route-reuse bug resolution. Docs now state that chat ID alone is insufficient for route reuse/targeting, route reuse must match expected mode/chat/thread shape, and disabled routing must not keep stale routes active. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:d3bebe7c4e9f94ff4a55ed666425641f23b693179316d3ed4b3d4a12f03b10ac",
+      "processed_at": "2026-05-03",
+      "processed_revision": "ec8a357869557d3b8e631a93fa8799e29c497cb9",
+      "note": "Resolved stale-route-reuse behavior curated into route docs; latest review reported No findings."
     },
     "inbox:selector-and-forum-topic": {
       "id": "inbox:selector-and-forum-topic",
       "kind": "inbox",
       "slug": "selector-and-forum-topic",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the already-fixed selector/forum route-identity finding. Docs now state selector /use is scoped to the source chat and materializes a same-chat selector route, while topic fallback requires stored chat identity plus message_thread_id; selected turns record the routeId. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:460daa610e3663c000d761b746a949559539987cee3f3f07c6a30531f243a6ed",
+      "processed_at": "2026-05-03",
+      "processed_revision": "ec8a357869557d3b8e631a93fa8799e29c497cb9",
+      "note": "Selector/forum route identity behavior curated into docs; latest review reported No findings."
     },
     "inbox:sendphoto-fallback-should-only": {
       "id": "inbox:sendphoto-fallback-should-only",
@@ -900,9 +930,19 @@
       "id": "task:centralize-route-ownership-helpers-and",
       "kind": "task",
       "slug": "centralize-route-ownership-helpers-and",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the completed route-ownership/refactor task into durable docs: route reuse now depends on expected route mode, chat, and thread shape; disabled routing detaches/rejects instead of preserving stale reachability; replacement ordering preserves the prior valid route on creation failure; validation anchors name route registration, unregister cleanup, replacement handoff, command routing, and shared-boundary checks. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:430334c495f689302eacd17742b329d93ee9221b5fb6a63ab0384340a5a1dabe",
+      "processed_at": "2026-05-03",
+      "processed_revision": "ec8a357869557d3b8e631a93fa8799e29c497cb9",
+      "note": "Completed route ownership helper/refactor behavior curated into docs; latest review reported No findings."
     },
     "task:centralize-telegram-io-policy": {
       "id": "task:centralize-telegram-io-policy",
