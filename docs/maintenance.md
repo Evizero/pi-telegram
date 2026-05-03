@@ -107,11 +107,13 @@ Before changing Bot API integration, read [`telegram-bot-api.md`](telegram-bot-a
 | Model and Git controls | `src/broker/model-*`, `src/broker/git-*`, `src/client/git-status.ts` | `check-model-picker.ts`, `check-telegram-model-picker.ts`, `check-telegram-git-controls.ts`, `check-client-git-status.ts` |
 | Broker lease/background | `src/broker/lease.ts`, `src/broker/heartbeat.ts`, `src/broker/background.ts` | `check-broker-background.ts`, `check-broker-renewal-contention.ts` |
 | Shared boundary cleanup | `src/shared/*`, owner modules | `check-shared-boundaries.ts`, `check-ipc-policy.ts` |
+| Local IPC policy | `src/shared/ipc.ts`, `src/shared/ipc-types.ts`, `src/shared/ipc-policy.ts` | `check-ipc-policy.ts`, `check-shared-boundaries.ts` |
 
 ## Safe implementation habits
 
 - Check `git status --short` before and after edits.
 - Prefer narrow modules with explicit owners over broad helpers.
+- Keep local IPC timeout/body-size policy in `src/shared/ipc-policy.ts`; do not derive broker/client IPC envelope limits from Telegram attachment-size constants.
 - Keep retry loops idempotent and state-backed.
 - Treat `retry_after` as scheduling state, not as an error to hide.
 - Preserve FIFO final delivery and visible progress records.

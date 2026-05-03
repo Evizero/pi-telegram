@@ -190,12 +190,14 @@ Feature modules should call these policy helpers instead of parsing Telegram err
 
 - `paths.ts` — config/broker/temp paths and bot-scoped broker root configuration;
 - `config.ts` / `config-types.ts` — persisted bridge config;
-- `ipc.ts`, `ipc-types.ts`, `ipc-policy.ts` — local IPC transport and limits;
+- `ipc.ts`, `ipc-types.ts`, `ipc-policy.ts` — local IPC transport, envelopes, request timeout, and JSON body-size limits;
 - `file-policy.ts` — bridge attachment limits;
 - `activity-lines.ts`, `format.ts`, `messages.ts`, `routing.ts`, `pairing.ts`, `ui-status.ts` — reusable presentation and parsing helpers;
 - `types.ts` — compatibility re-exports only where still needed.
 
 New broker, client, Telegram, or pi concepts should go to their owning folder first. Avoid expanding broad shared buckets.
+
+`ipc-policy.ts` is the narrow owner for local IPC envelope limits. The request timeout remains 5 seconds and the JSON body cap remains 100 MiB, but those values are not derived from `file-policy.ts`; Telegram attachment-size changes must not silently change local broker/client IPC behavior.
 
 ## Dependency rules of thumb
 
@@ -216,6 +218,7 @@ Behavior checks under `scripts/check-*.ts` protect this architecture. Important 
 - `scripts/check-client-runtime-host.ts`
 - `scripts/check-telegram-command-routing.ts`
 - `scripts/check-shared-boundaries.ts`
+- `scripts/check-ipc-policy.ts`
 - `scripts/check-final-delivery.ts`
 - `scripts/check-client-final-handoff.ts`
 - `scripts/check-session-replacement-handoff.ts`

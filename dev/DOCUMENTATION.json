@@ -188,9 +188,19 @@
       "id": "inbox:centralize-ipc-limits-and",
       "kind": "inbox",
       "slug": "centralize-ipc-limits-and",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the IPC-limit audit finding into architecture and maintenance docs. Docs now identify src/shared/ipc-policy.ts as the narrow IPC-owned policy surface for the 5 second request timeout and 100 MiB JSON body cap, explicitly decoupled from Telegram attachment/file-size limits. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:24acaabf12e4d11bbaaef849117dc03b2f85c96552266898c13ca33a3927d61e",
+      "processed_at": "2026-05-03",
+      "processed_revision": "e65d2eeaa93f47e2c162b09c955d8d1f604532a5",
+      "note": "IPC timeout/body-size policy ownership curated into docs; latest review reported No findings."
     },
     "inbox:centralize-route-ownership-retargeting": {
       "id": "inbox:centralize-route-ownership-retargeting",
@@ -872,9 +882,19 @@
       "id": "task:centralize-local-ipc-limits",
       "kind": "task",
       "slug": "centralize-local-ipc-limits",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the completed IPC policy refactor into durable docs: dev/ARCHITECTURE.md and docs/internals/runtime-architecture.md now describe ipc-policy.ts, docs/maintenance.md points maintainers at src/shared/ipc*.ts and check-ipc-policy.ts / check-shared-boundaries.ts, and docs preserve that Telegram attachment limits are unchanged and separate. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:b30d2b7c092322cb879eef156bb4235fa58b3c6a7788ff0c6a60b264ae1ccfe5",
+      "processed_at": "2026-05-03",
+      "processed_revision": "e65d2eeaa93f47e2c162b09c955d8d1f604532a5",
+      "note": "Completed local IPC policy refactor curated into architecture/runtime/maintenance docs; latest review reported No findings."
     },
     "task:centralize-route-ownership-helpers-and": {
       "id": "task:centralize-route-ownership-helpers-and",

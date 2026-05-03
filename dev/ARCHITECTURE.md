@@ -810,8 +810,9 @@ bag: `shared/paths.ts` owns mutable broker path scope, `shared/file-policy.ts`
 owns bridge file/attachment limits, `broker/policy.ts` owns broker/session timing
 and broker control TTL/update limits, `telegram/policy.ts` owns Telegram method
 limits, and `shared/prompt.ts` owns the prompt suffix. Local IPC timeout and JSON
-body-size limits belong with IPC ownership, not with Telegram attachment policy.
-Changing one policy should not appear to change unrelated behavior.
+body-size limits are explicit IPC policy in `shared/ipc-policy.ts`, not derived
+from Telegram attachment policy. Changing one policy should not appear to change
+unrelated behavior.
 
 `shared/ipc.ts` owns local IPC transport mechanics.
 `shared/activity-lines.ts`, `shared/format.ts`, `shared/messages.ts`,
@@ -1321,9 +1322,9 @@ ownership.
 - `src/shared/types.ts` — transitional compatibility barrel for the former broad
   cross-module runtime data model; stable concepts should be imported from
   Telegram, broker, client, or IPC owner modules.
-- `src/shared/ipc.ts` and `src/shared/ipc-types.ts` — local IPC transport helpers
-  plus envelope/response types; IPC timeout and JSON body-size policy should be
-  owned here or by a narrow IPC policy sibling.
+- `src/shared/ipc.ts`, `src/shared/ipc-types.ts`, and `src/shared/ipc-policy.ts`
+  — local IPC transport helpers, envelope/response types, and the explicit
+  request-timeout / JSON body-size policy for local IPC.
 - `src/shared/activity-lines.ts`, `src/shared/format.ts`,
   `src/shared/messages.ts`, `src/shared/routing.ts`, `src/shared/pairing.ts`,
   `src/shared/ui-status.ts`, and `src/shared/utils.ts` — activity-line
