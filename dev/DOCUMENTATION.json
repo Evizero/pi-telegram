@@ -463,9 +463,19 @@
       "id": "inbox:telegram-activity-can-stop",
       "kind": "inbox",
       "slug": "telegram-activity-can-stop",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated into docs/internals/activity-rendering.md under Typing and live-update ordering plus Provenance and supersession. The docs now distinguish the 2026-04-28 overlapping Activity render flush stall from the earlier typing-startup batching issue, and record the current renderPending follow-up flush behavior: timer bookkeeping is cleared before joining an in-flight render, later rows mark renderPending, one follow-up flush runs after the in-flight Telegram send/edit settles, and completion waits without parallel flush storms. Latest documentation review reported no findings."
+        }
+      ],
+      "processed_hash": "sha256:8e01254ce98099d44d7b0820856a667a9a43ae569bd0689fde78e003f4a071d6",
+      "processed_at": "2026-05-03",
+      "processed_revision": "363fab20d6e49e3bad4acb605796ce695c8bc391",
+      "note": "Processed by overlapping Telegram Activity flush-stall documentation chunk; latest review reported no findings."
     },
     "inbox:telegram-activity-edits-can": {
       "id": "inbox:telegram-activity-edits-can",
@@ -771,9 +781,19 @@
       "id": "task:fix-overlapping-telegram-activity",
       "kind": "task",
       "slug": "fix-overlapping-telegram-activity",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated into docs/internals/activity-rendering.md under Typing and live-update ordering plus Provenance and supersession. The docs now distinguish the 2026-04-28 overlapping Activity render flush stall from the earlier typing-startup batching issue, and record the current renderPending follow-up flush behavior: timer bookkeeping is cleared before joining an in-flight render, later rows mark renderPending, one follow-up flush runs after the in-flight Telegram send/edit settles, and completion waits without parallel flush storms. Latest documentation review reported no findings."
+        }
+      ],
+      "processed_hash": "sha256:7a1f3932d968938e11858e19101b1c1a2482345edfa1d4e40f829a4dcb0d71fc",
+      "processed_at": "2026-05-03",
+      "processed_revision": "363fab20d6e49e3bad4acb605796ce695c8bc391",
+      "note": "Processed by overlapping Telegram Activity flush-stall documentation chunk; latest review reported no findings."
     },
     "task:format-local-pi-user-mirror-messages": {
       "id": "task:format-local-pi-user-mirror-messages",

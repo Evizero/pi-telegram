@@ -30,6 +30,8 @@ The typing controller in `src/telegram/typing.ts` keeps at most one in-flight `s
 
 The historical regression was that a blocked first typing send could make Telegram activity appear frozen during a busy turn and then arrive in a burst near final delivery. Current regression checks cover blocked typing startup, overlapping typing sends, abort-on-stop cleanup, and route/thread preservation for passive activity sends.
 
+A separate freeze path existed inside activity rendering itself: a debounce timer could fire while an earlier `sendMessage` or `editMessageText` was still in flight. The renderer now clears timer bookkeeping before it joins an existing flush, marks later updates with `renderPending`, and runs one follow-up flush after the in-flight Telegram call settles when the same state is still active. Completion waits for that pending follow-up instead of spawning parallel sends or losing final chronology.
+
 ## Current row semantics
 
 Activity rows are stored internally as simple strings. A leading `*` means the row is active and renders bold in Telegram. Completed rows remove the leading marker.
@@ -90,14 +92,20 @@ It also curates the 2026-04-27 live-update batching fix around:
 - `inbox:typing-loop-should-not`
 - `task:prevent-telegram-activity-batching`
 
+And the 2026-04-28 overlapping flush-stall fix around:
+
+- `inbox:telegram-activity-can-stop`
+- `task:fix-overlapping-telegram-activity`
+
 And the 2026-05-02 same-turn Activity message continuity fix around:
 
 - `inbox:activity-message-restarts-during`
 - `task:stabilize-same-turn-telegram-activity`
 
-Four early directions were superseded by later implementation decisions:
+Five early directions were superseded by later implementation decisions:
 
 - The first fallback idea was to show untitled thinking as `🧠 thinking ...`. Hidden/empty provider thinking now uses transient `⏳ working ...` instead, because it reassures the Telegram user without pretending that pi recorded a visible thinking trace.
 - The first bash/read/write idea explored removing more visible tool labels. The final labels keep only bash label-less as `💻 $ <command>`, while read/write/edit keep explicit labels as `📖 read <path>`, `📝 write <path>`, and `📝 edit <path>`.
 - The typing-loop issue was initially captured as a separate retry-after overlap bug, then was resolved by the broader activity-batching task because typing startup sat in the activity IPC path. The current implementation treats typing as advisory and non-overlapping instead of a delivery prerequisite for activity rows.
+- A later freeze report looked similar to typing-startup batching, but local reproduction showed a distinct stale-`flushTimer` path when overlapping activity timers met in-flight Telegram renders. The implementation fix kept debouncing but added render-pending follow-up flushing rather than sending every activity event immediately.
 - The first same-turn restart hypothesis focused on successful hidden-thinking deletion. Screenshot follow-up showed old Activity bubbles could remain visible, so the final continuity fix also covers ambiguous accepted sends, failed deletes, and broker/renderer reset with durable active Activity refs.
