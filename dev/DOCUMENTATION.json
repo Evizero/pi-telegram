@@ -758,9 +758,19 @@
       "id": "inbox:write-token-bearing-json",
       "kind": "inbox",
       "slug": "write-token-bearing-json",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the token-bearing JSON permission-window report into setup, runtime-state, and maintainer docs. Docs now state that token config is written under private ~/.pi/agent storage, shared JSON temp files are created with restrictive 0600 permissions before secret bytes are written, and maintainers must preserve creation-time privacy rather than chmod-only-after-write behavior. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:f327fe138e412d25a9201bbe32a44574f4c181a9482cdc6fc77fa0ede4752672",
+      "processed_at": "2026-05-03",
+      "processed_revision": "7d7a5b62c8fb64227c291f3eb7e102a3aa06e08a",
+      "note": "Private creation behavior for token-bearing JSON/config writes curated into docs; latest review reported No findings."
     },
     "task:add-cancel-controls-for-queued": {
       "id": "task:add-cancel-controls-for-queued",
@@ -822,9 +832,19 @@
       "id": "task:create-token-json-with-private",
       "kind": "task",
       "slug": "create-token-json-with-private",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the completed private-token-JSON hardening task into docs/getting-started.md, docs/internals/state-and-reliability.md, and docs/maintenance.md. The docs cover private config parent setup, restrictive exclusive temp JSON creation, broker token private mode, and the validation anchor in check-security-setup-attachments.ts. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:e0ee0c2850fdd7daa66de4d7b246738ef50985d342ea36efde3d816f8e3051c1",
+      "processed_at": "2026-05-03",
+      "processed_revision": "7d7a5b62c8fb64227c291f3eb7e102a3aa06e08a",
+      "note": "Implementation of restrictive JSON temp-file creation and private config directory setup curated into docs; latest review reported No findings."
     },
     "task:default-busy-telegram-messages-to": {
       "id": "task:default-busy-telegram-messages-to",

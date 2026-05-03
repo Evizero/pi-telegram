@@ -80,6 +80,7 @@ Before changing Bot API integration, read [`telegram-bot-api.md`](telegram-bot-a
 
 - Never log bot tokens or credentials.
 - Keep config, broker state, IPC sockets, and downloaded Telegram files private.
+- When changing persisted JSON helpers or config setup, preserve private creation: token-bearing config/state temp files must be created with restrictive permissions before secret bytes are written, not chmodded only after a default-permission write.
 - Treat Telegram attachments, filenames, MIME types, metadata, and content as untrusted.
 - Do not execute or trust attachment contents merely because they came from the paired user.
 - Allow outbound uploads only from the session workspace or bridge temp directory
@@ -99,7 +100,7 @@ Before changing Bot API integration, read [`telegram-bot-api.md`](telegram-bot-a
 | Busy turns and queued controls | `src/broker/commands.ts`, `src/broker/queued-*`, `src/client/turn-*` | `check-telegram-command-routing.ts`, `check-telegram-queued-controls.ts`, `check-client-turn-delivery.ts` |
 | Final delivery | `src/broker/finals.ts`, `src/client/final-handoff.ts`, `src/client/retry-aware-finalization.ts` | `check-final-delivery.ts`, `check-client-final-handoff.ts`, `check-retry-aware-finalization.ts` |
 | Session lifecycle/routes | `src/broker/session-registration.ts`, `src/broker/sessions.ts`, `src/client/session-replacement.ts` | `check-session-route-registration.ts`, `check-session-unregister-cleanup.ts`, `check-session-replacement-handoff.ts` |
-| Attachments/security | `src/telegram/api.ts`, `src/telegram/attachments.ts`, `src/client/attachment-path.ts`, `src/pi/attachments.ts` | `check-security-setup-attachments.ts`, `check-telegram-temp-cleanup.ts` |
+| Attachments/security | `src/shared/utils.ts`, `src/shared/config.ts`, `src/telegram/api.ts`, `src/telegram/attachments.ts`, `src/client/attachment-path.ts`, `src/pi/attachments.ts` | `check-security-setup-attachments.ts`, `check-telegram-temp-cleanup.ts` |
 | Model and Git controls | `src/broker/model-*`, `src/broker/git-*`, `src/client/git-status.ts` | `check-model-picker.ts`, `check-telegram-model-picker.ts`, `check-telegram-git-controls.ts`, `check-client-git-status.ts` |
 | Broker lease/background | `src/broker/lease.ts`, `src/broker/heartbeat.ts`, `src/broker/background.ts` | `check-broker-background.ts`, `check-broker-renewal-contention.ts` |
 | Shared boundary cleanup | `src/shared/*`, owner modules | `check-shared-boundaries.ts`, `check-ipc-policy.ts` |

@@ -35,7 +35,7 @@ In pi:
 /telegram-setup
 ```
 
-Paste the bot token when prompted. The setup flow validates the bot token with Telegram, stores local config, and shows an attended 4-digit PIN with a 5-minute pairing window.
+Paste the bot token when prompted. The setup flow validates the bot token with Telegram, stores local config under private `~/.pi/agent` storage, and shows an attended 4-digit PIN with a 5-minute pairing window.
 
 In Telegram, open the bot DM and send either:
 

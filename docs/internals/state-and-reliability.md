@@ -21,7 +21,7 @@ For source-level details, start with `src/shared/paths.ts`, `src/extension.ts`, 
 | Session handoffs | `session-replacement-handoffs/*.json` | Native `/new`, `/resume`, `/fork` route-continuity handoff records. |
 | Telegram downloads | `~/.pi/agent/tmp/telegram/<session-id>` | Private session-scoped inbound file storage. |
 
-These are local runtime artifacts, not repository artifacts. Token-bearing files must stay private.
+These are local runtime artifacts, not repository artifacts. Token-bearing files must stay private. `writeConfig()` ensures `~/.pi/agent` is `0700` before writing `telegram.json`, and the shared JSON writer creates temporary JSON files with restrictive `0600` permissions and exclusive creation before token or broker-state bytes are written. The final file is also chmodded to `0600` before the atomic rename completes. The broker IPC token file uses the same private-file mode.
 
 ## Broker lease and broker state
 
