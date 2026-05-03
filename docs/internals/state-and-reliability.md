@@ -117,6 +117,12 @@ Client side:
 - client final handoff persists only the pre-broker-acceptance ambiguity window in `client-pending-finals/*.json`, coordinated by `client-pending-finals.lock`;
 - after broker acceptance, client retry should not become a parallel final-delivery system.
 
+The retry-aware path exists because pi can emit an `agent_end` for a transient provider failure before its session-level auto-retry produces the assistant answer visible locally. The 2026-04-26 bug report (`inbox:assistant-final-lost-with`) described Telegram receiving low-context strings such as `fetch failed` or `terminated`, while the local pi session later showed a normal final and the broker had already completed the Telegram turn. The implementing task (`task:keep-telegram-finals-pending-across-pi`) corrected that boundary.
+
+Current finalization treats retryable assistant/provider errors without final text as intermediate: it keeps the active Telegram turn, clears/supersedes the stale preview best effort, starts a bounded deferred-final grace, cancels only the watchdog when a retry begins, and consumes the deferred marker when retry output starts. If no retry begins, the deferred error-only payload is flushed through the same final-handoff path so queued Telegram work is not blocked indefinitely. If stop, disconnect, shutdown, or another cleanup path must release the deferred turn, the release path clears the deferred state and may hand off an aborted cleanup final instead of showing the transient provider error.
+
+This client-side retry awareness is separate from Telegram Bot API delivery retry. A Telegram `sendMessage`/`editMessageText` failure named `fetch failed` is broker delivery state and remains retryable in the final ledger; it is not converted into Telegram-visible final text. Conversely, an error-only assistant/provider final that survives the deferred grace is rendered as a bridge failure message, while any non-empty assistant final text remains the visible final even when stop/error metadata is also present.
+
 Broker side:
 
 - `pendingAssistantFinals` records the final before visible Telegram output;
@@ -126,7 +132,7 @@ Broker side:
 - partial success resumes from recorded progress after retry or broker turnover;
 - terminal non-retryable failures close the final and allow later finals to proceed.
 
-This design prevents known duplicate-final failure modes from long answers, IPC timeout ambiguity, broker restart/takeover, and attachment-after-text retries.
+This design prevents known duplicate-final failure modes from long answers, IPC timeout ambiguity, broker restart/takeover, attachment-after-text retries, and premature Telegram finalization during pi/provider auto-retry.
 
 ## Telegram outbox
 

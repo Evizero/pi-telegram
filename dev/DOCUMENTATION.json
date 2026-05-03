@@ -51,9 +51,19 @@
       "id": "inbox:assistant-final-lost-with",
       "kind": "inbox",
       "slug": "assistant-final-lost-with",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated into docs/internals/state-and-reliability.md under Assistant final delivery. The docs now preserve the 2026-04-26 Telegram-only final-loss report and implementing task, describe retry-aware client finalization across pi/provider auto-retry, distinguish deferred error-only grace expiry from cleanup paths that may hand off an aborted cleanup final, and separate assistant/provider retry from Telegram Bot API delivery retry. Latest documentation review reported no findings."
+        }
+      ],
+      "processed_hash": "sha256:b2c81a5acbf46f4b06745e5e04628b317f347217d811774c5411669e5c7b7ef9",
+      "processed_at": "2026-05-03",
+      "processed_revision": "6e5ba3d42d507b039fa98d031f84492dce25f54a",
+      "note": "Processed by Telegram assistant-final auto-retry documentation chunk; latest review reported no findings."
     },
     "inbox:attachment-safety-check-fails": {
       "id": "inbox:attachment-safety-check-fails",
@@ -915,9 +925,19 @@
       "id": "task:keep-telegram-finals-pending-across-pi",
       "kind": "task",
       "slug": "keep-telegram-finals-pending-across-pi",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated into docs/internals/state-and-reliability.md under Assistant final delivery. The docs now preserve the 2026-04-26 Telegram-only final-loss report and implementing task, describe retry-aware client finalization across pi/provider auto-retry, distinguish deferred error-only grace expiry from cleanup paths that may hand off an aborted cleanup final, and separate assistant/provider retry from Telegram Bot API delivery retry. Latest documentation review reported no findings."
+        }
+      ],
+      "processed_hash": "sha256:036eae5f3f0b24c022fd313b7e7bcd6300a3e79862aef82fd2776287bdf6f685",
+      "processed_at": "2026-05-03",
+      "processed_revision": "6e5ba3d42d507b039fa98d031f84492dce25f54a",
+      "note": "Processed by Telegram assistant-final auto-retry documentation chunk; latest review reported no findings."
     },
     "task:lazy-load-inactive-telegram-runtime": {
       "id": "task:lazy-load-inactive-telegram-runtime",
