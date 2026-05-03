@@ -103,7 +103,7 @@ Before changing Bot API integration, read [`telegram-bot-api.md`](telegram-bot-a
 | Telegram cleanup outbox | `src/broker/telegram-outbox.ts`, `src/broker/sessions.ts`, `src/broker/routes.ts`, `src/broker/queued-turn-control-handler.ts`, `src/extension.ts` | `check-telegram-outbox.ts`, `check-session-unregister-cleanup.ts`, `check-session-disconnect-requests.ts`, `check-session-replacement-handoff.ts`, `check-telegram-queued-controls.ts` |
 | Pi hook boundary | `src/pi/hooks.ts`, `src/pi/*`, `src/shared/activity-lines.ts`, `src/broker/activity.ts` | `check-runtime-pi-hooks.ts`, `check-activity-rendering.ts` |
 | Pi footer/status diagnostics | `src/shared/ui-status.ts`, `src/pi/diagnostics.ts`, `src/extension.ts`, `src/broker/updates.ts`, `src/broker/heartbeat.ts` | `check-pi-status-diagnostics.ts`, `check-broker-renewal-contention.ts`, `check-durable-json-loading.ts`, `check-telegram-outbox.ts` |
-| Final delivery | `src/broker/finals.ts`, `src/client/final-handoff.ts`, `src/client/retry-aware-finalization.ts` | `check-final-delivery.ts`, `check-client-final-handoff.ts`, `check-retry-aware-finalization.ts` |
+| Final delivery | `src/broker/finals.ts`, `src/telegram/previews.ts`, `src/client/final-handoff.ts`, `src/client/retry-aware-finalization.ts` | `check-final-delivery.ts`, `check-client-final-handoff.ts`, `check-retry-aware-finalization.ts`, `check-activity-rendering.ts` |
 | Session lifecycle/routes | `src/broker/routes.ts`, `src/broker/session-registration.ts`, `src/broker/sessions.ts`, `src/client/session-replacement.ts`, `src/shared/routing.ts` | `check-session-route-registration.ts`, `check-session-unregister-cleanup.ts`, `check-session-replacement-handoff.ts` |
 | Attachments/security | `src/shared/utils.ts`, `src/shared/config.ts`, `src/telegram/api.ts`, `src/telegram/attachments.ts`, `src/client/attachment-path.ts`, `src/pi/attachments.ts` | `check-security-setup-attachments.ts`, `check-telegram-temp-cleanup.ts` |
 | Model and Git controls | `src/broker/model-*`, `src/broker/git-*`, `src/client/git-status.ts` | `check-model-picker.ts`, `check-telegram-model-picker.ts`, `check-telegram-git-controls.ts`, `check-client-git-status.ts` |
@@ -121,6 +121,7 @@ Before changing Bot API integration, read [`telegram-bot-api.md`](telegram-bot-a
 - Treat `retry_after` as scheduling state, not as an error to hide.
 - Keep Telegram retry/error primitives in `src/telegram/api-errors.ts`; do not reintroduce imports of those primitives from `src/telegram/api.ts` outside the transport boundary.
 - Preserve FIFO final delivery and visible progress records.
+- Treat streamed assistant previews as temporary: settle or record cleanup limitations before final text/notices, and append final content as fresh Telegram messages rather than editing previews into finals.
 - Keep cleanup-oriented Telegram outbox work scoped to queued-control status edits and route/topic cleanup unless a later reviewed migration explicitly moves another side-effect family.
 - Do not make client-side final persistence a second broker final ledger.
 - Do not route Telegram controls as fake user conversation text unless the requirement explicitly says so.

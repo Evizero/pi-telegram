@@ -73,7 +73,7 @@ Known message IDs are retained until Telegram cleanup is confirmed, the message 
 
 Activity message references live in broker state while active. The renderer persists before ambiguous sends, records unknown message IDs when needed, honors Telegram `retry_after`, re-arms recovered retry timers, and deletes empty transient activity messages when cleanup succeeds. If route/session validity changes before a flush, the durable ref is discarded rather than rendering activity into the wrong Telegram view.
 
-Activity is intentionally separate from assistant previews and finals. Hidden thinking placeholders do not affect final text extraction, and final delivery remains broker-owned through the assistant-final ledger.
+Activity is intentionally separate from assistant previews and finals. Hidden thinking placeholders do not affect final text extraction, and final delivery remains broker-owned through the assistant-final ledger. The ledger completes activity before stopping typing and settling previews; final text is then appended as fresh messages, so a streamed preview cannot keep the final answer above a later Activity message by preserving the preview's original Telegram position.
 
 ## Provenance and supersession
 
@@ -97,15 +97,21 @@ And the 2026-04-28 overlapping flush-stall fix around:
 - `inbox:telegram-activity-can-stop`
 - `task:fix-overlapping-telegram-activity`
 
+And the 2026-04-27 final-preview settlement fix around:
+
+- `inbox:final-telegram-message-can`
+- `task:append-telegram-finals-after-settling`
+
 And the 2026-05-02 same-turn Activity message continuity fix around:
 
 - `inbox:activity-message-restarts-during`
 - `task:stabilize-same-turn-telegram-activity`
 
-Five early directions were superseded by later implementation decisions:
+Six early directions were superseded by later implementation decisions:
 
 - The first fallback idea was to show untitled thinking as `🧠 thinking ...`. Hidden/empty provider thinking now uses transient `⏳ working ...` instead, because it reassures the Telegram user without pretending that pi recorded a visible thinking trace.
 - The first bash/read/write idea explored removing more visible tool labels. The final labels keep only bash label-less as `💻 $ <command>`, while read/write/edit keep explicit labels as `📖 read <path>`, `📝 write <path>`, and `📝 edit <path>`.
 - The typing-loop issue was initially captured as a separate retry-after overlap bug, then was resolved by the broader activity-batching task because typing startup sat in the activity IPC path. The current implementation treats typing as advisory and non-overlapping instead of a delivery prerequisite for activity rows.
 - A later freeze report looked similar to typing-startup batching, but local reproduction showed a distinct stale-`flushTimer` path when overlapping activity timers met in-flight Telegram renders. The implementation fix kept debouncing but added render-pending follow-up flushing rather than sending every activity event immediately.
+- The first final-ordering investigation described a possible non-retryable fallback that would still edit a preview into final content when deletion failed. The implemented fix is stricter: retryable preview cleanup blocks final text, permanent cleanup refusal is recorded, and final text, error-only notices, and attachment-only notices are always appended as fresh messages.
 - The first same-turn restart hypothesis focused on successful hidden-thinking deletion. Screenshot follow-up showed old Activity bubbles could remain visible, so the final continuity fix also covers ambiguous accepted sends, failed deletes, and broker/renderer reset with durable active Activity refs.

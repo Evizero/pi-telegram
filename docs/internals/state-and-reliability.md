@@ -146,11 +146,14 @@ Broker side:
 - `pendingAssistantFinals` records the final before visible Telegram output;
 - repeated handoffs for the same turn/final are idempotent;
 - delivery is FIFO;
-- text chunks, sent chunk indexes, message IDs, attachment indexes, preview cleanup state, retry-at times, and terminal outcomes are persisted;
+- activity completion and typing stop are persisted before visible final output;
+- preview detach/cleanup state, cleanup terminal limitations, text chunks, sent chunk indexes, message IDs, attachment indexes, retry-at times, and terminal outcomes are persisted;
 - partial success resumes from recorded progress after retry or broker turnover;
 - terminal non-retryable failures close the final and allow later finals to proceed.
 
-This design prevents known duplicate-final failure modes from long answers, IPC timeout ambiguity, broker restart/takeover, attachment-after-text retries, and premature Telegram finalization during pi/provider auto-retry.
+Final text is appended through fresh Telegram `sendMessage` calls after preview settlement rather than by editing a streamed preview message into the final answer. If preview cleanup hits `retry_after`, transport ambiguity, or another retryable cleanup failure, the final remains pending before any final text is sent. If Telegram permanently refuses preview cleanup, the limitation is recorded and the final is still appended once as fresh text. Error-only and attachment-only notices use the same preview-settlement gate, so fallback final content follows the no-edit-final rule too. Legacy pending finals from the older edit-based path are migrated by clearing recorded chunk progress, deleting any already-sent later chunk messages when retry-safe, and replaying the final text sequence as fresh messages in order.
+
+This design prevents known duplicate-final and ordering failure modes from long answers, IPC timeout ambiguity, broker restart/takeover, attachment-after-text retries, premature Telegram finalization during pi/provider auto-retry, and final answers appearing above later Activity messages because a preview kept its original Telegram position.
 
 ## Telegram outbox
 

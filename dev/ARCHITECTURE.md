@@ -659,11 +659,14 @@ and queued outbound attachments.
 `BrokerState.pendingAssistantFinals` persists those payloads plus delivery
 progress until Telegram delivery succeeds or a terminal non-retryable outcome is
 recorded. `BrokerState.assistantPreviewMessages` records visible preview message
-IDs so broker takeover can detach existing previews before appending fresh final
-messages, rather than editing older preview messages into final content. The
-ledger tracks final text chunk progress and outbound attachment progress so
+IDs so broker takeover can detach and clean up existing previews before
+appending fresh final messages, rather than editing older preview messages into
+final content. Final delivery records activity completion, typing stop, preview
+detach/cleanup state, preview cleanup limitations, text chunk progress, chunk
+message IDs, attachment progress, and legacy edited-preview migration state so
 retries and broker turnover can resume without intentionally resending
-already-recorded visible output.
+already-recorded visible output or leaving a final answer anchored at an older
+preview's Telegram position.
 
 ## Architectural decomposition
 

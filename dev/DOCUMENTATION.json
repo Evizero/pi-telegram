@@ -360,9 +360,19 @@
       "id": "inbox:final-telegram-message-can",
       "kind": "inbox",
       "slug": "final-telegram-message-can",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-04",
+      "decisions": [
+        {
+          "date": "2026-05-04",
+          "decision": "Curated the final-ordering bug into architecture, internals, activity-rendering, and maintenance docs. Documentation now explains that streamed previews are temporary, activity completion/typing stop are persisted before visible final output, final text is appended as fresh sendMessage output after preview settlement, retryable preview cleanup blocks final text, permanent cleanup limitations are recorded, and legacy edit-based pending finals are replayed as fresh chunks. Review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:6e1a367792348f527971b2cbb11558e2e364a035877c2fff5ee965b1c55b6482",
+      "processed_at": "2026-05-04",
+      "processed_revision": "2e151e7a9caa81723ecb6e1358af3dde480201c0",
+      "note": "Final preview settlement and ordering behavior curated into docs; review reported No findings."
     },
     "inbox:format-pi-user-telegram": {
       "id": "inbox:format-pi-user-telegram",
@@ -944,9 +954,19 @@
       "id": "task:append-telegram-finals-after-settling",
       "kind": "task",
       "slug": "append-telegram-finals-after-settling",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-04",
+      "decisions": [
+        {
+          "date": "2026-05-04",
+          "decision": "Curated the completed preview-settlement task. Docs now identify src/broker/finals.ts as the broker-owned assistant-final ledger that completes activity, stops typing, settles previews, appends final text/error/attachment notices as fresh Telegram messages, preserves FIFO progress, handles retry_after/transport preview-cleanup ambiguity before sending final text, records terminal cleanup limitations, and migrates old edit-based pending finals. Review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:a149d271db9a865b3bcc7b17997fe03a2643141c9aa137812ed48e258550f63c",
+      "processed_at": "2026-05-04",
+      "processed_revision": "2e151e7a9caa81723ecb6e1358af3dde480201c0",
+      "note": "Completed append-final-after-preview-settlement task curated into docs; review reported No findings."
     },
     "task:centralize-local-ipc-limits": {
       "id": "task:centralize-local-ipc-limits",
