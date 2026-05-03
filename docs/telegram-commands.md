@@ -63,7 +63,14 @@ The model picker uses compact inline callback tokens. The full provider/model da
 
 ## Git controls
 
-`/git` opens read-only repository controls for the selected local workspace. Current controls include compact status and diffstat views. They execute bounded local Git inspections without creating a pi agent turn.
+`/git` opens a read-only inline menu for the selected local workspace. It does not create, steer, or queue a pi agent turn; the broker asks the selected client session to inspect its own workspace over local IPC, then edits/sends the Telegram control result in the same route/thread.
+
+Current buttons:
+
+- **Status** — compact branch, HEAD, upstream/ahead-behind, clean/dirty/unknown state, bounded changed/untracked file list, and notes when a safe bounded component could not complete.
+- **Diffstat** — branch/upstream context, staged/index insertion-deletion totals, and changed/untracked file counts without patch contents.
+
+The Git inspector is intentionally conservative. It uses bounded non-shell `git` calls with a short timeout, strips inherited `GIT_*` environment, disables system/global Git config, avoids external diff/textconv helpers, ignores submodule internals, and uses metadata-only detection for unstaged tracked-file content. Because of that safe mode, Status can include an informational note that same-size edits within the same mtime second may be missed, and Diffstat skips unstaged line totals rather than executing configured filter helpers. True bounded-query failures are reported as `unknown`/`incomplete` notes instead of being disguised as a clean tree.
 
 ## Callback-button safety
 

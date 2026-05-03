@@ -1039,13 +1039,13 @@
       "decisions": [
         {
           "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
+          "decision": "Curated the Telegram /git controls chunk into docs/telegram-commands.md. The Git controls section now documents the inline Status/Diffstat menu, no-turn IPC behavior, route/thread-preserving result delivery, conservative bounded Git inspection, safe-mode limitations, and incomplete/unknown failure notes. Review on 2026-05-03 reported no findings and confirmed this input is safe to mark done."
         }
       ],
       "processed_hash": "sha256:59a2de5356c919f61016d4de5f15e3a52a48631a26bb0ec17f586f3cf0474a44",
       "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "processed_revision": "2efcac805c62cbad698c1f3a8823deafde2394ca",
+      "note": "Processed by 2026-05-03 Telegram /git documentation curation and clean review."
     },
     "inbox:telegram-git-status-command": {
       "id": "inbox:telegram-git-status-command",
@@ -1057,13 +1057,13 @@
       "decisions": [
         {
           "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
+          "decision": "Curated the Telegram /git controls chunk into docs/telegram-commands.md. The Git controls section now documents the inline Status/Diffstat menu, no-turn IPC behavior, route/thread-preserving result delivery, conservative bounded Git inspection, safe-mode limitations, and incomplete/unknown failure notes. Review on 2026-05-03 reported no findings and confirmed this input is safe to mark done."
         }
       ],
       "processed_hash": "sha256:816d8f93b6b759cc950b8f86c12e4600b9442f52e8554da74477d1ae7c982e0d",
       "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "processed_revision": "2efcac805c62cbad698c1f3a8823deafde2394ca",
+      "note": "Processed by 2026-05-03 Telegram /git documentation curation and clean review."
     },
     "inbox:telegram-placeholder-for-hidden": {
       "id": "inbox:telegram-placeholder-for-hidden",
@@ -1475,13 +1475,13 @@
       "decisions": [
         {
           "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
+          "decision": "Curated the Telegram /git controls chunk into docs/telegram-commands.md. The Git controls section now documents the inline Status/Diffstat menu, no-turn IPC behavior, route/thread-preserving result delivery, conservative bounded Git inspection, safe-mode limitations, and incomplete/unknown failure notes. Review on 2026-05-03 reported no findings and confirmed this input is safe to mark done."
         }
       ],
       "processed_hash": "sha256:fbc536ac4e624691fe5b72c86d161763e208b791cb72b3619b469f06cae97ad5",
       "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "processed_revision": "2efcac805c62cbad698c1f3a8823deafde2394ca",
+      "note": "Processed by 2026-05-03 Telegram /git documentation curation and clean review."
     },
     "task:fix-final-delivery-retry-ordering-and": {
       "id": "task:fix-final-delivery-retry-ordering-and",
@@ -1673,13 +1673,13 @@
       "decisions": [
         {
           "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
+          "decision": "Curated the Telegram /git controls chunk into docs/telegram-commands.md. The Git controls section now documents the inline Status/Diffstat menu, no-turn IPC behavior, route/thread-preserving result delivery, conservative bounded Git inspection, safe-mode limitations, and incomplete/unknown failure notes. Review on 2026-05-03 reported no findings and confirmed this input is safe to mark done."
         }
       ],
       "processed_hash": "sha256:72541e0e54f1747dc562dc432a0678226ec8282729765aabd2672c12e53af6da",
       "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "processed_revision": "2efcac805c62cbad698c1f3a8823deafde2394ca",
+      "note": "Processed by 2026-05-03 Telegram /git documentation curation and clean review."
     },
     "task:implement-telegram-reload-with-route": {
       "id": "task:implement-telegram-reload-with-route",
