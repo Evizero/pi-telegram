@@ -67,6 +67,7 @@ Default workflow:
 - If implementation exposed a real planning gap, contradiction, or missing requirement link, note it explicitly instead of compensating silently in code.
 - Never edit or add requirements unless asked by the user. If user interaction reveals the intent to change requirements, point that out explicitly and write down decisions in the task such that later planning work can consider whether the requirement should actually be updated.
 - Record non-obvious implementation decisions with `pln task decide` right away.
+- Write implementation decisions and pivots with enough “why” for later `pln-documentation` curation to understand what changed, which source assumptions mattered, and what project knowledge or docs may need updating.
 - If the task still contains placeholder or stale body content, replace or refine it when implementation understanding becomes concrete enough to improve the task artifact.
 - If implementation discoveries materially change scope, preserved behavior, code placement, or validation expectations, update the task body so later review does not depend on reconstructing those changes from code diffs alone.
 - Keep the task artifact truthful and up to date.
@@ -102,3 +103,4 @@ Before finishing:
 - Confirm task status reflects reality.
 - If a completion-oriented commit or wrap-up happened, confirm the task was either closed and archived or explicitly left open for a stated reason.
 - Confirm any important implementation tradeoffs were logged in the task decisions.
+- Confirm decisions and pivots include enough context for later documentation/knowledge curation when the work affected project knowledge, research assumptions, architecture, or docs.

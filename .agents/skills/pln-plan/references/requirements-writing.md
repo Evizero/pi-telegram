@@ -287,6 +287,8 @@ Origin, rationale, and sources each do a different job:
 - rationale explains why the requirement exists and why that authority matters
 - sources preserve the upstream material or pointers that justify the requirement
 
+Write rationale as the underlying reason for the requirement, not merely as “the user said so.” If the source is a transcript, voice note, uploaded file, report, or other external resource, phrase the source basis neutrally in source links or framing prose, such as “A provided transcript described...” or “The transcript said...”, then use the rationale to explain the need revealed by that source. If the source provides a directive but no deeper rationale is visible, it is acceptable for the rationale to say that a provided transcript or directive established the constraint so later reviewers understand why it exists; avoid personal-name framing and avoid treating the human’s name as the reason.
+
 When an imposed requirement is grounded in verbatim governing text, preserve that text as a captured reference and write the requirement statement as the normalized shall-language interpretation.
 The captured reference preserves the exact words as informative interpretive basis; the intended-purpose or requirement statement remains the normative project record.
 If you are creating the requirement through a CLI flow that already supports inline directive capture, such as `pln strs add --directive ...`, use that flow to preserve the governing text and citation metadata at creation time instead of planning to backfill the captured reference later.
@@ -294,6 +296,13 @@ Treat `pln hygiene` as a shipped diagnostic backstop for this provenance work: i
 For derived requirements, the rationale should explain the derivation logic.
 For assumed requirements, the rationale and criteria should make the assumption testable.
 For self-derived requirements, the rationale should explain why the practice is necessary despite having no stronger upstream basis.
+
+Examples:
+- Better rationale: “Documentation is viewed as broader project knowledge spanning research, decisions, evidence, and superseded findings; later agents need that context to avoid rediscovering prior work.”
+- Weaker rationale: “The project owner said documentation is broad.”
+- Acceptable when no deeper reason is available: “A provided stakeholder discussion established this as a project constraint; no additional rationale was captured in the source material.”
+
+When excerpts are needed to interpret the requirement later, preserve enough surrounding context in captured references or other managed source artifacts so reviewers can understand the directive without reconstructing it from chat history.
 
 ## 4.5 Stable semantic requirement IDs
 

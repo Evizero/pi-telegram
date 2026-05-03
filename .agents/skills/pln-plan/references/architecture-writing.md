@@ -22,12 +22,14 @@ It does **not** ask you to cargo-cult concentric circles, invent fake abstractio
 
 Architecture in `pln` is the repository's **structural contract**.
 It explains how justified behavior is organized, what boundaries matter, what invariants future work should preserve, and where important responsibilities live.
+For agent-first implementation, the usual unit of architecture is an architecture-significant responsibility group, software item, subsystem, service, workflow family, or dependency boundary — not every function, class, private helper, or file.
 
 A strong architecture document should help a human or agent answer questions like:
 
-- What are the major building blocks of this system?
+- What are the major architecture-significant responsibility groups or software items?
 - What does each block own?
 - What must not leak across those boundaries?
+- What internal and external interfaces or data/control flows matter?
 - What quality goals shape the design?
 - What dependency direction is intended?
 - What runtime flows matter most?
@@ -126,6 +128,10 @@ Instead:
 
 In `pln`, architecture should usually be written as a **normative design contract**, not as a passive retrospective description of whatever the code happens to do.
 
+The live nominated main architecture document should describe the **current intended architecture**.
+Resolved refactors should be folded into that current normative structure instead of preserved as ordinary history.
+Git history, archived tasks, and decision records carry how the project got there; architecture carries the design contract future work should preserve or revise deliberately.
+
 That does **not** mean you should ignore reality.
 It means:
 
@@ -136,13 +142,14 @@ It means:
 
 Good architecture writing says:
 
-- what the system is expected to look like
+- what the system is expected to look like now
 - what implementation already realizes that expectation
-- where migration or debt still exists
+- where unresolved migration or debt still affects current implementation decisions
 
 Bad architecture writing says:
 
 - “here is whatever the code does today, therefore that must be the architecture”
+- “here is a chronological refactor diary, therefore future work can infer the current architecture from it”
 
 Use code to **ground** architecture.
 Do not let accidental code shape define architecture by default.
@@ -165,6 +172,7 @@ This is appropriate when the code is ahead of the docs and the team needs orient
 
 ## 5.3 Migration architecture
 Used when the current and desired structures both matter and the seam between them must be documented explicitly.
+Migration and refactor notes should be rare, clearly labeled, and temporary: keep them only while an unresolved transition materially affects current implementation decisions.
 
 ## 5.4 Mixed mode
 Sometimes a document must contain all three.
@@ -286,8 +294,11 @@ Before drafting or revising architecture, read:
 1. `dev/INTENDED_PURPOSE.md`
 2. relevant stakeholder requirements
 3. relevant system requirements
-4. the existing `dev/ARCHITECTURE.md`, if any
-5. the relevant code paths, tests, tasks, and workflow assets
+4. the nominated main architecture document reported by `pln architecture show`; if that command is unavailable in an older checkout, use `dev/ARCHITECTURE.md`
+5. relevant linked side architecture documents when the main document delegates detail to them
+6. the relevant code paths, tests, tasks, and workflow assets
+
+The nominated main architecture document should remain a substantive high-level architecture contract. It may link side architecture documents, but it should not degrade into a pure index. If you move or split architecture material, update the nomination with `pln architecture update --path <project-relative-file>` when the main document path changes.
 
 Then answer these questions.
 
@@ -462,15 +473,18 @@ They tell future work what must remain true.
 # 14. Decomposition and dependency direction
 
 ## 14.1 Describe meaningful building blocks
-Prefer a few meaningful responsibility groups over exhaustive file inventory.
+Prefer a few meaningful responsibility groups or software items over exhaustive file inventory.
 The main decomposition section should answer:
 
 - what each block owns
 - what must not leak across the boundary
 - what invariants it preserves
 - what other blocks it may depend on
+- what internal or external interfaces are architecture-significant
+- what data, control, or lifecycle flows cross the boundary
+- which repository paths realize the block or interface
 
-You can keep an exhaustive file map later in a repository-mapping section.
+You can keep a file map later in a repository-mapping section.
 Do not let the main decomposition section become a repo tour.
 
 ## 14.2 Explain dependency direction
@@ -505,6 +519,21 @@ A good exception rule explains:
 - why the exception exists
 - what invariant it preserves
 - why a more generic helper layer would be worse or less clear
+
+## 14.4 Architecture-significant level of detail
+Plan and document at the level that changes future implementation decisions.
+For ordinary `pln` projects, that usually means responsibility groups, software items, subsystems, command families, workflow families, storage boundaries, important interfaces, runtime flows, dependency rules, and repository mapping.
+
+Do **not** make architecture a mandatory function/class inventory.
+Avoid exhaustive function, class, method, private-helper, or line-by-line design unless that detail is itself architecture-significant because it is safety-critical, interface-critical, generated from code, externally reviewed, or the only practical way to preserve a boundary.
+
+Use concrete examples without dropping to noise:
+
+- for a Flutter app, say whether the architecture uses BLoC, which BLoCs are architecture-significant, what each owns, how they communicate, and why that pattern was chosen
+- for a CLI, say which command families own which artifact lifecycles, where parsing stops and command behavior begins, and which shared helpers preserve cross-cutting invariants
+- for a data pipeline, say which stages own ingestion, normalization, validation, storage, and review, and which flows or failure paths must remain explicit
+
+A future implementation agent should be able to learn the system's opinionated organization quickly, decide where a change belongs, and preserve important boundaries without first reverse-engineering every class or helper.
 
 ---
 
@@ -575,6 +604,7 @@ Use it for:
 
 Do not hide migration content inside contract prose.
 Label it.
+Remove or fold it into the current intended architecture once the transition is resolved.
 
 ---
 
@@ -592,8 +622,31 @@ Examples:
 - alignment nudges
 - provenance and authorship
 - diagnostics based on stored relationships rather than prose inference
+- risk-control placement when risk affects decomposition or interfaces
+- SOUP dependency classes, trust/support assumptions, and external responsibility boundaries when SOUP governance is enabled
 
 If a concept appears in multiple modules and affects how the whole system stays coherent, it probably belongs here.
+
+## 17.1 Risk and SOUP boundaries
+Architecture may summarize risk and SOUP concerns when they shape structure, interfaces, dependency direction, external assumptions, or review posture.
+Keep that summary at architecture level.
+
+Good architecture-level content:
+
+- where risk controls are realized in the software structure
+- which boundaries segregate safety-relevant behavior from less critical behavior
+- which external or SOUP dependency classes are trusted, isolated, monitored, or replaceable
+- what support, performance, availability, or update assumptions constrain safe operation
+- links to the owning risk, SOUP, verification, or evidence artifacts when those artifacts exist
+
+Do not duplicate detailed records owned elsewhere:
+
+- detailed hazard, cause, mitigation, and use-error reasoning belongs in `pln risk` artifacts and risk workflow outputs when the project uses them
+- detailed SOUP inventory, monitoring state, review requests, reviews, decisions, and evidence belong in `pln soup` artifacts and workflow outputs when SOUP governance is enabled
+- verification-case state and objective evidence belong in the verification and evidence surfaces that own them
+
+Architecture should explain why these concerns affect design and where they live structurally.
+It should not become a second risk file, a second SOUP inventory, or a generated evidence bundle pasted into prose.
 
 ---
 
@@ -633,7 +686,11 @@ Use this section for:
 - pressure points where the architecture is being stretched
 - planned direction that is not yet fully realized
 
-This is where the document becomes honest and trustworthy.
+Keep these notes exceptional and temporary.
+They are appropriate while unresolved transitions affect current implementation decisions.
+Once the transition is complete, rewrite the live architecture as the current intended design and rely on Git history, archived tasks, and decision records for the historical path.
+
+This is where the document becomes honest and trustworthy without becoming a refactor diary.
 
 ---
 
@@ -802,53 +859,74 @@ When reviewing architecture text, ask:
 
 ---
 
-# 26. Appendix A — Regulated or safety-relevant extension
+# 26. Appendix A — Opt-in regulated or safety-relevant profile
 
-If the product is regulated, safety-relevant, or likely to face formal design review, the architecture document should become stricter.
-That does **not** mean bloating the core document for ordinary software projects.
-It means adding the following concerns when they apply.
+If the product is regulated, safety-relevant, medically relevant, or likely to face formal design review, add a stricter regulated/safety-relevant profile to the architecture document.
+This profile is **conditional**.
+Do not impose IEC 62304-oriented ceremony, risk sections, or SOUP governance on ordinary projects that have not opted into higher rigor.
+The ordinary architecture document should stay practical for agentic coding; the regulated profile adds review evidence only when the project's purpose, requirements, risk posture, or user direction justifies it.
 
 ## A1. Safety or compliance relevance
 Identify:
 
-- safety-relevant components or subsystems
+- safety-relevant components, responsibility groups, subsystems, or software items
 - compliance-relevant flows
 - critical internal and external interfaces
+- safety-relevant data/control flows and lifecycle states
 - where risk controls are realized architecturally
+- which external systems, services, libraries, or SOUP dependency classes affect safe operation
 
-## A2. Traceability to requirements and risk controls
+## A2. Software system and software-item decomposition
+For IEC 62304-oriented review, include a view that makes software decomposition inspectable without becoming a full code inventory.
+Name the software system, major software items, their responsibilities, relationships, and repository locations.
+Where a lower-level software unit matters because it is safety-critical, interface-critical, separately reviewed, or generated from code, include it deliberately and say why that level is architecture-significant.
+
+Do not pre-document every method or helper just to look rigorous.
+A concise decomposition that exposes important boundaries is stronger than a stale class catalogue.
+
+## A3. Traceability to requirements, risk controls, and SOUP assumptions
 Make it easy to see:
 
 - which requirements drive the architecture
-- which components realize controls
-- where later verification or validation evidence will attach
+- which software items realize risk controls
+- where risk-control verification or validation evidence is expected to attach
+- which SOUP dependencies or dependency classes are assumed, isolated, monitored, replaceable, or subject to project SOUP governance
+- where architecture links to `pln risk`, `pln soup`, verification, or evidence records instead of duplicating those detailed records
 
 If the architecture introduces linked verification-planning artifacts, also make explicit whether those artifacts are only planned coverage, where blocker or stale states are surfaced, and how they stay distinct from recorded evidence and human-set verification judgment.
 
-## A3. Interface explicitness
+## A4. Interface explicitness
 For critical interfaces, document:
 
 - direction
 - responsibilities on each side
-- failure behavior
-- important assumptions or trust boundaries
+- data, control, and error flows
+- failure behavior and fallback behavior
+- important assumptions, trust boundaries, timing constraints, and support obligations
+- external users, devices, systems, infrastructure, or products that participate in the interface
 
-## A4. Mode separation matters even more
+## A5. Mode separation matters even more
 In regulated contexts, do not blur:
 
 - what is architecture contract
 - what is implemented behavior
 - what is planned migration
 - what is still manual or partially enforced
+- what is review evidence versus what is planned future evidence
 
-## A5. Review posture
-The architecture should make it easy to answer:
+## A6. Architecture verification and review posture
+The regulated profile should make it easy to answer:
 
-- what are the major software items?
-- what are the critical interfaces?
+- what are the major software items and why are they the right decomposition level?
+- what are the critical interfaces and flows?
 - where do risk controls live?
+- what SOUP dependency assumptions constrain safe operation?
 - what assumptions constrain safe operation?
-- how does the architecture connect to requirement and evidence structures?
+- how will architecture consistency be verified or reviewed?
+- how does the architecture connect to requirement, risk, SOUP, verification, and evidence structures?
+
+This posture can be inspection-oriented.
+It does not require inventing a new `pln` runtime command or evidence schema unless a separate planned task introduces that capability.
 
 ---
 

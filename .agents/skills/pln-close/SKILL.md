@@ -1,6 +1,6 @@
 ---
 name: pln-close
-description: Close out implemented work by checking task and requirement alignment, tightening traceability, updating task and commit hygiene, and preparing the work for archive. Use when implementation is substantially done and the user wants to confirm the planning system matches reality, finalize trace links, close a task cleanly, prepare completed tracked work for commit, or otherwise wrap up finished work rather than making only a checkpoint or WIP commit.
+description: Close out implemented work by checking task and requirement alignment, tightening traceability, updating unreleased changelog evidence when release-notable, updating task and commit hygiene, and preparing the work for archive. Use when implementation is substantially done and the user wants to confirm the planning system matches reality, finalize trace links, close a task cleanly, prepare completed tracked work for commit, decide whether work belongs in CHANGELOG.md, or otherwise wrap up finished work rather than making only a checkpoint or WIP commit.
 ---
 
 # Close
@@ -16,10 +16,11 @@ Default workflow:
 7. Read current `pln task --help` output before any lifecycle mutation.
 8. Check whether the implementation really matches the task objective, traced requirements, architecture boundaries, and any relevant active definitions.
 9. Tighten or argue traceability links when implementation revealed missing, incorrect, or incomplete planning connections.
-10. Check task decisions, commit references, and closure hygiene.
-11. Run or heed `pln hygiene` when provenance-sensitive work is in scope; the current CLI already warns on imposed requirements that are missing rationale or linked captured references.
-12. If the work is truly ready, move it through `done`, commit the final live task state when close-out changed the task artifact, archive it, and then commit the archive cleanup.
-13. If the user asked for close-out work, stop at the close-out stage by default. If closure finds a gap that belongs in planning or implementation, call for that handoff explicitly, but do not autonomously switch into the next stage unless the user explicitly asks for it or strongly implies that next-stage transition with specific direction.
+10. Check task decisions, commit references, changelog impact, and closure hygiene.
+11. Decide whether the completed work is release-notable. If it is, update `CHANGELOG.md` under `[Unreleased]` with enough release-impact context for later version or tag decisions; if it is not, make that no-changelog decision explicit when it could otherwise be ambiguous.
+12. Run or heed `pln hygiene` when provenance-sensitive work is in scope; the current CLI already warns on imposed requirements that are missing rationale or linked captured references.
+13. If the work is truly ready, move it through `done`, commit the final live task state when close-out changed the task artifact, archive it, and then commit the archive cleanup.
+14. If the user asked for close-out work, stop at the close-out stage by default. If closure finds a gap that belongs in planning or implementation, call for that handoff explicitly, but do not autonomously switch into the next stage unless the user explicitly asks for it or strongly implies that next-stage transition with specific direction.
 
 ## Instructions
 - Treat this as post-implementation conformance and closure work, not ordinary code review.
@@ -44,11 +45,17 @@ Default workflow:
 - If you create a new follow-up inbox item from your own closure analysis, treat it as agent-originated and use a stable agent identity for `--author`; if you are capturing a follow-up the user attributes to someone else, use that explicit or clearly implied third-party author, and ask if authorship is still ambiguous.
 - Check whether the task should trace to additional or different SyRS, and whether any current links should be removed or narrowed.
 - Check that important implementation decisions were recorded in the task rather than living only in code or commit diffs.
+- Check whether the work is release-notable before archive. Release-notable work includes user-visible CLI behavior, public API or schema changes, breaking compatibility, migration requirements, security changes, significant documentation changes, and significant research/report/data/model/knowledge outputs. Ordinary internal-only refactors, test-only maintenance, tiny cleanup, and minor documentation corrections are not automatically changelog-worthy.
+- When release-notable work exists, update the top-level `CHANGELOG.md` under `[Unreleased]` before archive. Use only populated category headings from `Breaking`, `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`, `Documentation`, and `Research`; do not leave empty template headings.
+- Preserve release-impact context in changelog entries while task context is fresh: affected surface, compatibility impact, SemVer impact when the project uses SemVer for that surface, migration need, security relevance, documentation or research significance, and whether a notable non-software change has no SemVer impact.
+- Make breaking changes explicit in a `Breaking` section or with an explicit breaking marker. Do not bury breaking compatibility under `Changed` or `Fixed`.
+- Do not finalize a release, choose the final version, update release headings, tag, publish, or push from close-out unless the user explicitly asks for release finalization. `pln-close` maintains `[Unreleased]`; `pln-release` finalizes versions and tags later.
 - Check commit hygiene on a meta level: when the team expects IDs or task references in commit messages, verify that the relevant commits point back to the right task or requirement context.
 - When close-out follows a merge or conflict resolution, do not review only the resulting tree state; compare the intended source commit diff(s) to the merged outcome so dropped hunks or partially preserved behavior are caught before closure.
 - If merge-aware review still reports preservation findings, return the work to implementation/review rather than closing it; closure requires that the merge-preservation review loop has reached a no-findings state.
 - Read current `pln task --help` output before status or archive actions so the skill follows the live command surface.
 - Treat user requests to finalize, wrap up, or commit completed tracked work as a strong cue to perform closure before the commit unless the user clearly wants only a checkpoint or WIP commit.
+- If documentation or project knowledge may need curation, leave clear task decisions or follow-up context for the dedicated `pln-documentation` workflow, but do not update documentation/knowledge directly as an automatic close-out action.
 - If the work is genuinely ready, update task status first. If close-out changed the live task body, decisions, or status, commit that final live task state before running `pln task archive`, then archive it with the CLI and commit the resulting archive cleanup separately.
 
 ## PLN commit-message conventions
@@ -74,6 +81,9 @@ Related archive deletions, such as a just-closed task and its linked source inbo
 - This is not just "do the tests pass?" Passing validation is necessary but not sufficient for clean closure.
 - Do not silently add traceability links when the right connection is still debatable.
 - Do not archive work that still depends on unstated assumptions, missing requirement links, or unresolved architecture drift.
+- Do not turn close-out into documentation curation; preserve breadcrumbs and let `pln-documentation` own the actual docs/knowledge update.
+- Do not treat every documentation change as changelog-worthy; only record documentation work that is release-notable enough for future users or maintainers to see in release notes.
+- Do not turn close-out into release finalization; preserve `[Unreleased]` evidence and let `pln-release` own version, release heading, and tag decisions.
 - A closure pass that cannot explain its recommendation is not finished.
 
 ## Validation
@@ -89,6 +99,10 @@ Before finishing:
 - Confirm architecture constraints were checked.
 - Confirm traceability gaps, changes, or uncertainties were either resolved or explicitly called out.
 - Confirm important implementation decisions are preserved in the task when they matter for future understanding.
+- Confirm documentation/knowledge follow-up context is preserved when needed, without performing automatic documentation curation during close-out.
+- Confirm changelog impact was considered, `CHANGELOG.md` was updated under `[Unreleased]` for release-notable work, and any no-changelog-needed decision is explicit when the choice could be ambiguous.
+- Confirm changelog entries use populated headings from the approved category vocabulary and include breaking, compatibility, migration, security, documentation, research, and SemVer or release-impact context when relevant.
+- Confirm close-out did not finalize a release, update a final release heading, create a tag, push, publish, or otherwise perform `pln-release` work unless the user explicitly requested that release step.
 - Confirm commit/reference hygiene was checked at the level expected by the project.
 - If close-out followed a merge or conflict resolution, confirm the intended source commit diff(s) were compared against the merged outcome and that merge-aware review reached a no-findings state before closure.
 - Confirm your recommendation is explicit: close and archive, return to implementation, or send back to planning.

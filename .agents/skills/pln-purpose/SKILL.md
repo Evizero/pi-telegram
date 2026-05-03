@@ -5,6 +5,8 @@ description: Lead an interactive intended-purpose writing session for dev/INTEND
 
 # Purpose
 
+Bundled reference paths in this skill, such as `references/intended-purpose-guide.md`, are relative to this `SKILL.md`, not the target project root or `dev/`.
+
 ## Principles
 
 1. **Orientation, not information.** Every paragraph must orient the reader toward a judgment about what belongs or resolve a tension that makes the product non-obvious. If a paragraph merely informs without changing how the reader thinks, cut it. This is the primary quality rule.

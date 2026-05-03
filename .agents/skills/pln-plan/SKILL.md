@@ -5,6 +5,8 @@ description: Turn an inbox item or raw idea into well-traced work by clarifying 
 
 # Plan
 
+Bundled reference paths in this skill, such as `references/requirements-writing.md`, are relative to this `SKILL.md`, not the target project root or `dev/`.
+
 ## Workflow
 - Read the triggering inbox item if one exists. If that inbox item is a spec-shaped working document, treat it as source material to interpret and normalize rather than normative text to copy forward mechanically.
 - Read `dev/INTENDED_PURPOSE.md` near the start of every planning session, then read the local planning state with `pln strs summary`, `pln syrs summary`, and `pln task list`. Use `pln strs list` or `pln syrs list` when you need full requirement statements in view, and keep the compact summaries in context as the default requirement map.
@@ -13,8 +15,8 @@ description: Turn an inbox item or raw idea into well-traced work by clarifying 
 - Read the relevant guide in full before drafting. Use `references/requirements-writing.md` for StRS and SyRS work, `references/task-writing.md` for substantial task-body work, and `references/architecture-writing.md` for architecture work. Do not draft from memory, partial excerpts, or stale repo assumptions.
 - Clarify the stakeholder need, problem, desired outcome, and source material behind the request. If the work is bug-shaped, identify that explicitly early. Reproduce before planning or recommending a fix when practical. If deterministic reproduction is not yet practical, say that plainly instead of pretending the bug basis is already settled.
 - Map the idea to existing requirements before drafting anything new. Prefer updating an existing StRS or SyRS when the need is already present but needs sharper scope, clearer criteria, or better wording. Keep StRS at stakeholder-need level and SyRS at verified implementable system/software behavior.
-- Read `dev/ARCHITECTURE.md` only after you have the relevant requirement context, or when checking an existing task or change against current implementation boundaries. If architecture is in scope, inspect the relevant code paths, module boundaries, and active tasks first so the document is grounded in the real repository.
-- Explicitly assess whether the planned change introduces or revises a persistent architectural seam, runtime surface, repository-owned guidance layer, or ownership boundary. Update `dev/ARCHITECTURE.md` when that impact is already clear enough, or say plainly what architectural concerns or sections should change later.
+- Read the nominated main architecture document only after you have the relevant requirement context, or when checking an existing task or change against current implementation boundaries. Locate it with `pln architecture show` when available; if that command is unavailable in an older checkout, fall back to `dev/ARCHITECTURE.md`. If architecture is in scope, inspect the relevant code paths, module boundaries, linked side architecture documents, and active tasks first so the document set is grounded in the real repository.
+- Explicitly assess whether the planned change introduces or revises a persistent architectural seam, runtime surface, repository-owned guidance layer, or ownership boundary. Update the nominated main architecture document, or the appropriate linked side architecture document, when that impact is already clear enough; otherwise say plainly what architectural concerns or sections should change later.
 - Read the relevant CLI help before mutating artifacts, especially for `pln strs`, `pln syrs`, `pln inbox`, and `pln task`. Use the CLI for structured metadata, traceability, and lifecycle changes, and only create a traced task when the implementation direction is concrete enough.
 - After drafting or revising requirements or task bodies, run the required read-only review subagent loop: use an `explorer` pinned to `gpt-5.5` with medium reasoning, or `Opus 4.6` with medium reasoning only when `gpt-5.5` is genuinely unavailable; have it read the relevant writing guide, drafted artifacts, requirement inventories, and `dev/INTENDED_PURPOSE.md`; require a strict output contract of either `Findings:` or `No findings. ...`; do not use `fork_context: true` by default; treat vague or transport-only replies as failures; retry once with a narrower prompt and no `fork_context` if the reply is not concrete; keep artifact status truthful if that retry still fails to return a concrete verdict; fix findings; rerun review on the latest artifacts; wait for the active reviewer before declaring the loop complete; and close the completed review agent after you record that result.
 - Do not use `fork_context: true` by default.
@@ -40,6 +42,7 @@ description: Turn an inbox item or raw idea into well-traced work by clarifying 
 - Prefer short, legible semantic suffixes over long restatements. Natural abbreviations such as `repo`, `cli`, `ctx`, `diag`, `impl`, `instr`, and `subdir` are good style guidance when they remain immediately understandable, but they are examples rather than a whitelist.
 - If the chosen semantic suffix collides after normalization, prefer semantic disambiguation over numeric suffixes when collisions happen. First ask whether the requirement should update an existing record instead of creating a sibling.
 - Assign requirement origin deliberately rather than leaving it implicit. Use `imposed`, `derived`, `assumed`, and `self-derived` for distinct authority situations, and make sure rationale and sources match that choice.
+- Write requirement rationale as the underlying reason revealed by source material, not as “because a named person said so.” For transcripts, voice notes, uploaded files, or external reports, use neutral source-basis framing such as “The transcript said...” or “A provided transcript described...” and reserve rationale for the need or constraint that source explains. If no deeper rationale is visible, say that the provided source established the constraint rather than using a personal name as the rationale.
 - When verbatim governing text matters, preserve that basis through captured references instead of hiding it in paraphrase or weaker freeform source fields.
 - When the current CLI supports inline directive capture for an imposed requirement, prefer that path so the requirement and captured governing basis are created together.
 - Notice strong human emphasis explicitly. If the user is clearly signaling a non-negotiable, preserved behavior, scope boundary, product-identity rule, or "this has to work this way" directive, treat that as potential authoritative project direction rather than ordinary colorful phrasing.
@@ -59,7 +62,7 @@ description: Turn an inbox item or raw idea into well-traced work by clarifying 
 - If the idea sharpens scope, adds measurable criteria, or clarifies an existing need, revise the existing StRS instead of creating a sibling requirement.
 - Apply the same duplicate check to SyRS before adding new system requirements.
 - Before creating or revising architecture, identify the relevant requirement drivers, quality concerns, constraints, provenance expectations, and code areas in scope.
-- When you identify an architecture impact but the session is not yet revising `dev/ARCHITECTURE.md`, say so plainly and recommend what architectural concerns, sections, or repository mappings should be updated.
+- When you identify an architecture impact but the session is not yet revising the architecture document set, say so plainly and recommend what architectural concerns, sections, or repository mappings should be updated. Use `pln architecture show` to identify the nominated main architecture document before naming the edit target.
 - Architecture should be written as a normative design contract and planning document. Use the codebase to ground and constrain it, but do not frame the document as an implementation diary.
 - Architecture should document major building blocks, important runtime flows, cross-cutting concepts, key decisions, quality goals, risks, provenance expectations, and repository mapping when those help answer the driving concerns.
 - Separate architecture contract, implemented behavior notes, and migration notes when they differ materially. Do not blur them into one narrative.
@@ -110,6 +113,7 @@ description: Turn an inbox item or raw idea into well-traced work by clarifying 
 - If the artifact's substance comes from the user, prefer explicit third-party attribution when the user names or clearly implies another author; if a third-party author seems likely but is still ambiguous, ask. Otherwise use local git identity (`git config --get user.name`, falling back to `git config --get user.email`).
 - If the artifact is an agent-originated follow-up from planning analysis, use a stable agent identity.
 - When planning from inbox, prefer `pln inbox accept` so the inbox item is linked and updated correctly when the outcome is a task; preserve inherited inbox authorship unless the conversation clearly establishes a better override.
+- When planning turns inbox material into a task, preserve the reasoning bridge in the task body: why this slice was chosen, which source findings or user constraints matter, what was deferred or rejected, and what later documentation curation should be able to reconstruct.
 
 ## Gotchas
 - Do not write StRS as design docs.
@@ -150,13 +154,13 @@ Before finishing:
 - Verify no task in `ready` or `active` status is being treated as implementation-ready without at least one SyRS trace, and treat any such case as a planning gap rather than as silent readiness.
 - Verify the planned change does not silently conflict with other known requirements, or that any real tension is explicitly written into the task.
 - Verify the task body is specific enough and fresh enough that an implementation agent can start without re-planning the whole feature.
-- Verify the task body carries forward important preserved behavior, nearby requirement interactions, validation expectations, and non-goals when those matter.
+- Verify the task body carries forward important preserved behavior, nearby requirement interactions, validation expectations, non-goals, and the reasoning bridge from source inbox material when those matter.
 - Verify any included pre-edit impact preview remains concise and decision-useful rather than ceremonial.
 - Verify the task body no longer relies on a scaffold placeholder when the work has been clarified enough to replace it.
 - Verify a task is only marked ready when its implementation objective, relevant code areas, and acceptance checks are concrete enough.
 - Verify the produced artifacts match the maturity of the conversation instead of pretending the whole chain is settled.
 - Verify any spec-shaped inbox item used as planning input was treated as non-normative source material and was normalized before downstream artifacts were treated as authoritative.
-- Verify the proposed work aligns with `dev/ARCHITECTURE.md` or explicitly updates architecture direction when the change intentionally revises it.
-- Verify you explicitly assessed whether the planned change should update `dev/ARCHITECTURE.md`, and either made that update or clearly recommended what should change.
+- Verify the proposed work aligns with the nominated main architecture document and relevant linked side architecture documents, or explicitly updates architecture direction when the change intentionally revises it.
+- Verify you explicitly assessed whether the planned change should update the architecture document set, and either made that update or clearly recommended what should change.
 - Verify the latest requirement or task writing-quality review run happened after the latest changes and reported no findings.
 - Verify you did not use `pln inbox accept` for source-only inbox material that is not yet becoming a task.

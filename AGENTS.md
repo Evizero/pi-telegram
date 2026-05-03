@@ -90,6 +90,7 @@ Consult `docs.md` before changing Bot API integration. In particular:
 - If preparing commits, prefer one coherent intent and use Conventional Commits.
 
 <!-- pln-managed:begin -->
+
 ## Planning and technical documentation
 
 This project uses `pln` to organize planning and technical documentation inside the repository.
@@ -113,4 +114,5 @@ If an older project is missing `dev/VERIFICATION_CASES.json`, rerun `pln init` f
 
 Prefer `pln` commands over ad hoc edits when changing structured planning artifacts.
 Do not hand-edit requirement registries or markdown frontmatter when a `pln` command exists for that change.
+
 <!-- pln-managed:end -->

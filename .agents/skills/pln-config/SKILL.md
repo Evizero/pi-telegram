@@ -5,6 +5,8 @@ description: Use when working on optional configuration management, governed dev
 
 # Configuration Governance
 
+Bundled asset paths in this skill, such as `assets/discover.py`, are relative to this `SKILL.md`; `dev/scripts/soup/` paths are project-owned files in the target repository.
+
 Use this skill when the user wants to:
 - enable or inspect repository-local configuration management
 - register or inspect controlled items through `pln config`

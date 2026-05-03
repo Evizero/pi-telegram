@@ -5,6 +5,8 @@ description: Native `pln` usability testing of CLIs with simulated first-time us
 
 # CLI Usability Testing
 
+Bundled resource paths in this skill, such as `templates/agent-prompt.md`, `references/rounds-and-synthesis.md`, and `scripts/cleanup_round.py`, are relative to this `SKILL.md`; `.agents/skills/pln-usability/...` examples refer to the repository-local installed copy, not `dev/`.
+
 Test CLI usability by spawning strong general-purpose sub-agents that role-play as first-time users. Each agent discovers the tool through `--help` and experimentation, not source-code reading.
 
 This skill assumes a native `pln` repository with usability records under `dev/usability/`. Durable evidence lives under `dev/usability/evidence/`, and direct scenario or manual-mapping provenance lives under `dev/usability/sources/`.

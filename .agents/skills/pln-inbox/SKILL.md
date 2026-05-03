@@ -5,6 +5,8 @@ description: Capture raw ideas, bugs, observations, regressions, friction notes,
 
 # Inbox
 
+Bundled reference paths in this skill, such as `references/spec-writing.md`, are relative to this `SKILL.md`, not the target project root or `dev/`.
+
 ## Quick Start
 Default workflow:
 1. Decide whether this is ordinary capture or a spec-shaped brainstorming session. Ordinary capture is the default.
@@ -14,8 +16,9 @@ Default workflow:
 5. Create or update inbox metadata through the CLI so metadata/frontmatter stays CLI-owned.
 6. If the item is spec-shaped, load [references/spec-writing.md](references/spec-writing.md), [references/section-guide.md](references/section-guide.md), and [references/review-checklist.md](references/review-checklist.md), then edit the inbox body directly with normal document editing tools instead of trying to manage a long spec body through repeated `pln inbox update --body` replacements.
 7. If the user makes a clearly emphasized human directive that appears authoritative and whose exact wording would be costly to lose, preserve that wording promptly as a captured reference even at inbox stage, but keep that as a narrow exception rather than the new default for ordinary capture.
-8. If you can produce a cheap reproducer for a claimed bug or strange behavior, you may create temporary proof that demonstrates the failure and link the evidence in the inbox item. Do not leave failing tests enabled in the committed test suite during inbox capture; preserve the repro as notes, skipped test code, or a separate artifact until the item is promoted into planning and implementation work.
-9. Optionally show the item or the open inbox list.
+8. If the user provides external resources such as transcripts, voice-note transcripts, uploaded files, temporary files, pasted reports, or links that may not remain durable in the project, make the inbox body absorb the relevant content close to the resource's intended phrasing and framing, with enough source identity to find or interpret it later.
+9. If you can produce tests with reasonably low effort that confirm bugs or strange behaviour claimed by the inbox item, do so and make sure it fails to provide hard reproducible proof, and link it back to the inbox item for later reference. Afterwards skip the test to keep the test suite clean until inbox items are promoted into planning and implementation work.
+10. Optionally show the item or the open inbox list.
 
 Prefer speed over completeness for ordinary capture. The inbox is for capture first, not full planning by default.
 
@@ -26,6 +29,8 @@ Prefer speed over completeness for ordinary capture. The inbox is for capture fi
 - Do not force requirements language here.
 - Do not normalize a rough thought into a polished requirement during capture.
 - Preserve uncertainty, contradictory observations, rough reproduction notes, and source excerpts when they matter.
+- When the user provides external resources such as transcripts, voice-note transcripts, uploaded files, temporary files, pasted reports, or links that may not remain durable in the project, do not leave the useful content stranded in that external resource. Absorb the related material into the inbox item as close to the resource's intended phrasing, framing, and emphasis as practical, while keeping the inbox item clearly source-material rather than final planning truth.
+- When inbox work includes literature research, web research, source lookup, or similar investigation, write the findings, source identities, retrieval hints, and follow-up gaps into the inbox body so later documentation curation can reconstruct where knowledge came from without relying on chat logs or temporary files.
 - If the user clearly marks part of the discussion as non-negotiable, preserved behavior, or "this has to work this way," distinguish that fixed directive from nearby brainstorming instead of flattening the whole note into one authority level.
 - When such a directive is clearly authoritative and its exact wording matters, preserve the raw wording promptly as a captured reference even before intended-purpose or stakeholder-requirement promotion is fully settled.
 - When you do that at inbox stage, also leave a durable planning handoff in repository artifacts so the preserved wording does not remain detached source text; the captured wording is temporary basis pending promotion into intended purpose or stakeholder requirements.
@@ -66,6 +71,8 @@ Prefer speed over completeness for ordinary capture. The inbox is for capture fi
 - Do not invent `traces_to` links at capture time unless the user already knows them confidently.
 - Keep titles user-meaningful; avoid generic labels like `idea` or `bug` by themselves.
 - A capture item can be valuable even when it is contradictory, speculative, or eventually rejected later.
+- Do not leave important transcript/file/link content only in a temporary attachment, chat context, or `/tmp` path when the user expects it to inform future planning.
+- Do not treat inbox-stage research notes as final documentation; preserve breadcrumbs for a later dedicated `pln-documentation` workflow instead.
 
 ## Validation
 Before finishing:
@@ -73,6 +80,8 @@ Before finishing:
 - Confirm the created slug or resolved slug.
 - Confirm the stored type and status.
 - Confirm the body preserves the important source context the user wanted to keep.
+- If external resources such as transcripts, voice-note transcripts, uploaded files, temporary files, pasted reports, or links informed the item and may not remain durable in the project, confirm the inbox body absorbed the relevant content close to the original intended phrasing and framing.
+- If research or source lookup happened, confirm the inbox body preserves findings and enough source/retrieval detail for later documentation curation.
 - If the user asked to preserve existing notes, verify append mode was used instead of body replacement.
 - If the item is spec-shaped, confirm metadata/frontmatter remained CLI-owned and the body became or remained the working spec document.
 - If clearly authoritative human wording was captured as a narrow exception, confirm the exact wording was preserved and the result points back into planning rather than remaining detached preserved text.
