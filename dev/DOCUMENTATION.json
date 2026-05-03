@@ -7,1027 +7,457 @@
       "id": "inbox:activity-labels-should-show",
       "kind": "inbox",
       "slug": "activity-labels-should-show",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:7abd7ea1e8b1333a2de5a6a66979124d6d0506a16cb2a5f6ece8aa6998990674",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:activity-message-restarts-during": {
       "id": "inbox:activity-message-restarts-during",
       "kind": "inbox",
       "slug": "activity-message-restarts-during",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:c0b2982ab729e3531a937bef1eff5cc338a29f6774b87ef5b8b0041f3065ed32",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:assess-and-restore-top": {
       "id": "inbox:assess-and-restore-top",
       "kind": "inbox",
       "slug": "assess-and-restore-top",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:2188212966a399fe4a3e3f915451f6bd565cd816a82081752141eba57774d374",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:assistant-final-lost-with": {
       "id": "inbox:assistant-final-lost-with",
       "kind": "inbox",
       "slug": "assistant-final-lost-with",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:b2c81a5acbf46f4b06745e5e04628b317f347217d811774c5411669e5c7b7ef9",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:attachment-safety-check-fails": {
       "id": "inbox:attachment-safety-check-fails",
       "kind": "inbox",
       "slug": "attachment-safety-check-fails",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:90ae4b53b13b7021c96b8a97e73c126b06a5a7d42b3c5b52854970da8c76bd60",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:broker-heartbeat-logs-takeover": {
       "id": "inbox:broker-heartbeat-logs-takeover",
       "kind": "inbox",
       "slug": "broker-heartbeat-logs-takeover",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:ab5cc308d86e92a4de6518950f7dd14b87595e0d4dafaaa8399157edc849e1b9",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:broker-preview-logs-and": {
       "id": "inbox:broker-preview-logs-and",
       "kind": "inbox",
       "slug": "broker-preview-logs-and",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:06699f449640af653827873c954c62fb1ba5ee9cfc3df7f620001a7b97b65adb",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:cancel-individual-queued-telegram": {
       "id": "inbox:cancel-individual-queued-telegram",
       "kind": "inbox",
       "slug": "cancel-individual-queued-telegram",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:8bedb10bdb828e4e19667d8140136dfb584d90ad1ea046c453c18c41aaae4f1a",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:centralize-ipc-limits-and": {
       "id": "inbox:centralize-ipc-limits-and",
       "kind": "inbox",
       "slug": "centralize-ipc-limits-and",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:24acaabf12e4d11bbaaef849117dc03b2f85c96552266898c13ca33a3927d61e",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:centralize-route-ownership-retargeting": {
       "id": "inbox:centralize-route-ownership-retargeting",
       "kind": "inbox",
       "slug": "centralize-route-ownership-retargeting",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:fe261a8071ef9f60f5051ce0b95b2719b586ea8ecd3156ff8c9964b2ad80dfd4",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:centralize-telegram-io-policy": {
       "id": "inbox:centralize-telegram-io-policy",
       "kind": "inbox",
       "slug": "centralize-telegram-io-policy",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:6c3182339b6e3e226a1f57b0228b5200eb3ac681edb1f6ffd47fa2a3f402f145",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:clean-up-pi-hook": {
       "id": "inbox:clean-up-pi-hook",
       "kind": "inbox",
       "slug": "clean-up-pi-hook",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:d7d175a72a40a4093c0cd224f5927e3bcd18fd49065a495029acdbe0b711e5ba",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:connected-session-notice-appears": {
       "id": "inbox:connected-session-notice-appears",
       "kind": "inbox",
       "slug": "connected-session-notice-appears",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:180acaad24c66abb733486fb32966d3f6a9fe264ed04695962755b264e2e59cf",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:consolidate-durable-telegram-side": {
       "id": "inbox:consolidate-durable-telegram-side",
       "kind": "inbox",
       "slug": "consolidate-durable-telegram-side",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:c29efe9be9c6f61cdd8b26eb07fde70357d0bafb4539ec137dc952434983b8e5",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:create-shared-lifecycle-state": {
       "id": "inbox:create-shared-lifecycle-state",
       "kind": "inbox",
       "slug": "create-shared-lifecycle-state",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:49947edf6c5467f5c58ff44789de7fa4c2b33a6253134e75338144921200ae0f",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:decompose-extension-runtime-orchestration": {
       "id": "inbox:decompose-extension-runtime-orchestration",
       "kind": "inbox",
       "slug": "decompose-extension-runtime-orchestration",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:19fd995e5360cb830137f3b2924703a3b14a90dc451ea47773172b1c0a52871c",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:decompose-oversized-command-router": {
       "id": "inbox:decompose-oversized-command-router",
       "kind": "inbox",
       "slug": "decompose-oversized-command-router",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:869294a827d74049e07d937a1eb3d2c1aabf7ca85f62ff1e1b820940d9f9aa57",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:default-telegram-busy-messages": {
       "id": "inbox:default-telegram-busy-messages",
       "kind": "inbox",
       "slug": "default-telegram-busy-messages",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:30b6c497c11ca4959dc1cf75695cbc7a20ad79ce0a0c6dbd1dd6db1934daa2a8",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:disconnect-should-clear-active": {
       "id": "inbox:disconnect-should-clear-active",
       "kind": "inbox",
       "slug": "disconnect-should-clear-active",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:cf09423d165090be2e7a096f99ac0a2bde0ea53ec774450f7e9489c793e068fd",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:durable-json-read-failures": {
       "id": "inbox:durable-json-read-failures",
       "kind": "inbox",
       "slug": "durable-json-read-failures",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:055aa428307f1b3ed180a1e2d88ec6f34f05b5eef05d11b41a903a2435cb7bd6",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:edited-telegram-command-results": {
       "id": "inbox:edited-telegram-command-results",
       "kind": "inbox",
       "slug": "edited-telegram-command-results",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:bb490f145f199e58f96d856591484f9e2558109466addb8b0bd72b8ac98317fe",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:final-delivery-retry-queue": {
       "id": "inbox:final-delivery-retry-queue",
       "kind": "inbox",
       "slug": "final-delivery-retry-queue",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:5fb3d1779519419172a201f469196ecf570a32c1608a5e12a339eaf0d492fc85",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:final-telegram-message-can": {
       "id": "inbox:final-telegram-message-can",
       "kind": "inbox",
       "slug": "final-telegram-message-can",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:6e1a367792348f527971b2cbb11558e2e364a035877c2fff5ee965b1c55b6482",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:format-pi-user-telegram": {
       "id": "inbox:format-pi-user-telegram",
       "kind": "inbox",
       "slug": "format-pi-user-telegram",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:9789aefa73c350eec3c997e5ff01ef04c2fc08c6d816a17c0601dbfce57e7828",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:hide-bash-label-in": {
       "id": "inbox:hide-bash-label-in",
       "kind": "inbox",
       "slug": "hide-bash-label-in",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:aefc3c2d1221ed5916eaf158b31b34c7c4e37cd50b4c129b6b9e4bc064dd0922",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:interactive-telegram-model-picker": {
       "id": "inbox:interactive-telegram-model-picker",
       "kind": "inbox",
       "slug": "interactive-telegram-model-picker",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:7c08f29c0dc094c81f984852c8600294bf206005f5ad36068f78a10db20736e3",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:long-telegram-final-answers": {
       "id": "inbox:long-telegram-final-answers",
       "kind": "inbox",
       "slug": "long-telegram-final-answers",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:ac913c4c08172a3578da01b9e68ca55493f59f50e240990cc9513e6af2d23bc0",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:non-broker-disconnect-should": {
       "id": "inbox:non-broker-disconnect-should",
       "kind": "inbox",
       "slug": "non-broker-disconnect-should",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:672e3cfc86ecc5c8e396b7c9dd2e813fd38b9c43c6eb37a93e04fa3eb85536fc",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:omit-main-branch-from": {
       "id": "inbox:omit-main-branch-from",
       "kind": "inbox",
       "slug": "omit-main-branch-from",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:450863a765fae42c90ee685e224c56e2c0d9d3decabce0859424ec06428be87c",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:outbound-attachment-guard-should": {
       "id": "inbox:outbound-attachment-guard-should",
       "kind": "inbox",
       "slug": "outbound-attachment-guard-should",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:f7f37e67c9fd565c46dc3a7c3cce3f6d291ab8ac24f1452a96a236bce228a98d",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:pi-streams-assistant-text": {
       "id": "inbox:pi-streams-assistant-text",
       "kind": "inbox",
       "slug": "pi-streams-assistant-text",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:0a82feca3615602a255cf3bc749acd1f421a0710f7e963380d42ccdb09fe180f",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:pi-telegram-slows-pi": {
       "id": "inbox:pi-telegram-slows-pi",
       "kind": "inbox",
       "slug": "pi-telegram-slows-pi",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:10545a22171715686ddf7410712ffcdefa1ada88d3ed3834db01c1084c281f97",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:queue-manual-compaction-after": {
       "id": "inbox:queue-manual-compaction-after",
       "kind": "inbox",
       "slug": "queue-manual-compaction-after",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:32edc6110bc2d6c5e28a56561b33bfea88b63d5d7860767b13f6b6d7a8b2459d",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:reconnect-after-explicit-telegram": {
       "id": "inbox:reconnect-after-explicit-telegram",
       "kind": "inbox",
       "slug": "reconnect-after-explicit-telegram",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:7ffd0307a26ddc56fa41caa4f1abcb359b141d519c691e8fee4f4e8ff1686e4e",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:reduce-duplicated-test-discovery": {
       "id": "inbox:reduce-duplicated-test-discovery",
       "kind": "inbox",
       "slug": "reduce-duplicated-test-discovery",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:9aa1e6591e952d1f9a3289f8ec2dd220bb71a8f026d0b74c11539c8d286f828a",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:refactor-queued-control-cleanup": {
       "id": "inbox:refactor-queued-control-cleanup",
       "kind": "inbox",
       "slug": "refactor-queued-control-cleanup",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:be716f5d024b476462d830d78ea075b526b17327777c528419e65f98504a6907",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:remove-stale-queued-follow": {
       "id": "inbox:remove-stale-queued-follow",
       "kind": "inbox",
       "slug": "remove-stale-queued-follow",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:bea8919999396264c53209d2a21833ef30f81a5569533e42c97265335c02d4a3",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:rework-validation-suite-around": {
       "id": "inbox:rework-validation-suite-around",
       "kind": "inbox",
       "slug": "rework-validation-suite-around",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:c42ea081e15dee171eea6a6595b14b2537597d934e9ba20508f24e15b581c5f2",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:route-reuse-should-respect": {
       "id": "inbox:route-reuse-should-respect",
       "kind": "inbox",
       "slug": "route-reuse-should-respect",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:d3bebe7c4e9f94ff4a55ed666425641f23b693179316d3ed4b3d4a12f03b10ac",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:selector-and-forum-topic": {
       "id": "inbox:selector-and-forum-topic",
       "kind": "inbox",
       "slug": "selector-and-forum-topic",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:460daa610e3663c000d761b746a949559539987cee3f3f07c6a30531f243a6ed",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:sendphoto-fallback-should-only": {
       "id": "inbox:sendphoto-fallback-should-only",
       "kind": "inbox",
       "slug": "sendphoto-fallback-should-only",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:f1f89fce06df6c4dc9084a66adb1d66679a83714a645bf441ec21b341937aa32",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:separate-durable-telegram-status": {
       "id": "inbox:separate-durable-telegram-status",
       "kind": "inbox",
       "slug": "separate-durable-telegram-status",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:fe943ff07b2d0691845f92b50d32b975b8eb8a37dde8dbe6e03cfbc8ff2dddf9",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:setup-getme-should-use": {
       "id": "inbox:setup-getme-should-use",
       "kind": "inbox",
       "slug": "setup-getme-should-use",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:365e2259500b13b8110744b69fc8192850c3ea8fbcc99c1aac4aa1f7f0e01600",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:silent-telegram-notifications-for": {
       "id": "inbox:silent-telegram-notifications-for",
       "kind": "inbox",
       "slug": "silent-telegram-notifications-for",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:c1f1b609076f82b9c7f98338df98803d628414f918d4d4ead1b05895ed5efc17",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:simpler-mobile-pairing-pin": {
       "id": "inbox:simpler-mobile-pairing-pin",
       "kind": "inbox",
       "slug": "simpler-mobile-pairing-pin",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:c3a9dbab92f7b75199332f3f2ac248e18ec40aa0c2351be2187ff3acf8d42e0f",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:simplify-telegram-reliability-orchestration": {
       "id": "inbox:simplify-telegram-reliability-orchestration",
       "kind": "inbox",
       "slug": "simplify-telegram-reliability-orchestration",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:9aa9bb6bb81e3845f3f1d1b69d5368a873700c4ca5bd364b114731d2f25b4720",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:split-oversized-session-route": {
       "id": "inbox:split-oversized-session-route",
       "kind": "inbox",
       "slug": "split-oversized-session-route",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:bb811672afa4cf6dfc15d53d42fd50d67479332b1925ba3aa9d9c13b44a1f95e",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:split-shared-types-and": {
       "id": "inbox:split-shared-types-and",
       "kind": "inbox",
       "slug": "split-shared-types-and",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:84fe73f933ebffc36831d526be97679fa1257fc2cf3925e5439d708daf0af143",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:stale-broker-from-pending": {
       "id": "inbox:stale-broker-from-pending",
       "kind": "inbox",
       "slug": "stale-broker-from-pending",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:8655d89a638a2ca50a5b4ea00c8d357708e92a80db26b8350cfbc4f7d63e46d9",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:stop-streaming-assistant-text": {
       "id": "inbox:stop-streaming-assistant-text",
       "kind": "inbox",
       "slug": "stop-streaming-assistant-text",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:37609918174c8d1c4d9fd37035c4450fb6c383f033282f3eb566f74d55c6dea4",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:support-slash-new-without": {
       "id": "inbox:support-slash-new-without",
       "kind": "inbox",
       "slug": "support-slash-new-without",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:b8217fdf1ab7aaa5e8343259c67c724b19b76df449542862b8344bac7c530724",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:telegram-activity-can-batch": {
       "id": "inbox:telegram-activity-can-batch",
       "kind": "inbox",
       "slug": "telegram-activity-can-batch",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:fa6e955919e74188db270251bf690f0e95d77da1f7db933ef13180acf7cc81e9",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:telegram-activity-can-stop": {
       "id": "inbox:telegram-activity-can-stop",
       "kind": "inbox",
       "slug": "telegram-activity-can-stop",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:8e01254ce98099d44d7b0820856a667a9a43ae569bd0689fde78e003f4a071d6",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:telegram-activity-edits-can": {
       "id": "inbox:telegram-activity-edits-can",
       "kind": "inbox",
       "slug": "telegram-activity-edits-can",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:45ce5e41a3b82cd86d3903c3c16460f581e9cf650f853967901d78d77efa32f5",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:telegram-attachment-tmp-cleanup": {
       "id": "inbox:telegram-attachment-tmp-cleanup",
       "kind": "inbox",
       "slug": "telegram-attachment-tmp-cleanup",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:70dbfb538d634f3652fbbc01af85779fb937e09229cc5f89bbc371c72ee75a7c",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:telegram-compact-should-match": {
       "id": "inbox:telegram-compact-should-match",
       "kind": "inbox",
       "slug": "telegram-compact-should-match",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:f5d92a64e8a5967be9604b7c767226ab0f61132da18bb43899c8c267e7946d41",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:telegram-final-notification-can": {
       "id": "inbox:telegram-final-notification-can",
       "kind": "inbox",
       "slug": "telegram-final-notification-can",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:53e2c64e07741a88ed2c6693752da6c8fe630cdcee4b9e46fdb3a9c3e7340251",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:telegram-git-command-may": {
       "id": "inbox:telegram-git-command-may",
@@ -1069,401 +499,177 @@
       "id": "inbox:telegram-placeholder-for-hidden",
       "kind": "inbox",
       "slug": "telegram-placeholder-for-hidden",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:31144718bcfcf3b4f8cea090a56a3aabf4b7d407cdd2b96a366489bc8cb584d4",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:telegram-reload-should-be": {
       "id": "inbox:telegram-reload-should-be",
       "kind": "inbox",
       "slug": "telegram-reload-should-be",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:4db0da1c14ac03071eb8749d8cb773b39ef7f9e5cc4d1f2b0e3dbf946a2150df",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:telegram-reload-should-reload": {
       "id": "inbox:telegram-reload-should-reload",
       "kind": "inbox",
       "slug": "telegram-reload-should-reload",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:a4db6616f418a806509c3619ae049a97da0e1c2c70261213b893d9c087422912",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:telegram-sessions-disappeared-and": {
       "id": "inbox:telegram-sessions-disappeared-and",
       "kind": "inbox",
       "slug": "telegram-sessions-disappeared-and",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:6bb072bddc06158aa64552ca78ce9bd5d763c399fe22cd873cc6f4b11eb53c6e",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:telegram-starts-new-turn": {
       "id": "inbox:telegram-starts-new-turn",
       "kind": "inbox",
       "slug": "telegram-starts-new-turn",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:3aa55838cb6353d9185c91a39a00849c0a698b26cb5f328d1dce2c2d6a0ed519",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:telegram-topics-not-cleaned": {
       "id": "inbox:telegram-topics-not-cleaned",
       "kind": "inbox",
       "slug": "telegram-topics-not-cleaned",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:7b1afb38900ed28b8304ae2a3ce0b27d34dbeeed26ded9d90adb5d3a5c2b097f",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:typing-loop-should-not": {
       "id": "inbox:typing-loop-should-not",
       "kind": "inbox",
       "slug": "typing-loop-should-not",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:bd2073bd6ae14625ea453b003e78511dfd8aba460c385069d05782c5969dfca3",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:unify-telegram-api-error": {
       "id": "inbox:unify-telegram-api-error",
       "kind": "inbox",
       "slug": "unify-telegram-api-error",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:2f587e50e241ff3ed2088d1a9bb9fb6b63470d48c2ecced2fc5b4992e9ec5019",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:unify-telegram-command-and": {
       "id": "inbox:unify-telegram-command-and",
       "kind": "inbox",
       "slug": "unify-telegram-command-and",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:fe07d70a8b4beb848566d61e2f5bfbc367c6ca31255a895d4fb69832a29be7e3",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "inbox:write-token-bearing-json": {
       "id": "inbox:write-token-bearing-json",
       "kind": "inbox",
       "slug": "write-token-bearing-json",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:f327fe138e412d25a9201bbe32a44574f4c181a9482cdc6fc77fa0ede4752672",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:add-cancel-controls-for-queued": {
       "id": "task:add-cancel-controls-for-queued",
       "kind": "task",
       "slug": "add-cancel-controls-for-queued",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:313f003b2a0b3ce821453ff0a5a0d89a576e7cbe20454123451cbb3250d8e11b",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:append-telegram-finals-after-settling": {
       "id": "task:append-telegram-finals-after-settling",
       "kind": "task",
       "slug": "append-telegram-finals-after-settling",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:a149d271db9a865b3bcc7b17997fe03a2643141c9aa137812ed48e258550f63c",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:centralize-local-ipc-limits": {
       "id": "task:centralize-local-ipc-limits",
       "kind": "task",
       "slug": "centralize-local-ipc-limits",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:b30d2b7c092322cb879eef156bb4235fa58b3c6a7788ff0c6a60b264ae1ccfe5",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:centralize-route-ownership-helpers-and": {
       "id": "task:centralize-route-ownership-helpers-and",
       "kind": "task",
       "slug": "centralize-route-ownership-helpers-and",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        },
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:430334c495f689302eacd17742b329d93ee9221b5fb6a63ab0384340a5a1dabe",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:centralize-telegram-io-policy": {
       "id": "task:centralize-telegram-io-policy",
       "kind": "task",
       "slug": "centralize-telegram-io-policy",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:a07dabb76186436d8c9846bd517aa51f0e29d8c8b827feb19da391d730d95314",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:clean-up-pi-hook-boundaries": {
       "id": "task:clean-up-pi-hook-boundaries",
       "kind": "task",
       "slug": "clean-up-pi-hook-boundaries",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:cc88918ad88a326ea1ab571eb1505042b465db26d9997c72fced3a370c6aa333",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:clean-up-telegram-topics-when-sessions": {
       "id": "task:clean-up-telegram-topics-when-sessions",
       "kind": "task",
       "slug": "clean-up-telegram-topics-when-sessions",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:162644dec3967b62e04e39be3a4a0e9046a68094abf22af9256374e47cbb140e",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:create-token-json-with-private": {
       "id": "task:create-token-json-with-private",
       "kind": "task",
       "slug": "create-token-json-with-private",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:e0ee0c2850fdd7daa66de4d7b246738ef50985d342ea36efde3d816f8e3051c1",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:default-busy-telegram-messages-to": {
       "id": "task:default-busy-telegram-messages-to",
       "kind": "task",
       "slug": "default-busy-telegram-messages-to",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:b1fea2c39b4abc22632497ce7abd5b4337b21d210035ebf197c0f5c38e0d0859",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:expand-outbound-attachment-secret-path": {
       "id": "task:expand-outbound-attachment-secret-path",
       "kind": "task",
       "slug": "expand-outbound-attachment-secret-path",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:41ae4d27ce8130a3815cfc2f52c217fba5a907a52ca5b6def5284e13180b338d",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:extract-client-runtime-host-from": {
       "id": "task:extract-client-runtime-host-from",
       "kind": "task",
       "slug": "extract-client-runtime-host-from",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:bbce5733b3eabbf348ce5dd44ab360cd4f7fa279969f0a7f2ceb4e7c60fce001",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:extract-client-telegram-turn-lifecycle": {
       "id": "task:extract-client-telegram-turn-lifecycle",
       "kind": "task",
       "slug": "extract-client-telegram-turn-lifecycle",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:d364690ab8f5ec32b9721fac5f6dc1546818797a6271dacd2bcc583ba8fef45d",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:fix-and-document-telegram-git-status": {
       "id": "task:fix-and-document-telegram-git-status",
@@ -1487,181 +693,81 @@
       "id": "task:fix-final-delivery-retry-ordering-and",
       "kind": "task",
       "slug": "fix-final-delivery-retry-ordering-and",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:e46afda91e0d04781b8183383fc64684d24672db6c899f7e4f789eac7e7e5332",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:fix-overlapping-telegram-activity": {
       "id": "task:fix-overlapping-telegram-activity",
       "kind": "task",
       "slug": "fix-overlapping-telegram-activity",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:7a1f3932d968938e11858e19101b1c1a2482345edfa1d4e40f829a4dcb0d71fc",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:format-local-pi-user-mirror-messages": {
       "id": "task:format-local-pi-user-mirror-messages",
       "kind": "task",
       "slug": "format-local-pi-user-mirror-messages",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:4fe047d94c35ef1a33b53b630618668d344bb8ee0412c5d7233aef8e15d4284c",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:handle-stale-broker-lease-loss-without": {
       "id": "task:handle-stale-broker-lease-loss-without",
       "kind": "task",
       "slug": "handle-stale-broker-lease-loss-without",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:d953f2aaac5ea53cbab8de5ea58be51739ae123614221c932b48040a0edec480",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:harden-durable-json-boundary-recovery": {
       "id": "task:harden-durable-json-boundary-recovery",
       "kind": "task",
       "slug": "harden-durable-json-boundary-recovery",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:603bdce14a302ecbbbcc31039b6412c99c26de891ac157cf8d808b3db79bed3d",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:honor-explicit-telegram-disconnect": {
       "id": "task:honor-explicit-telegram-disconnect",
       "kind": "task",
       "slug": "honor-explicit-telegram-disconnect",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:46e2895501254044010df94df2af32783f721f7b19d057111fef61da1806da0e",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:implement-attended-pin-pairing-flow": {
       "id": "task:implement-attended-pin-pairing-flow",
       "kind": "task",
       "slug": "implement-attended-pin-pairing-flow",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:a46a9e0ce821ed1de1e27f411850be09c058a0a09f07f5f7fc7cd7954d5d9b5a",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:implement-durable-idempotent-final": {
       "id": "task:implement-durable-idempotent-final",
       "kind": "task",
       "slug": "implement-durable-idempotent-final",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:8a3e99368b10d54ba01dce7f5cb337a04c1c86066b2fca967a75fa716870b42f",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:implement-interactive-telegram-model": {
       "id": "task:implement-interactive-telegram-model",
       "kind": "task",
       "slug": "implement-interactive-telegram-model",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:e8feebb683aff8ae4a87f7191f364c07c48488abcc2b81b9e51a4ee4e623fce1",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:implement-session-scoped-telegram-temp": {
       "id": "task:implement-session-scoped-telegram-temp",
       "kind": "task",
       "slug": "implement-session-scoped-telegram-temp",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:1b50ba28580d36768c1f99273ab9555610c0fb3641b41be0c39901c0c71cd0b6",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:implement-telegram-git-repository": {
       "id": "task:implement-telegram-git-repository",
@@ -1685,613 +791,273 @@
       "id": "task:implement-telegram-reload-with-route",
       "kind": "task",
       "slug": "implement-telegram-reload-with-route",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:48b81715a3740869d1d1422681b5c04bb53d7ac3b25ad0f38a44ecd8cf3f3ebb",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:improve-telegram-activity-labels-for": {
       "id": "task:improve-telegram-activity-labels-for",
       "kind": "task",
       "slug": "improve-telegram-activity-labels-for",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:8041410dafcad94ba833f2a6c1847cce459c24b3cec1360e34e7dd25c08fd541",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:introduce-broker-telegram-side-effect": {
       "id": "task:introduce-broker-telegram-side-effect",
       "kind": "task",
       "slug": "introduce-broker-telegram-side-effect",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:c4675907c69801476826d5a8de2ffbda261d798854484e96558679d91e466aae",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:keep-telegram-finals-pending-across-pi": {
       "id": "task:keep-telegram-finals-pending-across-pi",
       "kind": "task",
       "slug": "keep-telegram-finals-pending-across-pi",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:036eae5f3f0b24c022fd313b7e7bcd6300a3e79862aef82fd2776287bdf6f685",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:lazy-load-inactive-telegram-runtime": {
       "id": "task:lazy-load-inactive-telegram-runtime",
       "kind": "task",
       "slug": "lazy-load-inactive-telegram-runtime",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:b322d3ea05ee5277290e21a8833ec34a28e2688e5e41c6ef27d4f7ba1666c734",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:match-telegram-compact-to-pi-busy": {
       "id": "task:match-telegram-compact-to-pi-busy",
       "kind": "task",
       "slug": "match-telegram-compact-to-pi-busy",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:b2ec35cac831dff1f579e60c4f789aa242d24c8c457ffb1835c133c7da7d928e",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:move-telegram-retry-and-error": {
       "id": "task:move-telegram-retry-and-error",
       "kind": "task",
       "slug": "move-telegram-retry-and-error",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:9131f08b60ca3c2698c4083eb2894dc704d2932c17c62e510a5cdd12fc69b241",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:omit-main-branch-from-default-telegram": {
       "id": "task:omit-main-branch-from-default-telegram",
       "kind": "task",
       "slug": "omit-main-branch-from-default-telegram",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:a139fcc3f7b0a1810020e2bfc82285a30552a40bc78aeddf82f893b79a4f499d",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:polish-telegram-activity-rendering": {
       "id": "task:polish-telegram-activity-rendering",
       "kind": "task",
       "slug": "polish-telegram-activity-rendering",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:fb98825d3d0c408d50f4438b7de09de708aa5c188daed64d9d8a1826c6fdc37c",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:preserve-long-telegram-command-result": {
       "id": "task:preserve-long-telegram-command-result",
       "kind": "task",
       "slug": "preserve-long-telegram-command-result",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:04eee94f731ebc04bc1b1e936190a4c25edc906f520ea7eed5f346c450947cf4",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:preserve-telegram-connection-across": {
       "id": "task:preserve-telegram-connection-across",
       "kind": "task",
       "slug": "preserve-telegram-connection-across",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:fe6d61beede28918de72ec65411d9fecab6e4e4d356409be87b1b837aa21be7a",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:prevent-telegram-activity-batching": {
       "id": "task:prevent-telegram-activity-batching",
       "kind": "task",
       "slug": "prevent-telegram-activity-batching",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:848b0499be23a3307334fb17f285fb5c05217e93c9246f19cc39ab4138119357",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:queue-telegram-input-during-compaction": {
       "id": "task:queue-telegram-input-during-compaction",
       "kind": "task",
       "slug": "queue-telegram-input-during-compaction",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:db8c4e7cc478475e75ba1e18b1dfa26134cfc7b00746c9a86fe9fd638ab0eaa6",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:queue-telegram-manual-compaction-after": {
       "id": "task:queue-telegram-manual-compaction-after",
       "kind": "task",
       "slug": "queue-telegram-manual-compaction-after",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:9de5c687525230f5d5424068ea7e85387c8b6f94f6d9bd17c89c3713964c059e",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:refactor-queued-control-cleanup-helpers": {
       "id": "task:refactor-queued-control-cleanup-helpers",
       "kind": "task",
       "slug": "refactor-queued-control-cleanup-helpers",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:1c51fd886515152b88c7549f31203101e2f4a021f2bd7d3529ff95e0ea4107a3",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:remove-stale-queued-follow-up-controls": {
       "id": "task:remove-stale-queued-follow-up-controls",
       "kind": "task",
       "slug": "remove-stale-queued-follow-up-controls",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:4fe27fa67e86952ba2c36359c91eb311ca3bb204c17828436731cfff82dd0717",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:remove-unsupported-telegram-reload": {
       "id": "task:remove-unsupported-telegram-reload",
       "kind": "task",
       "slug": "remove-unsupported-telegram-reload",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:764fe0b6e86fb6226a6e2ef0991f67f7f3ace612711eff2b8307517dffe4b106",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:restrict-sendphoto-fallback-to-photo": {
       "id": "task:restrict-sendphoto-fallback-to-photo",
       "kind": "task",
       "slug": "restrict-sendphoto-fallback-to-photo",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:c89a5c66a0c057b36ede743d495a05650de4a76caeda8e22b6a90eab8ed92f0f",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:segment-telegram-activity-around": {
       "id": "task:segment-telegram-activity-around",
       "kind": "task",
       "slug": "segment-telegram-activity-around",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:8b31b41759f0aab22bfc894a13d51dae603f49217b7ef00bbf7866816288f247",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:send-assistant-text-only-at-final": {
       "id": "task:send-assistant-text-only-at-final",
       "kind": "task",
       "slug": "send-assistant-text-only-at-final",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:7a18025471f4625d57d1930650483f4070b8504d0b17865210e59f265bbe6b52",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:send-passive-telegram-mirrors-silently": {
       "id": "task:send-passive-telegram-mirrors-silently",
       "kind": "task",
       "slug": "send-passive-telegram-mirrors-silently",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:6d5dd0440b7ffc2b691bd255a97eac846a568aa5e9a4cfc0f1982553d2b1b1ec",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:separate-durable-telegram-footer": {
       "id": "task:separate-durable-telegram-footer",
       "kind": "task",
       "slug": "separate-durable-telegram-footer",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:63cc94e404fc810b466c1c784c08050b022bef72ab7844faebb5e99758401980",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:silence-streamed-assistant-preview": {
       "id": "task:silence-streamed-assistant-preview",
       "kind": "task",
       "slug": "silence-streamed-assistant-preview",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:4dfd4dea19adb3631b21765107c61cd26392b329885afa868798b4e58ad84408",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:simplify-telegram-reliability": {
       "id": "task:simplify-telegram-reliability",
       "kind": "task",
       "slug": "simplify-telegram-reliability",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:7c648dbac13785b56bbc23a3d64f6bec433ce870c77212a437c71f65964ded2d",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:split-session-route-cleanup-behavior": {
       "id": "task:split-session-route-cleanup-behavior",
       "kind": "task",
       "slug": "split-session-route-cleanup-behavior",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:1014651441bc947e86faf4fa4a8505309ce564851cc86401f0d42fa68e54d7cd",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:split-shared-runtime-types-and-config": {
       "id": "task:split-shared-runtime-types-and-config",
       "kind": "task",
       "slug": "split-shared-runtime-types-and-config",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:ecbcc3a8288d9a7be1defb27c7557cbc5948d11bb1d8d570270688467274966c",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:split-telegram-command-routing": {
       "id": "task:split-telegram-command-routing",
       "kind": "task",
       "slug": "split-telegram-command-routing",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:9d564d2c16174eef2197a53dbbd7020b55573a2a5bee310fd0273ac1a3cc607f",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:stabilize-behavior-check-harness": {
       "id": "task:stabilize-behavior-check-harness",
       "kind": "task",
       "slug": "stabilize-behavior-check-harness",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:b8ccd408145dda2be2f23bec4a6fcb8a11f9555ad03c931a1f3a881bc11ff0f1",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:stabilize-broker-heartbeat-diagnostics": {
       "id": "task:stabilize-broker-heartbeat-diagnostics",
       "kind": "task",
       "slug": "stabilize-broker-heartbeat-diagnostics",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:5b140b007ca3d1dcbbc73993d702a3d447c3a4417a0a90aa0918e91bf78b4baf",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:stabilize-same-turn-telegram-activity": {
       "id": "task:stabilize-same-turn-telegram-activity",
       "kind": "task",
       "slug": "stabilize-same-turn-telegram-activity",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:7ddbd39a22f1cec4659883c7f623ebc8de5ef6065bf9acf83299bbfa4bbf343d",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:stabilize-telegram-session-route": {
       "id": "task:stabilize-telegram-session-route",
       "kind": "task",
       "slug": "stabilize-telegram-session-route",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:05ec3e09957b5ba1739b4cb9c7ecfe560433036a1b3a802135267d0ddf056ed2",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:tighten-behavior-check-fixture-typing": {
       "id": "task:tighten-behavior-check-fixture-typing",
       "kind": "task",
       "slug": "tighten-behavior-check-fixture-typing",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:86fdcbcffa0b575992cc483c6df66dcbc7d767746761629c1c628448f70d373a",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:unify-telegram-command-and-callback": {
       "id": "task:unify-telegram-command-and-callback",
       "kind": "task",
       "slug": "unify-telegram-command-and-callback",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:42b1e307345188be282f805b17bc81fa790a863d068f8deac510f094c7186e0c",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     },
     "task:validate-setup-getme-through-retry": {
       "id": "task:validate-setup-getme-through-retry",
       "kind": "task",
       "slug": "validate-setup-getme-through-retry",
-      "status": "done",
+      "status": "pending",
       "created": "2026-05-03",
-      "updated": "2026-05-03",
-      "decisions": [
-        {
-          "date": "2026-05-03",
-          "decision": "Curated into the 2026-05-03 documentation baseline: README.md plus docs/index.md, docs/getting-started.md, docs/telegram-commands.md, docs/internals/runtime-architecture.md, docs/internals/state-and-reliability.md, and docs/maintenance.md synthesize this backlog item with current code/architecture. Final documentation review reported no findings."
-        }
-      ],
-      "processed_hash": "sha256:3bccd65bfafa34475f2b669a0d086b0045e00ce858f9e6d7c3c24d7abd144bcc",
-      "processed_at": "2026-05-03",
-      "processed_revision": "20cecfe81908827b80e676684e3964f9c50e4f97",
-      "note": "Processed by 2026-05-03 documentation baseline and clean review."
+      "updated": "2026-05-03"
     }
   }
 }
