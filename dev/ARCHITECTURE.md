@@ -776,11 +776,13 @@ broker polling.
 `pi/diagnostics.ts` provides the pi-safe reporting adapter for extension
 background diagnostics. The Telegram footer/statusbar is reserved for durable
 bridge state such as configuration, broker ownership, session count, route, and
-connection state. Event-like diagnostics should use the same pi-native
+connection state; `shared/ui-status.ts` formats only those durable states and the
+hidden/cleared state. Event-like diagnostics should use the same pi-native
 notification class as `/telegram-status` or another explicit non-LLM UI surface
 rather than raw terminal writes or displayed custom session messages that enter
-future LLM context; non-actionable transient coordination noise should stay
-silent or be deduped before notification.
+future LLM context. Non-actionable transient coordination noise should stay
+silent, while repeated or terminal events that are user-visible should be routed
+through the diagnostic reporter and bounded by keyed dedupe before notification.
 
 Current-state note: pi-side activity construction uses shared activity-line
 formatters while `broker/activity.ts` owns Telegram rendering, debouncing, and

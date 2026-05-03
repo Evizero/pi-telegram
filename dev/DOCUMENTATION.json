@@ -572,9 +572,19 @@
       "id": "inbox:separate-durable-telegram-status",
       "kind": "inbox",
       "slug": "separate-durable-telegram-status",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the completed local pi status/diagnostics split into architecture, runtime internals, reliability, and maintenance docs. The docs now state that the Telegram footer/statusbar is durable bridge state only, while event-like diagnostics use pi-native notifications rather than LLM-visible custom session messages; latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:fe943ff07b2d0691845f92b50d32b975b8eb8a37dde8dbe6e03cfbc8ff2dddf9",
+      "processed_at": "2026-05-03",
+      "processed_revision": "1b9d47a12a234bf44c1459c7a3a0e2ac79a6ef8b",
+      "note": "Durable footer/status versus diagnostics split curated into docs; latest review reported No findings."
     },
     "inbox:setup-getme-should-use": {
       "id": "inbox:setup-getme-should-use",
@@ -1476,9 +1486,19 @@
       "id": "task:separate-durable-telegram-footer",
       "kind": "task",
       "slug": "separate-durable-telegram-footer",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the implemented durable-footer task into docs. The docs identify src/shared/ui-status.ts as the durable status formatter, src/pi/diagnostics.ts as the pi-safe notification adapter, runtime keyed dedupe for repeated notifications, poll-loop retry/backoff behavior that refreshes durable status without raw error footer overrides, and check-pi-status-diagnostics.ts as the focused guard; latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:63cc94e404fc810b466c1c784c08050b022bef72ab7844faebb5e99758401980",
+      "processed_at": "2026-05-03",
+      "processed_revision": "1b9d47a12a234bf44c1459c7a3a0e2ac79a6ef8b",
+      "note": "Completed pi footer/status diagnostic separation curated into docs; latest review reported No findings."
     },
     "task:silence-streamed-assistant-preview": {
       "id": "task:silence-streamed-assistant-preview",

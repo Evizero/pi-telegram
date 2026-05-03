@@ -101,6 +101,7 @@ Before changing Bot API integration, read [`telegram-bot-api.md`](telegram-bot-a
 | Preview compatibility | `src/telegram/previews.ts`, `src/telegram/policy.ts`, `src/broker/finals.ts` | `check-preview-manager.ts`, `check-telegram-io-policy.ts`, `check-final-delivery.ts` |
 | Busy turns and queued controls | `src/broker/commands.ts`, `src/broker/queued-*`, `src/shared/queued-control-text.ts`, `src/client/turn-*` | `check-telegram-command-routing.ts`, `check-telegram-queued-controls.ts`, `check-client-turn-delivery.ts`, `check-manual-compaction.ts`, `check-session-unregister-cleanup.ts`, `check-telegram-outbox.ts` |
 | Pi hook boundary | `src/pi/hooks.ts`, `src/pi/*`, `src/shared/activity-lines.ts`, `src/broker/activity.ts` | `check-runtime-pi-hooks.ts`, `check-activity-rendering.ts` |
+| Pi footer/status diagnostics | `src/shared/ui-status.ts`, `src/pi/diagnostics.ts`, `src/extension.ts`, `src/broker/updates.ts`, `src/broker/heartbeat.ts` | `check-pi-status-diagnostics.ts`, `check-broker-renewal-contention.ts`, `check-durable-json-loading.ts`, `check-telegram-outbox.ts` |
 | Final delivery | `src/broker/finals.ts`, `src/client/final-handoff.ts`, `src/client/retry-aware-finalization.ts` | `check-final-delivery.ts`, `check-client-final-handoff.ts`, `check-retry-aware-finalization.ts` |
 | Session lifecycle/routes | `src/broker/routes.ts`, `src/broker/session-registration.ts`, `src/broker/sessions.ts`, `src/client/session-replacement.ts`, `src/shared/routing.ts` | `check-session-route-registration.ts`, `check-session-unregister-cleanup.ts`, `check-session-replacement-handoff.ts` |
 | Attachments/security | `src/shared/utils.ts`, `src/shared/config.ts`, `src/telegram/api.ts`, `src/telegram/attachments.ts`, `src/client/attachment-path.ts`, `src/pi/attachments.ts` | `check-security-setup-attachments.ts`, `check-telegram-temp-cleanup.ts` |
@@ -121,7 +122,7 @@ Before changing Bot API integration, read [`telegram-bot-api.md`](telegram-bot-a
 - Preserve FIFO final delivery and visible progress records.
 - Do not make client-side final persistence a second broker final ledger.
 - Do not route Telegram controls as fake user conversation text unless the requirement explicitly says so.
-- Keep local pi diagnostics out of future LLM context; use pi-native notifications/status surfaces.
+- Keep the Telegram footer/statusbar for durable bridge state only; route event-like diagnostics through pi-native notifications rather than LLM-visible custom session messages.
 - Update docs, `docs/telegram-bot-api.md`, requirements, or architecture in the same coherent change when behavior or authority changes.
 
 ## Release and commit hygiene

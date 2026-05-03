@@ -165,6 +165,12 @@ Key pi files:
 
 Pi hooks should depend on shared contracts and injected callbacks, not low-level Bot API details or broker persistence policy. Activity text helpers live in `src/shared/activity-lines.ts`; broker-side `src/broker/activity.ts` remains the owner of Telegram rendering, debouncing, typing loops, and durable visible activity state.
 
+### Local status and diagnostic surfaces
+
+The local pi footer/statusbar is durable bridge state, not an event log. `src/shared/ui-status.ts` renders the Telegram footer from stable state only: hidden/cleared, bot not configured, broker plus online session count, connected route/topic, or disconnected. Command/setup/connect/disconnect paths refresh that durable footer after state changes rather than passing transient error text into the formatter.
+
+Event-like bridge diagnostics use pi-native notifications through `src/pi/diagnostics.ts`, matching `/telegram-status` and `/telegram-broker-status` rather than creating displayed custom session messages. This keeps background warnings, terminal cleanup failures, invalid durable-state reports, and repeated broker-heartbeat degradation visible without injecting those diagnostics into later LLM context. Non-actionable retry noise can remain quiet, and repeated notifications should be bounded with keyed dedupe at the runtime composition layer.
+
 ## Telegram boundary
 
 `src/telegram/*` owns Bot API behavior:
@@ -219,6 +225,7 @@ Behavior checks under `scripts/check-*.ts` protect this architecture. Important 
 
 - `scripts/check-lazy-bootstrap.ts`
 - `scripts/check-runtime-pi-hooks.ts`
+- `scripts/check-pi-status-diagnostics.ts`
 - `scripts/check-client-runtime-host.ts`
 - `scripts/check-telegram-command-routing.ts`
 - `scripts/check-telegram-io-policy.ts`

@@ -53,6 +53,8 @@ True lease loss remains strict: missing, expired, mismatched-owner, or mismatche
 
 Heartbeat cycles are serialized with in-flight state so a slow renewal or maintenance pass cannot overlap the next timer tick and create self-inflicted contention. User-visible heartbeat/background diagnostics route through the `src/pi/diagnostics.ts` reporter when the extension has a current pi context; the reporter currently uses pi UI notifications for `notify` events and avoids injecting diagnostic text as agent-turn input.
 
+The footer/statusbar is a separate durability surface from these diagnostics. `telegramStatusText()` renders stable bridge state only—hidden/cleared, not configured, broker session count, connected route, or disconnected—and must not accept raw transient error/detail overrides. Poll-loop retry failures, ordinary `retry_after` waits, and other retryable coordination noise therefore refresh durable status after backoff or stay quiet instead of briefly replacing the footer. Actionable repeated or terminal failures, such as repeated heartbeat contention/failure, terminal final-delivery or route-cleanup failures, and invalid durable-state reports, notify through pi-safe diagnostics with dedupe where persistent failures could otherwise spam the operator.
+
 ## Durable JSON boundary
 
 `readJson()` returns `undefined` only for missing files. Malformed JSON, unreadable files, directories, permission failures, and other non-missing read failures surface as durable JSON errors with path context instead of being treated as absent state.
@@ -228,6 +230,7 @@ Behavior checks that cover this page include:
 - `scripts/check-activity-rendering.ts`
 - `scripts/check-broker-background.ts`
 - `scripts/check-broker-renewal-contention.ts`
+- `scripts/check-pi-status-diagnostics.ts`
 - `scripts/check-durable-json-loading.ts`
 - `scripts/check-telegram-io-policy.ts`
 - `scripts/check-final-delivery.ts`
