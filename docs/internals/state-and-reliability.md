@@ -162,7 +162,16 @@ Native pi history remains local and is not stored in Telegram topics.
 
 ## Attachments and temp cleanup
 
-Inbound Telegram attachments are downloaded to private session temp directories and treated as untrusted. The session temp directory is retained only while the session is active, within reconnect grace, or while pending Telegram state may still depend on the files. Cleanup runs on authoritative session end and through conservative orphan sweeps.
+Inbound Telegram attachments are downloaded to private session temp directories and treated as untrusted. Temp cleanup is intended to follow session lifecycle rather than broker lifecycle:
+
+- generic broker shutdown, lease loss, or takeover leaves per-session temp data in place;
+- explicit disconnect, normal session shutdown, and reconnect-grace expiry unregister a session and then attempt to remove that session's temp directory;
+- cleanup is skipped while broker state still has a live session, pending turn, or pending assistant final for the session ID being cleaned;
+- broker startup/heartbeat maintenance sweeps old orphan session temp directories after a conservative TTL, without deleting active or pending sessions.
+
+The implementation anchor is `src/telegram/temp-files.ts`, with lifecycle callbacks wired from `src/extension.ts` into `src/broker/sessions.ts`. `scripts/check-telegram-temp-cleanup.ts` covers live/pending preservation, unregister cleanup, offline cleanup after grace, pending-work preservation, and old-orphan sweeping.
+
+Current-state caveat: downloaded-file creation still uses the preparing runtime's session ID in `src/extension.ts`, while routed Telegram turns may target a different `route.sessionId` in multi-session mode. The cleanup helper protects the session ID of the temp directory being cleaned, so future work should align download ownership with routed target-session ownership before relying on these docs as a full multi-session guarantee. This gap is captured in `inbox:downloaded-telegram-files-may`.
 
 Outbound attachments require explicit `telegram_attach` intent and path validation. The bridge blocks obvious secrets and unrelated local files before upload.
 

@@ -99,6 +99,11 @@ Inbound Telegram files are downloaded under:
 ~/.pi/agent/tmp/telegram/<session-id>
 ```
 
+Those downloads are retained under session-scoped temp directories while the
+runtime still needs them for active, reconnectable, or pending Telegram work.
+Authoritative session end and conservative orphan sweeps remove stale session
+temp directories; broker shutdown or takeover alone does not.
+
 Generated or local files are sent back only when pi explicitly calls the
 `telegram_attach` tool during an active Telegram turn. The attachment guard
 canonicalizes paths, allows workspace files and bridge temp files, limits each

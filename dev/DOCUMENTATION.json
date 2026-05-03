@@ -576,9 +576,19 @@
       "id": "inbox:telegram-attachment-tmp-cleanup",
       "kind": "inbox",
       "slug": "telegram-attachment-tmp-cleanup",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the session-scoped Telegram temp cleanup policy into README.md, docs/getting-started.md, docs/telegram-bot-api.md, and docs/internals/state-and-reliability.md: private inbound temp dirs, no cleanup on generic broker shutdown/lease loss/takeover, cleanup after session lifecycle boundaries and protected-state checks, and conservative orphan sweeps. Curation also preserved a current multi-session ownership caveat discovered during review as inbox:downloaded-telegram-files-may. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:70dbfb538d634f3652fbbc01af85779fb937e09229cc5f89bbc371c72ee75a7c",
+      "processed_at": "2026-05-03",
+      "processed_revision": "0f9dcdfe5eea8f334171d4f3fe2746f742facaef",
+      "note": "Temp cleanup lifecycle policy curated into docs; multi-session ownership caveat captured in inbox:downloaded-telegram-files-may; latest review reported No findings."
     },
     "inbox:telegram-compact-should-match": {
       "id": "inbox:telegram-compact-should-match",
@@ -942,9 +952,19 @@
       "id": "task:implement-session-scoped-telegram-temp",
       "kind": "task",
       "slug": "implement-session-scoped-telegram-temp",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the completed session-scoped temp cleanup implementation into docs with anchors to src/telegram/temp-files.ts, lifecycle wiring in src/extension.ts and src/broker/sessions.ts, and validation coverage in scripts/check-telegram-temp-cleanup.ts. The docs intentionally distinguish the implemented helper/lifecycle policy from a current routed multi-session ownership caveat captured separately as inbox:downloaded-telegram-files-may. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:1b50ba28580d36768c1f99273ab9555610c0fb3641b41be0c39901c0c71cd0b6",
+      "processed_at": "2026-05-03",
+      "processed_revision": "0f9dcdfe5eea8f334171d4f3fe2746f742facaef",
+      "note": "Implemented temp cleanup behavior curated into docs with code/test anchors; current caveat captured separately; latest review reported No findings."
     },
     "task:implement-telegram-git-repository": {
       "id": "task:implement-telegram-git-repository",

@@ -143,6 +143,12 @@ Telegram photos, albums, and documents are downloaded into private local session
 
 Downloaded files are untrusted. Prompts include local file paths, and inbound images may be forwarded as image inputs where size/policy allows.
 
+Downloaded files are retained under session-scoped temp directories while the
+runtime still needs them for active, reconnectable, or pending Telegram work.
+Explicit disconnect, normal session shutdown, reconnect-grace expiry, and
+conservative orphan sweeps clean stale session temp directories; ordinary broker
+shutdown, lease loss, or takeover does not.
+
 Hosted Bot API downloads are capped at 20 MB. File paths from Telegram are optional, so missing `file_path` is a handled error rather than an assumption.
 
 ### Outbound local files
@@ -166,6 +172,9 @@ Current outbound guardrails:
 - Normal terminal shutdown should unregister and clean up unless a successful native session replacement handoff is underway.
 - Heartbeat or IPC loss first marks a session offline, then preserves its route during a bounded reconnect grace window.
 - If reconnect grace expires, the broker unregisters the session and records route/topic cleanup work.
+- Downloaded Telegram temp directories for ended runtime sessions are removed
+  only after cleanup checks decide no protected session or pending turn/final
+  state still depends on them.
 - Temporary Telegram topics are views over connected sessions; native pi history remains local and can be resumed separately.
 
 ## Troubleshooting

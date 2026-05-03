@@ -281,8 +281,13 @@ Bridge policy:
 - Download immediately after `getFile` or call `getFile` again if a link expired.
 - Save Telegram-provided filenames/MIME types from the message object when
   available, not from `getFile`.
-- Store downloaded files in private local directories/files (`0700` dirs,
-  `0600` files) because Telegram attachments may contain private data.
+- Store downloaded files in private local session directories/files (`0700`
+  dirs, `0600` files) because Telegram attachments may contain private data.
+- Keep downloaded files while the runtime still needs their session-scoped temp
+  directory for active, reconnectable, or pending Telegram work.
+- Do not delete session temp directories merely because the broker shuts down,
+  loses the lease, or is taken over. Cleanup belongs to authoritative session end
+  or conservative orphan sweeping after protected state checks.
 
 ### Local Bot API server
 
