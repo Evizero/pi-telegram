@@ -55,7 +55,11 @@ Heartbeat cycles are serialized with in-flight state so a slow renewal or mainte
 
 ## Durable JSON boundary
 
-Malformed, unreadable, or schema-invalid durable JSON is not treated as if the file were missing. Invalid state is diagnosed with artifact context so maintainers can inspect the original file. Directory-scanned maintenance records are isolated per file so one corrupt pending-final, disconnect, or handoff record does not block unrelated valid recovery work.
+`readJson()` returns `undefined` only for missing files. Malformed JSON, unreadable files, directories, permission failures, and other non-missing read failures surface as durable JSON errors with path context instead of being treated as absent state.
+
+Schema validation happens at the durable-state boundary before records drive runtime behavior. Central artifacts such as Telegram config, the broker lease, the takeover lock, and `state.json` fail closed when their shape is invalid so the bridge does not silently replace corrupt state with defaults or use incomplete coordination data. Durable JSON errors carry the artifact path; broker-state maintenance paths that catch invalid artifacts report that path through pi diagnostics when a current pi context is available.
+
+Directory-scanned maintenance records are isolated per file. A malformed, unreadable, or schema-invalid client pending-final, disconnect request, or session-replacement handoff is preserved for diagnosis and reported, while later valid files in the same directory continue to process. Valid stale or empty records may still be removed by their lifecycle-specific cleanup rules; invalid records are not deleted merely because they failed to parse or validate.
 
 ## Telegram polling and update offsets
 

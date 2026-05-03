@@ -246,9 +246,19 @@
       "id": "inbox:durable-json-read-failures",
       "kind": "inbox",
       "slug": "durable-json-read-failures",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the stale durable-json read failure report and 2026-04-30 investigation update into docs/internals/state-and-reliability.md. The docs now distinguish missing files from malformed/unreadable durable JSON, preserve the remaining schema-validation/per-file-isolation lessons, and avoid implying automatic repair. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:055aa428307f1b3ed180a1e2d88ec6f34f05b5eef05d11b41a903a2435cb7bd6",
+      "processed_at": "2026-05-03",
+      "processed_revision": "671589315eb75e98b156b1055e04d930a0ecfcbd",
+      "note": "Durable JSON missing-vs-invalid behavior and remaining boundary lessons curated into state/reliability internals docs; latest review reported No findings."
     },
     "inbox:edited-telegram-command-results": {
       "id": "inbox:edited-telegram-command-results",
@@ -922,9 +932,19 @@
       "id": "task:harden-durable-json-boundary-recovery",
       "kind": "task",
       "slug": "harden-durable-json-boundary-recovery",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the completed durable-boundary hardening task into docs/internals/state-and-reliability.md: central config/lease/takeover/state artifacts fail closed when invalid, per-file pending-final/disconnect/handoff scans isolate invalid records, invalid records are preserved/reported, and validation anchors cover the behavior. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:603bdce14a302ecbbbcc31039b6412c99c26de891ac157cf8d808b3db79bed3d",
+      "processed_at": "2026-05-03",
+      "processed_revision": "671589315eb75e98b156b1055e04d930a0ecfcbd",
+      "note": "Implemented durable JSON validation and per-file maintenance isolation curated into state/reliability internals docs; latest review reported No findings."
     },
     "task:honor-explicit-telegram-disconnect": {
       "id": "task:honor-explicit-telegram-disconnect",
