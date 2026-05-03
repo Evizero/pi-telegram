@@ -22,7 +22,7 @@ These files remain authority for scope, requirements, and API constraints. The d
 - [`../dev/ARCHITECTURE.md`](../dev/ARCHITECTURE.md) — normative architecture contract and current-state clarifications.
 - [`../dev/STAKEHOLDER_REQUIREMENTS.json`](../dev/STAKEHOLDER_REQUIREMENTS.json) — stakeholder requirements.
 - [`../dev/SYSTEM_REQUIREMENTS.json`](../dev/SYSTEM_REQUIREMENTS.json) — implementable system requirements.
-- [`../docs.md`](../docs.md) — project-local Telegram Bot API guidance.
+- [`telegram-bot-api.md`](telegram-bot-api.md) — project-local Telegram Bot API guidance.
 - [`../AGENTS.md`](../AGENTS.md) — repository instructions for coding agents.
 
 ## Current red thread
@@ -38,6 +38,6 @@ These files remain authority for scope, requirements, and API constraints. The d
 
 ## Current gaps and places to inspect first
 
-- Behavior and architecture are more current than old release-facing docs; prefer the docs in this directory plus `dev/ARCHITECTURE.md` when in doubt.
+- The maintained docs in this directory plus `dev/ARCHITECTURE.md` are the current project documentation baseline; do not treat removed top-level drafts as authority.
 - Requirement records are still in draft/ready statuses even though many implementation tasks are archived as done. Do not infer release readiness from requirement status alone.
 - If a future docs update changes obligations or architecture, use `pln` planning workflows rather than silently making docs the new authority.

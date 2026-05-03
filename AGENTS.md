@@ -31,7 +31,7 @@ npm run check
 
 ## Telegram API rules
 
-Consult `docs.md` before changing Bot API integration. In particular:
+Consult `docs/telegram-bot-api.md` before changing Bot API integration. In particular:
 
 - Honor `ResponseParameters.retry_after`; do not immediately retry or fall back.
 - `getUpdates` and webhooks are mutually exclusive; delete webhooks before

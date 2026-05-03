@@ -516,7 +516,7 @@
         "StRS-api-constrained-maintenance"
       ],
       "rationale": "Future maintainers need durable source-backed guidance for Telegram limits, retry behavior, polling, drafts, topics, and file handling instead of relying on compacted chat history.",
-      "acceptance_criteria": "Inspection confirms docs.md links to official Telegram sources for relevant Bot API behavior and AGENTS.md directs coding agents to consult those notes before Telegram integration changes.",
+      "acceptance_criteria": "Inspection confirms docs/telegram-bot-api.md links to official Telegram sources for relevant Bot API behavior and AGENTS.md directs coding agents to consult those notes before Telegram integration changes.",
       "verification": {
         "method": "inspection"
       },

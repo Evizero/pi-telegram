@@ -2,8 +2,9 @@
 
 Last reviewed: 2026-04-27 against the official Telegram Bot API docs.
 
-This file captures the Bot API details that matter for this bridge so future
-changes do not require rereading the whole Telegram documentation.
+This maintained documentation page captures the Bot API details that matter for this bridge so future
+changes do not require rereading the whole Telegram documentation. It replaces the old top-level
+Bot API scratch note; update this page when Telegram API policy changes.
 
 Official sources used throughout:
 

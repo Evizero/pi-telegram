@@ -1,6 +1,43 @@
 {
   "schema_version": "1",
-  "sources": {},
+  "sources": {
+    "path:SPEC.md": {
+      "id": "path:SPEC.md",
+      "path": "SPEC.md",
+      "kind": "docs",
+      "status": "done",
+      "created": "2026-05-03",
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Human-requested documentation cleanup: removed stale top-level SPEC.md draft after confirming current maintained docs and dev/ARCHITECTURE.md remain the documentation/architecture baseline. Stale references to the removed draft and top-level Bot API note were not kept as authority. Latest documentation review reported no findings."
+        }
+      ],
+      "note": "Removed stale top-level draft spec during documentation cleanup; maintained docs and architecture remain authoritative; latest review reported no findings.",
+      "processed_hash": "missing",
+      "processed_at": "2026-05-03",
+      "processed_revision": "5df497dbfa2697a3661f3a675cc3351d026535f1"
+    },
+    "path:docs.md": {
+      "id": "path:docs.md",
+      "path": "docs.md",
+      "kind": "docs",
+      "status": "done",
+      "created": "2026-05-03",
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Human-requested documentation cleanup: moved the top-level Telegram Bot API note into docs/telegram-bot-api.md, updated README/docs/AGENTS/planning references to the maintained page, and removed stale top-level documentation clutter. The cleanup also removed badlogic GitHub install/package metadata in favor of this repository location and deleted the unambiguous top-level screenshot files. Latest documentation review reported no findings."
+        }
+      ],
+      "note": "Absorbed into docs/telegram-bot-api.md during top-level documentation cleanup; latest review reported no findings.",
+      "processed_hash": "missing",
+      "processed_at": "2026-05-03",
+      "processed_revision": "5df497dbfa2697a3661f3a675cc3351d026535f1"
+    }
+  },
   "ignored_paths": {},
   "inputs": {
     "inbox:activity-labels-should-show": {

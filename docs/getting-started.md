@@ -7,13 +7,13 @@ This guide describes the current user-facing workflow for installing, pairing, c
 From Git:
 
 ```bash
-pi install git:github.com/badlogic/pi-telegram
+pi install git:github.com/Evizero/pi-telegram
 ```
 
 For one pi invocation:
 
 ```bash
-pi -e git:github.com/badlogic/pi-telegram
+pi -e git:github.com/Evizero/pi-telegram
 ```
 
 The package entrypoint is lazy. Installing the extension registers pi-visible commands and the `telegram_attach` tool, but the heavy Telegram broker/client runtime is not imported or started until Telegram is invoked or a valid session-replacement handoff needs recovery.

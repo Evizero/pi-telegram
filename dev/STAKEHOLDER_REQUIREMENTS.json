@@ -179,7 +179,7 @@
       "sources": {
         "refs": [
           "dev/INTENDED_PURPOSE.md#operating-model",
-          "docs.md#flood-control-and-retry-behavior"
+          "docs/telegram-bot-api.md#flood-control-and-retry-behavior"
         ],
         "references": [
           "telegram-views-are-connection-scoped"
@@ -256,7 +256,7 @@
       "sources": {
         "refs": [
           "dev/INTENDED_PURPOSE.md#traceability",
-          "docs.md"
+          "docs/telegram-bot-api.md"
         ]
       }
     },

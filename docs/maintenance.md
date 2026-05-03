@@ -65,7 +65,7 @@ Docs may summarize requirements and architecture, but they should not create new
 
 ## Telegram API rules
 
-Before changing Bot API integration, read [`../docs.md`](../docs.md). Important invariants:
+Before changing Bot API integration, read [`telegram-bot-api.md`](telegram-bot-api.md). Important invariants:
 
 - `getUpdates` and webhooks are mutually exclusive; delete webhooks before polling and retry deletion failures.
 - Honor `ResponseParameters.retry_after`; do not immediately retry or fall back.
@@ -110,7 +110,7 @@ Before changing Bot API integration, read [`../docs.md`](../docs.md). Important 
 - Do not make client-side final persistence a second broker final ledger.
 - Do not route Telegram controls as fake user conversation text unless the requirement explicitly says so.
 - Keep local pi diagnostics out of future LLM context; use pi-native notifications/status surfaces.
-- Update docs, `docs.md`, requirements, or architecture in the same coherent change when behavior or authority changes.
+- Update docs, `docs/telegram-bot-api.md`, requirements, or architecture in the same coherent change when behavior or authority changes.
 
 ## Release and commit hygiene
 

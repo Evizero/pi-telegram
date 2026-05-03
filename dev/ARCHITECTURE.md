@@ -181,7 +181,7 @@ artifacts back to Telegram.
 ### Maintainer and agent legibility
 
 The repository must remain understandable to future human and agent maintainers.
-Responsibility folders, `docs.md`, `AGENTS.md`, local TypeScript validation, and
+Responsibility folders, `docs/telegram-bot-api.md`, `AGENTS.md`, local TypeScript validation, and
 PLN requirements all exist so future changes can be checked against purpose,
 requirements, Telegram API constraints, and architecture instead of chat memory.
 Reliability code should prefer one explicit owner per lifecycle concern over
@@ -360,7 +360,7 @@ The companion provenance chain preserves human source basis and API basis:
 
 - `dev/references/*.md` stores captured voice-note directives such as no
   external broker daemon and local execution boundary;
-- `docs.md` stores Telegram Bot API source links and bridge-specific API notes;
+- `docs/telegram-bot-api.md` stores Telegram Bot API source links and bridge-specific API notes;
 - `AGENTS.md` stores agent-facing repository rules;
 - `README.md` stores the user-facing setup and operation workflow;
 - Git history preserves implementation and planning changes together.
@@ -421,7 +421,7 @@ These files are local runtime artifacts, not repository planning artifacts.
 
 ### Planning and source guidance are repository artifacts
 
-`dev/`, `docs.md`, and `AGENTS.md` are repository-owned project memory.
+`dev/`, `docs/telegram-bot-api.md`, and `AGENTS.md` are repository-owned project memory.
 They should be changed deliberately through PLN/guided workflows and kept in Git
 with related code when they explain the same behavior.
 
@@ -534,7 +534,7 @@ lifecycle cleanup rule safely supersedes it.
 
 ### Repository planning surface
 
-PLN artifacts under `dev/`, `docs.md`, and `AGENTS.md` define purpose,
+PLN artifacts under `dev/`, `docs/telegram-bot-api.md`, and `AGENTS.md` define purpose,
 requirements, API constraints, and agent workflow rules.
 These files are not runtime inputs for the extension, but they are
 architecture-relevant because they constrain future changes.
@@ -1138,7 +1138,7 @@ model into the latest visible Telegram message.
 **Context:** Telegram's API behavior is specific and easy to regress.
 Future agents may not have the original review context.
 
-**Decision:** `docs.md` records project-relevant official Bot API constraints,
+**Decision:** `docs/telegram-bot-api.md` records project-relevant official Bot API constraints,
 and `AGENTS.md` instructs coding agents to consult it.
 
 **Consequences:** Runtime changes that touch Telegram should update code,
@@ -1348,7 +1348,7 @@ ownership.
 - `src/telegram/previews.ts` — legacy/in-flight preview state cleanup and finalization compatibility.
 - `src/telegram/attachments.ts` — outbound attachment sending.
 - `src/telegram/turns.ts` — Telegram turn construction and durable IDs.
-- `docs.md` — source-backed Telegram Bot API notes for maintainers and agents.
+- `docs/telegram-bot-api.md` — source-backed Telegram Bot API notes for maintainers and agents.
 - `AGENTS.md` — coding-agent operating instructions and PLN guidance.
 - `dev/INTENDED_PURPOSE.md` — product identity and scope root.
 - `dev/STAKEHOLDER_REQUIREMENTS.json` — stakeholder-visible needs.

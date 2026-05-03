@@ -119,7 +119,7 @@ It does not assume arbitrary Telegram chats, files, filenames, or message metada
 
 - Upstream human basis: voice note from the project owner on 2026-04-25 describing the goal as babysitting pi sessions from a phone while work continues on the laptop, including one or multiple sessions and connection during an active turn.
 - Preserved wording for interpretation: "babysit sessions I write on the computer or laptop" and "control it then smoothly from my phone and everything still runs on the laptop."
-- Local grounding artifacts: `README.md`, `AGENTS.md`, `docs.md`, `src/extension.ts`, and the responsibility folders under `src/`.
+- Local grounding artifacts: `README.md`, `AGENTS.md`, `docs/telegram-bot-api.md`, `src/extension.ts`, and the responsibility folders under `src/`.
 - Downstream anchors: stakeholder requirements, system requirements, architecture, verification cases, and implementation tasks under `dev/` should trace back to this purpose.
 
 ## References

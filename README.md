@@ -22,13 +22,13 @@ Use it when you want to leave the laptop but keep watching long agent runs, queu
 From Git:
 
 ```bash
-pi install git:github.com/badlogic/pi-telegram
+pi install git:github.com/Evizero/pi-telegram
 ```
 
 For a single pi run:
 
 ```bash
-pi -e git:github.com/badlogic/pi-telegram
+pi -e git:github.com/Evizero/pi-telegram
 ```
 
 ## Quick start
@@ -130,7 +130,7 @@ Start here:
 - [Runtime architecture](docs/internals/runtime-architecture.md)
 - [State and reliability](docs/internals/state-and-reliability.md)
 - [Maintenance guide](docs/maintenance.md)
-- [Telegram Bot API notes](docs.md)
+- [Telegram Bot API notes](docs/telegram-bot-api.md)
 
 ## Scope boundaries
 
