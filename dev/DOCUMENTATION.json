@@ -124,9 +124,19 @@
       "id": "inbox:broker-heartbeat-logs-takeover",
       "kind": "inbox",
       "slug": "broker-heartbeat-logs-takeover",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the observed takeover-lock heartbeat failure and TUI diagnostic root cause into docs/internals/state-and-reliability.md: renewal contention is distinct from lease loss, one-off contention does not advance generic failures or stand down, repeated contention reports pi-safe diagnostics, heartbeat cycles are serialized, and raw heartbeat/background diagnostics are routed through the pi diagnostic reporter when a pi context is available. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:ab5cc308d86e92a4de6518950f7dd14b87595e0d4dafaaa8399157edc849e1b9",
+      "processed_at": "2026-05-03",
+      "processed_revision": "069b5cca647cea3affba1f735cdf3ae369b62f7d",
+      "note": "Broker heartbeat contention and diagnostic behavior curated into internals docs; latest review reported No findings."
     },
     "inbox:broker-preview-logs-and": {
       "id": "inbox:broker-preview-logs-and",
@@ -1262,9 +1272,19 @@
       "id": "task:stabilize-broker-heartbeat-diagnostics",
       "kind": "task",
       "slug": "stabilize-broker-heartbeat-diagnostics",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the completed broker heartbeat diagnostics implementation into docs/internals/state-and-reliability.md with code anchors to src/broker/lease.ts, src/broker/heartbeat.ts, src/pi/diagnostics.ts, and validation anchors scripts/check-broker-renewal-contention.ts and scripts/check-broker-background.ts. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:5b140b007ca3d1dcbbc73993d702a3d447c3a4417a0a90aa0918e91bf78b4baf",
+      "processed_at": "2026-05-03",
+      "processed_revision": "069b5cca647cea3affba1f735cdf3ae369b62f7d",
+      "note": "Implemented heartbeat contention classification, serialization, diagnostics, and validation anchors curated into internals docs; latest review reported No findings."
     },
     "task:stabilize-same-turn-telegram-activity": {
       "id": "task:stabilize-same-turn-telegram-activity",

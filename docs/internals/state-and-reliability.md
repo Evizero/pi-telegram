@@ -45,6 +45,14 @@ Broker state records the continuity surface:
 
 Writes are serialized and fenced by the current broker owner/epoch. Stale broker persistence must stand down rather than resurrecting old state or crashing the hosting pi process.
 
+### Broker heartbeat and diagnostics
+
+`src/broker/lease.ts` and `src/broker/heartbeat.ts` distinguish lease loss from ordinary renewal contention. A live `takeover.lock` can briefly block lease renewal while the current broker still owns a live lease; that is classified as renewal contention, not a generic heartbeat failure. One-off contention does not increment the heartbeat failure counter or stand the broker down. Repeated contention crosses a bounded threshold and reports a pi-safe diagnostic so users can see that broker coordination is degraded while the broker remains active.
+
+True lease loss remains strict: missing, expired, mismatched-owner, or mismatched-epoch leases make the broker stand down through the controlled stale-broker path. Generic heartbeat or maintenance failures use a separate failure counter; repeated failures are reported and then attempt broker stop without letting a failed stop reject the heartbeat cycle.
+
+Heartbeat cycles are serialized with in-flight state so a slow renewal or maintenance pass cannot overlap the next timer tick and create self-inflicted contention. User-visible heartbeat/background diagnostics route through the `src/pi/diagnostics.ts` reporter when the extension has a current pi context; the reporter currently uses pi UI notifications for `notify` events and avoids injecting diagnostic text as agent-turn input.
+
 ## Durable JSON boundary
 
 Malformed, unreadable, or schema-invalid durable JSON is not treated as if the file were missing. Invalid state is diagnosed with artifact context so maintainers can inspect the original file. Directory-scanned maintenance records are isolated per file so one corrupt pending-final, disconnect, or handoff record does not block unrelated valid recovery work.
@@ -191,6 +199,8 @@ Outbound attachments require explicit `telegram_attach` intent and path validati
 Behavior checks that cover this page include:
 
 - `scripts/check-activity-rendering.ts`
+- `scripts/check-broker-background.ts`
+- `scripts/check-broker-renewal-contention.ts`
 - `scripts/check-durable-json-loading.ts`
 - `scripts/check-telegram-io-policy.ts`
 - `scripts/check-final-delivery.ts`
