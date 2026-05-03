@@ -1,0 +1,117 @@
+# Maintenance guide
+
+This guide is for maintainers and coding agents changing `pi-telegram`.
+
+## Required validation
+
+Before reporting code changes complete, run:
+
+```bash
+npm run check
+```
+
+This runs:
+
+```bash
+npm run typecheck
+npm run check:behavior
+```
+
+`check:behavior` executes the TypeScript behavior checks discovered by `scripts/run-behavior-check.mjs` as `scripts/check-*.ts`.
+
+## Repository shape
+
+Keep the package entrypoint tiny:
+
+- `index.ts` should only register the extension/bootstrap.
+- `src/bootstrap.ts` owns lightweight pi-visible registration and lazy-load policy.
+- `src/extension.ts` is the heavy runtime composition root.
+- Runtime code is organized by responsibility:
+  - `src/broker/` — polling, routing, command handling, broker state, broker lifecycle;
+  - `src/client/` — local session registration, turn lifecycle, final handoff, local session controls;
+  - `src/pi/` — pi command, tool, prompt, event, and diagnostic boundaries;
+  - `src/telegram/` — Bot API access, retry, previews, attachments, typing, temp files;
+  - `src/shared/` — config, paths, IPC, formatting, small cross-boundary utilities.
+
+Do not collapse cohesive modules back into a god file. No TypeScript source file should exceed 1,000 lines.
+
+## Planning and requirements workflow
+
+This repository uses `pln` for project planning records under `dev/`.
+
+Useful commands:
+
+```bash
+pln status
+pln strs list
+pln syrs list
+pln task list --archived
+pln inbox list --archived
+pln documentation status
+```
+
+When work changes purpose, requirements, architecture, tasks, or documentation-curation state, use the appropriate `pln` workflow rather than creating ad hoc planning files.
+
+Authority layers:
+
+1. `dev/INTENDED_PURPOSE.md` — product scope and boundaries.
+2. `dev/STAKEHOLDER_REQUIREMENTS.json` — stakeholder needs.
+3. `dev/SYSTEM_REQUIREMENTS.json` — implementable behavior requirements.
+4. `dev/ARCHITECTURE.md` — architecture contract and current-state clarifications.
+5. `dev/tasks` / archived tasks — implementation work records.
+6. `docs/` — durable user/maintainer synthesis.
+
+Docs may summarize requirements and architecture, but they should not create new obligations by themselves.
+
+## Telegram API rules
+
+Before changing Bot API integration, read [`../docs.md`](../docs.md). Important invariants:
+
+- `getUpdates` and webhooks are mutually exclusive; delete webhooks before polling and retry deletion failures.
+- Honor `ResponseParameters.retry_after`; do not immediately retry or fall back.
+- Advance polling offsets only after an update is durably handled, rejected, or queued.
+- Hosted Bot API downloads are capped at 20 MB; `File.file_path` is optional.
+- Split text below Telegram's 4096-character limit.
+- Use `sendMessageDraft` only for eligible integer private-chat targets, non-empty text, and non-zero draft IDs.
+- Preserve `message_thread_id` for topic-routed replies, previews, uploads, typing actions, and cleanup.
+- Use `sendPhoto` only for likely photos within photo limits; fall back to `sendDocument` for photo-contract failures, not rate limits.
+
+## Security and privacy rules
+
+- Never log bot tokens or credentials.
+- Keep config, broker state, IPC sockets, and downloaded Telegram files private.
+- Treat Telegram attachments, filenames, MIME types, metadata, and content as untrusted.
+- Do not execute or trust attachment contents merely because they came from the paired user.
+- Allow outbound uploads only from the session workspace or bridge temp directory.
+- Block obvious secrets such as `.env`, SSH keys, and cloud credential directories.
+- Use `telegram_attach` for explicit artifact return; do not send local artifacts merely because a path appears in text.
+
+## Common change areas and checks
+
+| Change area | Source paths | Behavior checks to inspect/run |
+| --- | --- | --- |
+| Lazy startup/bootstrap | `index.ts`, `src/bootstrap.ts`, `src/extension.ts` | `check-lazy-bootstrap.ts`, `check-runtime-pi-hooks.ts` |
+| Telegram polling/API policy | `src/broker/updates.ts`, `src/telegram/*` | `check-telegram-io-policy.ts`, `check-callback-updates.ts`, `check-telegram-text-replies.ts` |
+| Busy turns and queued controls | `src/broker/commands.ts`, `src/broker/queued-*`, `src/client/turn-*` | `check-telegram-command-routing.ts`, `check-telegram-queued-controls.ts`, `check-client-turn-delivery.ts` |
+| Final delivery | `src/broker/finals.ts`, `src/client/final-handoff.ts`, `src/client/retry-aware-finalization.ts` | `check-final-delivery.ts`, `check-client-final-handoff.ts`, `check-retry-aware-finalization.ts` |
+| Session lifecycle/routes | `src/broker/session-registration.ts`, `src/broker/sessions.ts`, `src/client/session-replacement.ts` | `check-session-route-registration.ts`, `check-session-unregister-cleanup.ts`, `check-session-replacement-handoff.ts` |
+| Attachments/security | `src/telegram/api.ts`, `src/telegram/attachments.ts`, `src/client/attachment-path.ts`, `src/pi/attachments.ts` | `check-security-setup-attachments.ts`, `check-telegram-temp-cleanup.ts` |
+| Model and Git controls | `src/broker/model-*`, `src/broker/git-*`, `src/client/git-status.ts` | `check-model-picker.ts`, `check-telegram-model-picker.ts`, `check-telegram-git-controls.ts`, `check-client-git-status.ts` |
+| Broker lease/background | `src/broker/lease.ts`, `src/broker/heartbeat.ts`, `src/broker/background.ts` | `check-broker-background.ts`, `check-broker-renewal-contention.ts` |
+| Shared boundary cleanup | `src/shared/*`, owner modules | `check-shared-boundaries.ts`, `check-ipc-policy.ts` |
+
+## Safe implementation habits
+
+- Check `git status --short` before and after edits.
+- Prefer narrow modules with explicit owners over broad helpers.
+- Keep retry loops idempotent and state-backed.
+- Treat `retry_after` as scheduling state, not as an error to hide.
+- Preserve FIFO final delivery and visible progress records.
+- Do not make client-side final persistence a second broker final ledger.
+- Do not route Telegram controls as fake user conversation text unless the requirement explicitly says so.
+- Keep local pi diagnostics out of future LLM context; use pi-native notifications/status surfaces.
+- Update docs, `docs.md`, requirements, or architecture in the same coherent change when behavior or authority changes.
+
+## Release and commit hygiene
+
+Do not commit unless explicitly asked. If preparing a commit, prefer one coherent intent and Conventional Commit style. For completed tracked work, use the repository's `pln-close` workflow to align tasks, requirements, changelog evidence, and docs decisions before archiving.
