@@ -480,8 +480,8 @@ with related code when they explain the same behavior.
 ### pi extension surface
 
 `index.ts` is the package entrypoint and should stay tiny.
-The target architecture is that it imports only a lightweight bootstrap facade
-that gives pi the extension factory and registers the pi-visible surface.
+It imports only the lightweight bootstrap facade that gives pi the extension
+factory and registers the pi-visible surface.
 
 The bootstrap registers pi commands such as setup, connect, disconnect, and
 status; registers the `telegram_attach` tool definition; observes pi session and
@@ -491,10 +491,11 @@ rules to the agent. The heavy broker/client/Telegram runtime is loaded through a
 memoized dynamic import only when a command/tool/event actually requires runtime
 state or when session-replacement recovery has a matching handoff.
 
-Current-state clarification: the implementation still imports
-`registerTelegramExtension` from `src/extension.ts` eagerly. Planned lazy-loading
-work should split this into bootstrap-owned registration and runtime-owned
-behavior without changing the public command/tool surface.
+Current-state clarification: `src/extension.ts` exposes `createTelegramRuntime(pi)`
+as the runtime behavior surface after demand loading. The compatibility
+`registerTelegramExtension` path may still register the full extension eagerly for
+legacy callers/tests, but the package entrypoint must not use it or create second
+copies of commands, tools, or event handlers.
 
 ### Telegram surface
 
@@ -655,23 +656,22 @@ already-recorded visible output.
 
 ### Bootstrap facade and runtime composition
 
-The target entrypoint shape separates eager registration from heavy runtime
+The implemented entrypoint shape separates eager registration from heavy runtime
 composition. A lightweight bootstrap module owns command/tool/hook registration,
 prompt suffix injection, lazy-load policy, and cheap lifecycle sentinels. It must
 not import broker polling, client runtime hosting, Telegram API IO, local IPC, or
 final-delivery machinery on ordinary startup.
 
-The heavy runtime composition root, currently `src/extension.ts` and potentially
-a future `src/runtime/extension-runtime.ts`, wires pi, broker, client, Telegram,
-previews, activity, config, IPC, and state together after bootstrap loads it. It
-owns behavior, not pi surface registration, so lazy loading cannot create
-second copies of commands, tools, or event handlers.
+The heavy runtime composition root, currently `src/extension.ts`, wires pi,
+broker, client, Telegram, previews, activity, config, IPC, and state together
+after bootstrap loads it. It owns behavior, not pi surface registration, so lazy
+loading cannot create second copies of commands, tools, or event handlers.
 
-Current-state note: `src/extension.ts` is under the 1,000-line guard rail but is
-still both the eager import target and the runtime composition root. Planned
-lazy-loading work should extract the bootstrap/runtime seam while continuing to
-extract cohesive broker lease/state/session lifecycle pieces where orchestration
-pressure grows.
+Current-state note: `src/extension.ts` is no longer the package entrypoint's eager
+import target, but it remains an oversized runtime composition root. Future work
+should continue extracting cohesive broker lease/state/session lifecycle and
+client final-handoff composition where orchestration pressure grows rather than
+letting the lazy boundary become a god-file hiding place.
 
 ### Broker modules: `src/broker/`
 
@@ -1148,28 +1148,27 @@ requirements, and guidance together when the API contract changes.
 
 ### Lazy startup seam
 
-Current implementation eagerly imports the full runtime graph from `index.ts` via
-`src/extension.ts`, which makes ordinary pi startup pay the TypeScript/Jiti cost
-of broker, client, Telegram, IPC, and delivery modules even when Telegram is not
-connected. Planned lazy-loading work should introduce a bootstrap/runtime seam:
-bootstrap keeps the pi-visible surface available, while the heavy runtime is
+The lazy startup seam is now part of the current architecture. `index.ts` imports
+`src/bootstrap.ts`; bootstrap keeps the pi-visible commands, `telegram_attach`,
+prompt suffix, and lifecycle sentinels available, while `src/extension.ts` is
 demand-loaded for explicit Telegram use or valid session-replacement recovery.
 
-The seam is a migration architecture concern, not a change to product authority:
-it must preserve mid-turn connect, replacement handoff, attachment safety,
-shutdown cleanup, and no-external-daemon operation. The main design risk is
-allowing runtime to load too late for active-turn finalization or registering pi
-surfaces twice after dynamic import.
+The seam is not a change to product authority: it preserves mid-turn connect,
+replacement handoff, attachment safety, shutdown cleanup, and no-external-daemon
+operation. The continuing architecture risk is regression at the boundary:
+runtime must not load too late for active-turn finalization, must not continue
+command work after shutdown begins, and must not register pi surfaces twice after
+dynamic import.
 
 ### Composition root size
 
-`src/extension.ts` remains the largest file, but it is now below the 1,000-line
-guard rail after the client runtime host and turn-lifecycle extractions. It is
+`src/extension.ts` remains the largest file and currently exceeds the 1,000-line
+guard rail. It is no longer the eager package-entrypoint import target, but it is
 still a transitional runtime composition root; future work should keep shrinking
 it by extracting cohesive broker lease/state/session lifecycle and client
-final-handoff composition where those seams become clear.
-Extraction should preserve dependency injection and ownership boundaries rather
-than merely moving a god file to another name.
+final-handoff composition where those seams become clear. Extraction should
+preserve dependency injection and ownership boundaries rather than merely moving
+a god file to another name.
 
 Recent maintainability slices extracted the client runtime host and explicit
 client turn lifecycle under `src/client/`. Later slices may extract broker
@@ -1283,9 +1282,8 @@ ownership.
 
 - `index.ts` — package entrypoint; should only register the extension through
   the lightweight bootstrap facade.
-- `src/bootstrap.ts` or equivalent — planned eager registration facade for pi
-  commands, tool definitions, prompt guidance, lifecycle sentinels, and lazy-load
-  policy.
+- `src/bootstrap.ts` — eager registration facade for pi commands, tool
+  definitions, prompt guidance, lifecycle sentinels, and lazy-load policy.
 - `src/extension.ts` / future `src/runtime/extension-runtime.ts` — runtime
   composition root, broker/client orchestration, state wiring, config setup,
   lease coordination, and cross-boundary callbacks after demand loading.

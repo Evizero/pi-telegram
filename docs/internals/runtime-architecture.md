@@ -41,6 +41,31 @@ The heavy runtime is loaded through one memoized dynamic import when:
 
 Ordinary pi startup with no Telegram use should not start polling, IPC servers, broker heartbeats, timers, webhook deletion, or Telegram network calls.
 
+This boundary was added after profiling showed the old eager import path was the
+startup cost: the full `index.ts -> src/extension.ts` graph imported all runtime
+modules and measured roughly 1.6-1.8s on warm local profiles, while post-refactor
+startup profiling recorded about 230ms warm import, 0.8ms factory, and 0.1ms
+ordinary `session_start` on the same machine. Treat those numbers as historical
+local evidence, not a universal performance guarantee; the durable contract is
+the import/side-effect boundary above.
+
+`src/bootstrap.ts` also owns the failure-mode guardrails around the lazy boundary:
+
+- concurrent lazy commands share one runtime initialization attempt;
+- failed initialization clears the memoized attempt so a later command can retry;
+- `/telegram-connect` during a busy local turn primes the current abort callback
+  so Telegram controls can affect the active turn;
+- matching `/new`, `/resume`, or `/fork` handoffs load runtime from
+  `session_start`, while ordinary startup/reload without handoff stays unloaded;
+- shutdown does not load runtime just to clean up nonexistent state, but it
+  awaits and cleans an already-started runtime initialization and prevents
+  command continuation after shutdown begins;
+- executing `telegram_attach` can lazy-load runtime, but it still fails unless
+  there is an active Telegram turn and the file path passes the usual attachment
+  guards.
+
+`scripts/check-lazy-bootstrap.ts` is the regression anchor for those rules.
+
 ## Runtime composition root
 
 `src/extension.ts` exposes `createTelegramRuntime(pi)`. It wires together broker, client, pi, Telegram, IPC, config, activity, final delivery, and diagnostics dependencies.

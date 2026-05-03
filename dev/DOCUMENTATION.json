@@ -332,9 +332,19 @@
       "id": "inbox:pi-telegram-slows-pi",
       "kind": "inbox",
       "slug": "pi-telegram-slows-pi",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the implemented lazy inactive-runtime work into the maintained architecture and runtime docs: dev/ARCHITECTURE.md now treats the bootstrap/runtime seam as current architecture rather than planned migration, documents the continuing composition-root pressure honestly, and docs/internals/runtime-architecture.md preserves the startup profiling context, lazy-load triggers, shutdown/init guardrails, handoff recovery, active-turn connect behavior, attachment safety, and scripts/check-lazy-bootstrap.ts validation anchor. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:10545a22171715686ddf7410712ffcdefa1ada88d3ed3834db01c1084c281f97",
+      "processed_at": "2026-05-03",
+      "processed_revision": "9acd2b7b2f58c8bddc398c3cd13aab20ba87502c",
+      "note": "Lazy startup investigation and profiling context curated into dev/ARCHITECTURE.md and docs/internals/runtime-architecture.md; latest review reported No findings."
     },
     "inbox:queue-manual-compaction-after": {
       "id": "inbox:queue-manual-compaction-after",
@@ -980,9 +990,19 @@
       "id": "task:lazy-load-inactive-telegram-runtime",
       "kind": "task",
       "slug": "lazy-load-inactive-telegram-runtime",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the completed lazy-load implementation into the maintained architecture/runtime documentation: index.ts -> src/bootstrap.ts is documented as the current lightweight entrypoint surface, src/extension.ts as demand-loaded runtime composition, and the preserved behavior/failure-mode checks from the task are summarized with scripts/check-lazy-bootstrap.ts as the regression anchor. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:b322d3ea05ee5277290e21a8833ec34a28e2688e5e41c6ef27d4f7ba1666c734",
+      "processed_at": "2026-05-03",
+      "processed_revision": "9acd2b7b2f58c8bddc398c3cd13aab20ba87502c",
+      "note": "Completed lazy-load runtime task curated into architecture/runtime docs; latest review reported No findings."
     },
     "task:match-telegram-compact-to-pi-busy": {
       "id": "task:match-telegram-compact-to-pi-busy",
