@@ -8,6 +8,7 @@ Source code anchors:
 - `src/pi/activity.ts` contains the split hook implementation for the non-bootstrap runtime-registration path and mirrors the same active-turn thinking/tool events.
 - `src/shared/activity-lines.ts` defines activity row text, compact argument extraction, and Telegram HTML formatting.
 - `src/broker/activity.ts` stores, debounces, renders, completes, and recovers activity messages.
+- `src/broker/types.ts` defines the durable `activeActivityMessages` reference shape that preserves active Activity message identity across renderer turnover.
 - `src/telegram/typing.ts` owns advisory typing loops, including per-turn in-flight suppression and abort-on-stop behavior.
 - `src/broker/finals.ts` completes activity before visible final-delivery steps.
 - `scripts/check-activity-rendering.ts` exercises the expected row formatting, escaping, completion, cleanup, retry, typing, and stale-update behavior.
@@ -58,6 +59,14 @@ Thinking rows have a separate lifecycle:
 
 Once a turn or activity ID is completed, late duplicate activity updates for that turn are ignored. This prevents a completed turn's old activity message from being edited after the assistant final or after a later follow-up starts.
 
+## Message continuity and ambiguous Telegram effects
+
+A normal turn uses one activity ID, usually the `turnId`, so the renderer should edit the same visible Activity message until final delivery, explicit activity segmentation, route invalidation, or cleanup. Hidden-only thinking no longer deletes or clears the message identity during the active turn: when an untitled `⏳ working ...` row completes and no durable row remains, the renderer keeps the existing message reference and waits for later activity or final cleanup rather than creating a replacement bubble on the next update.
+
+Activity rendering treats first sends and cleanup deletes as non-idempotent Telegram effects. Before a first `sendMessage`, the renderer persists a durable ref with `messageIdUnavailable`. If a non-rate-limit send outcome is ambiguous, later rows keep accumulating in durable state but the renderer suppresses repeat `sendMessage` attempts for that activity, reports a diagnostic, and avoids unbounded duplicate Activity bubbles. A Telegram `retry_after` is different: the renderer records `retryAtMs`, waits, and retries because Telegram explicitly asked the bot to slow down.
+
+Known message IDs are retained until Telegram cleanup is confirmed, the message is already gone, or a terminal condition makes the ref safe to discard. Retryable or ambiguous `deleteMessage` failures keep the durable message ID and cause activity completion to fail so broker final delivery can retry cleanup instead of losing the only reference. Broker/renderer resets recover active refs from `BrokerState.activeActivityMessages`, including line history, retry state, and known message IDs, so continued same-turn activity edits the recovered message instead of starting a fresh bubble.
+
 ## Reliability notes
 
 Activity message references live in broker state while active. The renderer persists before ambiguous sends, records unknown message IDs when needed, honors Telegram `retry_after`, re-arms recovered retry timers, and deletes empty transient activity messages when cleanup succeeds. If route/session validity changes before a flush, the durable ref is discarded rather than rendering activity into the wrong Telegram view.
@@ -81,8 +90,14 @@ It also curates the 2026-04-27 live-update batching fix around:
 - `inbox:typing-loop-should-not`
 - `task:prevent-telegram-activity-batching`
 
-Three early directions were superseded by later implementation decisions:
+And the 2026-05-02 same-turn Activity message continuity fix around:
+
+- `inbox:activity-message-restarts-during`
+- `task:stabilize-same-turn-telegram-activity`
+
+Four early directions were superseded by later implementation decisions:
 
 - The first fallback idea was to show untitled thinking as `🧠 thinking ...`. Hidden/empty provider thinking now uses transient `⏳ working ...` instead, because it reassures the Telegram user without pretending that pi recorded a visible thinking trace.
 - The first bash/read/write idea explored removing more visible tool labels. The final labels keep only bash label-less as `💻 $ <command>`, while read/write/edit keep explicit labels as `📖 read <path>`, `📝 write <path>`, and `📝 edit <path>`.
 - The typing-loop issue was initially captured as a separate retry-after overlap bug, then was resolved by the broader activity-batching task because typing startup sat in the activity IPC path. The current implementation treats typing as advisory and non-overlapping instead of a delivery prerequisite for activity rows.
+- The first same-turn restart hypothesis focused on successful hidden-thinking deletion. Screenshot follow-up showed old Activity bubbles could remain visible, so the final continuity fix also covers ambiguous accepted sends, failed deletes, and broker/renderer reset with durable active Activity refs.

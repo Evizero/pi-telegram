@@ -25,9 +25,19 @@
       "id": "inbox:activity-message-restarts-during",
       "kind": "inbox",
       "slug": "activity-message-restarts-during",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated into docs/internals/activity-rendering.md under Message continuity and ambiguous Telegram effects. The docs record the same-turn Activity restart regression, the broadening from hidden-thinking deletion to ambiguous accepted sends, failed deletes, and broker/renderer reset, plus the current durable activeActivityMessages behavior that preserves known message ids/line history and suppresses repeated ambiguous sends. Latest documentation review reported no findings."
+        }
+      ],
+      "processed_hash": "sha256:c0b2982ab729e3531a937bef1eff5cc338a29f6774b87ef5b8b0041f3065ed32",
+      "processed_at": "2026-05-03",
+      "processed_revision": "46a347eee07de166fc67f466554494a590220518",
+      "note": "Processed by same-turn Telegram Activity message continuity documentation chunk; latest review reported no findings."
     },
     "inbox:assess-and-restore-top": {
       "id": "inbox:assess-and-restore-top",
@@ -1113,9 +1123,19 @@
       "id": "task:stabilize-same-turn-telegram-activity",
       "kind": "task",
       "slug": "stabilize-same-turn-telegram-activity",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated into docs/internals/activity-rendering.md under Message continuity and ambiguous Telegram effects. The docs record the same-turn Activity restart regression, the broadening from hidden-thinking deletion to ambiguous accepted sends, failed deletes, and broker/renderer reset, plus the current durable activeActivityMessages behavior that preserves known message ids/line history and suppresses repeated ambiguous sends. Latest documentation review reported no findings."
+        }
+      ],
+      "processed_hash": "sha256:7ddbd39a22f1cec4659883c7f623ebc8de5ef6065bf9acf83299bbfa4bbf343d",
+      "processed_at": "2026-05-03",
+      "processed_revision": "46a347eee07de166fc67f466554494a590220518",
+      "note": "Processed by same-turn Telegram Activity message continuity documentation chunk; latest review reported no findings."
     },
     "task:stabilize-telegram-session-route": {
       "id": "task:stabilize-telegram-session-route",
