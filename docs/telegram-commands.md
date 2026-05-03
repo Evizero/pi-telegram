@@ -6,13 +6,18 @@ Most commands are accepted only from the paired Telegram user in an authorized c
 
 | Command | Purpose |
 | --- | --- |
-| `/sessions` | List connected or recently visible pi sessions. |
+| `/sessions` | List connected or recently visible pi sessions, hiding long-offline stale sessions. |
 | `/use <number-or-session-id>` | Select a session for selector-mode routing. |
 | `/broker` | Show broker process/epoch/session summary. |
 | `/help` or `/start` | Show command help when no session route is selected. |
 | `/topicsetup` | Special command sent in a Telegram forum supergroup to use that group for per-session topics. |
 
 `/topicsetup` is handled before normal routing. It must be sent by the paired user in a forum supergroup where the bot has topic-management permissions.
+
+`/sessions` orders active sessions before recently offline sessions. If two visible
+sessions have the same topic/display name, the list appends a short session-id
+suffix only for those collisions so `/use <number>` remains unambiguous without
+making normal session lists noisy.
 
 ## Session-scoped commands
 

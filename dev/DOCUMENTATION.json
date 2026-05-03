@@ -142,9 +142,19 @@
       "id": "inbox:broker-preview-logs-and",
       "kind": "inbox",
       "slug": "broker-preview-logs-and",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the resolved preview/session-list bug into user and maintainer docs. Getting started and command reference now explain that /sessions lists active plus recently visible offline sessions, hides long-offline stale entries, and adds short session-id suffixes only for visible name collisions. Maintenance docs now point preview compatibility changes at PreviewManager/policy/final-delivery checks; docs/telegram-bot-api.md already records treating Telegram 'message is not modified' edit responses as success. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:06699f449640af653827873c954c62fb1ba5ee9cfc3df7f620001a7b97b65adb",
+      "processed_at": "2026-05-03",
+      "processed_revision": "05502e75ae7a6d76c11763a2e33081f01db634c6",
+      "note": "Resolved preview no-op and session-list display behavior curated into docs; latest review reported No findings."
     },
     "inbox:cancel-individual-queued-telegram": {
       "id": "inbox:cancel-individual-queued-telegram",

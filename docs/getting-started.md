@@ -91,7 +91,7 @@ In a bot DM or configured selector chat:
 /use <number>
 ```
 
-The selected session receives later unrouted messages for a bounded selection window. Use `/sessions` again if a session disappears, reconnects, or several sessions have similar names.
+The selected session receives later unrouted messages for a bounded selection window. `/sessions` shows active sessions plus recently visible offline sessions, hides long-offline stale entries, and adds a short session-id suffix only when visible names collide. Use `/sessions` again if a session disappears, reconnects, or several sessions have similar names.
 
 ### Forum-supergroup topic routing
 
