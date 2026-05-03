@@ -49,7 +49,7 @@ or:
 /start <PIN>
 ```
 
-The first Telegram user who sends the valid current PIN becomes the allowed user. Updates from other users fail closed. Repeated wrong PIN attempts end the pairing window and require rerunning `/telegram-setup`.
+The first private-chat Telegram user who sends the valid current PIN becomes the allowed user, and that DM becomes the allowed private chat. Updates from other users fail closed. Five wrong PIN candidates clear the pairing window and require rerunning `/telegram-setup`.
 
 ## 4. Connect pi sessions
 
@@ -181,7 +181,7 @@ Current outbound guardrails:
 
 ### Bot says to pair first
 
-Run `/telegram-setup` in pi and send the current PIN in the bot DM. Old PIN messages and stale setup windows are rejected.
+Run `/telegram-setup` in pi and send the current PIN in the bot DM. Old PIN messages, stale setup windows, and setup windows with five wrong PIN candidates are rejected.
 
 ### `getUpdates` conflicts or polling fails
 

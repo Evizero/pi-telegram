@@ -486,9 +486,19 @@
       "id": "inbox:simpler-mobile-pairing-pin",
       "kind": "inbox",
       "slug": "simpler-mobile-pairing-pin",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the simpler mobile pairing request into user setup guidance, Telegram Bot API pairing invariants, and maintainer source/test anchors. Docs now name the attended 4-digit PIN, 5-minute setup window, plain PIN and /start PIN compatibility, five failed-candidate clearing behavior, stale-window rejection, and fail-closed authorization boundary. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:c3a9dbab92f7b75199332f3f2ac248e18ec40aa0c2351be2187ff3acf8d42e0f",
+      "processed_at": "2026-05-03",
+      "processed_revision": "e01661a5118381a4b7f11dcb539301b4b3f21f07",
+      "note": "Attended 4-digit PIN pairing behavior curated into docs; latest review reported No findings."
     },
     "inbox:simplify-telegram-reliability-orchestration": {
       "id": "inbox:simplify-telegram-reliability-orchestration",
@@ -978,9 +988,19 @@
       "id": "task:implement-attended-pin-pairing-flow",
       "kind": "task",
       "slug": "implement-attended-pin-pairing-flow",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the completed attended PIN pairing implementation into docs/getting-started.md, docs/telegram-bot-api.md, and docs/maintenance.md. The documentation covers exact five-attempt clearing, stale pre-setup rejection, first valid private user/chat binding, media-group pre-authorization gating, and the pairing validation anchors. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:a46a9e0ce821ed1de1e27f411850be09c058a0a09f07f5f7fc7cd7954d5d9b5a",
+      "processed_at": "2026-05-03",
+      "processed_revision": "e01661a5118381a4b7f11dcb539301b4b3f21f07",
+      "note": "Implemented attended PIN pairing flow curated into docs and maintenance checks; latest review reported No findings."
     },
     "task:implement-durable-idempotent-final": {
       "id": "task:implement-durable-idempotent-final",

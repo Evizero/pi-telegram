@@ -440,12 +440,15 @@ Bridge policy:
 - Pair only via an attended 4-digit PIN shown by pi during setup.
 - Accept the current PIN as private-chat text, and accept `/start <PIN>` for
   Telegram deep-link or fallback clients.
-- The first user with a valid current PIN becomes `allowedUserId`.
-- Expire the PIN after 5 minutes, reject stale pre-setup updates, and bound
-  failed PIN attempts so setup must be rerun after repeated guesses.
+- The first private-chat user with a valid current PIN becomes `allowedUserId`, and that private chat is recorded as `allowedChatId`.
+- Expire the PIN after 5 minutes, reject stale pre-setup updates, and clear
+  pairing state after 5 failed PIN candidates so setup must be rerun.
 - Ignore or reject messages from other users.
 - During pairing, do not drop pending Telegram updates via negative offset or
   webhook deletion.
+- Do not queue media groups or other Telegram work before the sender is already
+  the paired authorized user; pre-authorization updates must pass through the
+  same pairing/authorization gate before any command, turn, or attachment path.
 
 ## Security and privacy checklist
 
