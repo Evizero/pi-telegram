@@ -89,11 +89,15 @@ Important semantics:
 
 ## Queued follow-up controls
 
-When a busy follow-up can still be steered, the broker may create a route-scoped tokenized inline control record. The visible Telegram message can offer `Steer now` and `Cancel` actions.
+When a busy follow-up can still be steered, the broker may create a route-scoped tokenized inline control record. The visible Telegram message can offer sibling `Steer now` and `Cancel` actions for the same queued turn.
 
-The broker state remains authority. Callback handling must verify paired user, chat, route/session, target turn, and current control status before mutating anything. If a turn is no longer actionable, callbacks fail closed even if Telegram button cleanup was delayed.
+The broker record maps the compact Telegram callback token to the queued turn, route, session, target active turn, visible status message, current status, expiry, and terminal display text. `offered` is still actionable; `converting` and `cancelling` are in-flight client handshakes; `converted`, `cancelled`, and `expired` are terminal control states. Terminal state is UI cleanup and callback authority, not proof that Telegram editing already succeeded.
 
-Queued-control finalization edits are retryable through the broker Telegram outbox when necessary.
+The client remains the authority for queue mutation. To steer or cancel, the broker asks the selected client over IPC to atomically remove the exact queued or manual-compaction-deferred turn before the broker consumes the pending turn. Cancelling one follow-up does not abort the active turn or remove unrelated queued work; `/stop` remains the broader escape hatch.
+
+Callback handling must verify paired user, chat, route/session, target turn, and current control status before mutating anything. If a turn is no longer actionable, callbacks fail closed even if Telegram button cleanup was delayed.
+
+When a queued follow-up starts normally, is cancelled, is steered, is cleared, expires, or otherwise becomes non-actionable, the broker terminalizes the control and edits the known status message to remove buttons where possible. Those visible cleanup edits are retryable through the broker Telegram outbox, honoring per-control and broker-wide backoff from Telegram `retry_after` or transient edit failures. Route/session cleanup attempts queued-control status edits before topic deletion when Telegram permits it, but visible cleanup failure cannot resurrect cancelled work, duplicate delivery, or block local execution.
 
 ## Manual compaction as a barrier
 

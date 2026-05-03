@@ -46,9 +46,11 @@ When the selected pi session is already busy:
 2. `/follow <message>` does the same explicitly.
 3. `/steer <message>` attempts active-turn steering instead of follow-up queueing.
 4. If the client says a follow-up is queued and can still be steered, the broker may show inline `Steer now` and `Cancel` controls.
-5. When a queued follow-up starts, is cancelled, is converted to steering, expires, or stops being actionable, visible buttons should be removed or finalized where Telegram editing allows it.
+5. `Steer now` converts that exact queued follow-up into active-turn steering when it still targets the current active turn.
+6. `Cancel` withdraws that exact queued follow-up before it can start; it does not abort the active turn or clear unrelated queued work.
+7. When a queued follow-up starts, is cancelled, is converted to steering, expires, or stops being actionable, visible buttons should be removed or finalized where Telegram editing allows it.
 
-This protects accidental mobile notes from hijacking active work while preserving an explicit urgent-correction path.
+This protects accidental mobile notes from hijacking active work while preserving explicit urgent-correction and precise queued-follow-up cancellation paths. Stale buttons fail closed from durable broker/client state even if Telegram could not be edited immediately.
 
 ## Manual compaction
 
@@ -59,6 +61,7 @@ This protects accidental mobile notes from hijacking active work while preservin
 - Later ordinary messages and `/follow` turns remain behind that compaction barrier until compaction completes or fails.
 - Repeated `/compact` requests coalesce when there is already a queued or running Telegram compaction operation for the selected session.
 - `/steer` remains the urgent active-turn correction path and is not blocked behind the compaction barrier.
+- Queued follow-up `Cancel` can remove a still-waiting deferred follow-up without starting a concurrent pi turn; broader stop/cancel paths may also clear the queued compaction operation.
 
 ## Model controls
 

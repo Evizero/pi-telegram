@@ -112,7 +112,9 @@ Key broker files:
 | `src/broker/telegram-outbox.ts` | Retryable cleanup-oriented Telegram side effects. |
 | `src/broker/model-command.ts` | `/model` command and picker orchestration. |
 | `src/broker/git-command.ts` | `/git` menu and repository controls. |
-| `src/broker/queued-turn-control-handler.ts` | Queued follow-up steer/cancel callback lifecycle. |
+| `src/broker/queued-turn-control-handler.ts` | Queued follow-up steer/cancel callback lifecycle and visible-control finalization entry points. |
+| `src/broker/queued-controls.ts` | Queued-control state helpers, callback-token parsing, terminalization, route matching, and pruning. |
+| `src/shared/queued-control-text.ts` | Shared terminal/status text constants for queued-control UI and client IPC results. |
 
 ## Client role
 

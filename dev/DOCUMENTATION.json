@@ -170,9 +170,19 @@
       "id": "inbox:cancel-individual-queued-telegram",
       "kind": "inbox",
       "slug": "cancel-individual-queued-telegram",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated individual queued-follow-up cancellation into command and reliability docs. Docs now describe Cancel as a sibling to Steer now, using durable broker/client state and client IPC to remove exactly the targeted queued/deferred follow-up without aborting active work or clearing unrelated queued work. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:8bedb10bdb828e4e19667d8140136dfb584d90ad1ea046c453c18c41aaae4f1a",
+      "processed_at": "2026-05-03",
+      "processed_revision": "cfef98cb4b714907fbb55f7588393091a25b4918",
+      "note": "Precise queued-follow-up cancellation curated into docs; latest review reported No findings."
     },
     "inbox:centralize-ipc-limits-and": {
       "id": "inbox:centralize-ipc-limits-and",
@@ -444,17 +454,37 @@
       "id": "inbox:refactor-queued-control-cleanup",
       "kind": "inbox",
       "slug": "refactor-queued-control-cleanup",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the maintainability follow-up for queued-control cleanup helpers. Runtime architecture and maintenance docs now point at src/broker/queued-turn-control-handler.ts, src/broker/queued-controls.ts, src/shared/queued-control-text.ts, and the relevant behavior checks. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:be716f5d024b476462d830d78ea075b526b17327777c528419e65f98504a6907",
+      "processed_at": "2026-05-03",
+      "processed_revision": "cfef98cb4b714907fbb55f7588393091a25b4918",
+      "note": "Queued-control cleanup helper ownership curated into runtime architecture/maintenance docs; latest review reported No findings."
     },
     "inbox:remove-stale-queued-follow": {
       "id": "inbox:remove-stale-queued-follow",
       "kind": "inbox",
       "slug": "remove-stale-queued-follow",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated stale queued-control button cleanup into reliability docs. Docs now explain terminal queued-control states, visible status-message finalization, delayed Telegram edit cleanup, and fail-closed callbacks when a turn is no longer actionable. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:bea8919999396264c53209d2a21833ef30f81a5569533e42c97265335c02d4a3",
+      "processed_at": "2026-05-03",
+      "processed_revision": "cfef98cb4b714907fbb55f7588393091a25b4918",
+      "note": "Stale visible queued-control cleanup curated into reliability/command docs; latest review reported No findings."
     },
     "inbox:rework-validation-suite-around": {
       "id": "inbox:rework-validation-suite-around",
@@ -816,9 +846,19 @@
       "id": "task:add-cancel-controls-for-queued",
       "kind": "task",
       "slug": "add-cancel-controls-for-queued",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the implemented cancel-control behavior into docs/telegram-commands.md and docs/internals/state-and-reliability.md, including exact-target cancellation, client queue authority, pending-turn consumption, fail-closed stale callbacks, and manual-compaction-deferred follow-up handling. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:313f003b2a0b3ce821453ff0a5a0d89a576e7cbe20454123451cbb3250d8e11b",
+      "processed_at": "2026-05-03",
+      "processed_revision": "cfef98cb4b714907fbb55f7588393091a25b4918",
+      "note": "Implemented queued-follow-up cancel controls curated into docs; latest review reported No findings."
     },
     "task:append-telegram-finals-after-settling": {
       "id": "task:append-telegram-finals-after-settling",
@@ -1260,17 +1300,37 @@
       "id": "task:refactor-queued-control-cleanup-helpers",
       "kind": "task",
       "slug": "refactor-queued-control-cleanup-helpers",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the behavior-preserving helper extraction: queued-control callback/state helpers live in src/broker/queued-controls.ts, terminal UI text in src/shared/queued-control-text.ts, and visible cleanup retries through the broker Telegram outbox. Maintenance anchors list command-routing, queued-controls, client-turn, manual-compaction, session-unregister, and telegram-outbox checks. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:1c51fd886515152b88c7549f31203101e2f4a021f2bd7d3529ff95e0ea4107a3",
+      "processed_at": "2026-05-03",
+      "processed_revision": "cfef98cb4b714907fbb55f7588393091a25b4918",
+      "note": "Queued-control cleanup helper refactor curated into docs and validation anchors; latest review reported No findings."
     },
     "task:remove-stale-queued-follow-up-controls": {
       "id": "task:remove-stale-queued-follow-up-controls",
       "kind": "task",
       "slug": "remove-stale-queued-follow-up-controls",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the implemented stale-control finalization behavior: queued controls are terminalized when turns start, are cancelled/steered/cleared, expire, or otherwise become non-actionable; visible status edits remove buttons where possible and retry through the broker Telegram outbox without becoming execution authority. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:4fe27fa67e86952ba2c36359c91eb311ca3bb204c17828436731cfff82dd0717",
+      "processed_at": "2026-05-03",
+      "processed_revision": "cfef98cb4b714907fbb55f7588393091a25b4918",
+      "note": "Queued-control finalization and retry behavior curated into docs; latest review reported No findings."
     },
     "task:remove-unsupported-telegram-reload": {
       "id": "task:remove-unsupported-telegram-reload",
