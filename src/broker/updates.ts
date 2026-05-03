@@ -29,7 +29,7 @@ export interface RuntimeUpdateDeps {
 	loadBrokerState: () => Promise<BrokerState>;
 	readLease: () => Promise<BrokerLease | undefined>;
 	stopBroker: () => Promise<void>;
-	updateStatus: (ctx: ExtensionContext, error?: string) => void;
+	updateStatus: (ctx: ExtensionContext) => void;
 	refreshTelegramStatus: () => void;
 	sendTextReply: (chatId: number | string, messageThreadId: number | undefined, text: string) => Promise<number | undefined>;
 	ensureRoutesAfterPairing: () => Promise<void>;
@@ -352,7 +352,6 @@ export function createRuntimeUpdateHandlers(deps: RuntimeUpdateDeps) {
 			} catch (error) {
 				if (signal.aborted) return;
 				if (error instanceof DOMException && error.name === "AbortError") return;
-				deps.updateStatus(ctx, errorMessage(error));
 				const retryAfterMs = getTelegramRetryAfterMs(error);
 				await new Promise((resolveValue) => setTimeout(resolveValue, retryAfterMs === undefined ? 3000 : retryAfterMs + 250));
 				deps.updateStatus(ctx);

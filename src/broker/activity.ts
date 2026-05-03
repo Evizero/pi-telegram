@@ -19,7 +19,7 @@ export interface ActivityUpdatePayload {
 export interface ActivityRendererDiagnostic {
 	message: string;
 	severity: "warning";
-	statusDetail: string;
+	notify?: boolean;
 }
 
 export interface ActivityRendererOptions {
@@ -358,7 +358,7 @@ export class ActivityRenderer {
 		if (this.reportedDiagnosticKeys.size > 1000) this.reportedDiagnosticKeys.clear();
 		const messageIdText = state.messageId === undefined ? "without a known message id" : `message ${state.messageId}`;
 		const message = `Telegram Activity ${operation} failed for turn ${state.turnId}, activity ${state.activityId}, ${messageIdText}: ${reason}`;
-		this.options.reportDiagnostic({ message, severity: "warning", statusDetail: message });
+		this.options.reportDiagnostic({ message, severity: "warning", notify: getTelegramRetryAfterMs(error) === undefined });
 	}
 
 	private async canRenderState(state: ActivityMessageState): Promise<boolean> {

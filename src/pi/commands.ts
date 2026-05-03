@@ -16,7 +16,7 @@ export interface PiCommandHookDeps {
 	connectTelegram: (ctx: ExtensionContext, notify?: boolean) => Promise<void>;
 	disconnectSessionRoute: (mode?: "explicit" | "shutdown") => Promise<void>;
 	hideTelegramStatus: (ctx: ExtensionContext) => void;
-	updateStatus: (ctx: ExtensionContext, error?: string) => void;
+	updateStatus: (ctx: ExtensionContext) => void;
 	readLease: () => Promise<{ ownerId?: string; leaseEpoch?: number; leaseUntilMs?: number } | undefined>;
 }
 
@@ -48,7 +48,7 @@ export function registerTelegramCommands(pi: ExtensionAPI, deps: PiCommandHookDe
 				await deps.connectTelegram(ctx);
 			} catch (error) {
 				ctx.ui.notify(errorMessage(error), "error");
-				deps.updateStatus(ctx, errorMessage(error));
+				deps.updateStatus(ctx);
 			}
 		},
 	});
@@ -62,7 +62,7 @@ export function registerTelegramCommands(pi: ExtensionAPI, deps: PiCommandHookDe
 				deps.hideTelegramStatus(ctx);
 			} catch (error) {
 				ctx.ui.notify(errorMessage(error), "error");
-				deps.updateStatus(ctx, errorMessage(error));
+				deps.updateStatus(ctx);
 			}
 		},
 	});

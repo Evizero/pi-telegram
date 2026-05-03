@@ -7,7 +7,7 @@ export interface PiLifecycleHookDeps {
 	stopClientServer: () => Promise<void>;
 	shutdownClientRoute: () => Promise<void> | void;
 	stopBroker: () => Promise<void>;
-	updateStatus: (ctx: ExtensionContext, error?: string) => void;
+	updateStatus: (ctx: ExtensionContext) => void;
 	onAgentRetryStart: () => void;
 	startNextTelegramTurn: () => void;
 	drainDeferredCompactionTurns: () => void;

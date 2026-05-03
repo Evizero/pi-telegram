@@ -160,10 +160,20 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 	const previewManager = new PreviewManager(callTelegram, sendMarkdownReply, rememberVisiblePreviewMessage, forgetVisiblePreviewMessage);
 	const activityReporter = new ActivityReporter((payload) => postIpc(connectedBrokerSocketPath, "activity_update", payload, sessionId));
 	const reportPiDiagnostic = createPiDiagnosticReporter({
-		pi,
 		getLatestContext: () => latestCtx,
-		updateStatus,
 	});
+	const notifiedPiDiagnosticKeys = new Set<string>();
+	function reportPiDiagnosticOnce(key: string, event: Parameters<typeof reportPiDiagnostic>[0]): void {
+		if (event.notify) {
+			if (notifiedPiDiagnosticKeys.has(key)) return;
+			notifiedPiDiagnosticKeys.add(key);
+			if (notifiedPiDiagnosticKeys.size > 1000) {
+				const oldestKey = notifiedPiDiagnosticKeys.values().next().value;
+				if (oldestKey !== undefined) notifiedPiDiagnosticKeys.delete(oldestKey);
+			}
+		}
+		reportPiDiagnostic(event);
+	}
 	const activityRenderer = new ActivityRenderer(callTelegramOnce, startTypingLoopFor, {
 		getDurableMessage: (activityId) => brokerState?.activeActivityMessages?.[activityId],
 		listDurableMessages: () => Object.values(brokerState?.activeActivityMessages ?? {}),
@@ -217,7 +227,7 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 		rememberCompletedBrokerTurn,
 		logTerminalFailure: (turnId, reason) => {
 			const message = `Terminal Telegram final delivery failure for ${turnId}: ${reason}`;
-			reportPiDiagnostic({ message, severity: "error", statusDetail: message, notify: true, display: true });
+			reportPiDiagnostic({ message, severity: "error", notify: true });
 		},
 	});
 	const brokerSessions = new BrokerSessionRegistrationCoordinator({
@@ -284,11 +294,11 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 	function pollLoop(ctx: ExtensionContext, signal: AbortSignal): Promise<void> { return updateHandlers.pollLoop(ctx, signal); }
 	function schedulePendingMediaGroups(ctx: ExtensionContext): void { updateHandlers.schedulePendingMediaGroups(ctx); }
 	function retryPendingTurns(): Promise<void> { return updateHandlers.retryPendingTurns(); }
-	function brokerBackgroundDeps() { return { stopBroker, log: (message: string) => { reportPiDiagnostic({ message, severity: "warning", statusDetail: message }); } }; }
+	function brokerBackgroundDeps() { return { stopBroker, log: (message: string) => { reportPiDiagnostic({ message, severity: "warning", notify: true }); } }; }
 	function runDetachedBrokerTask(label: string, task: () => Promise<void>): void { runBrokerBackgroundTask(label, task, brokerBackgroundDeps()); }
 	function logTerminalRouteCleanupFailure(route: TelegramRoute, reason: string): void {
 		const message = `Telegram bridge could not clean up topic ${route.topicName} (${route.routeId}): ${reason}`;
-		reportPiDiagnostic({ message, severity: "error", statusDetail: message, notify: true, display: true });
+		reportPiDiagnostic({ message, severity: "error", notify: true });
 	}
 	function cleanupSessionTempDir(sessionId: string, currentBrokerState: BrokerState): Promise<void> {
 		return cleanupDownloadedTelegramSessionTempDirIfUnused({ sessionId, brokerState: currentBrokerState }).then(() => undefined);
@@ -302,7 +312,7 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 		} catch (error) {
 			if (getTelegramRetryAfterMs(error) === undefined) {
 				const message = `Failed to finalize queued Telegram controls: ${errorMessage(error)}`;
-				reportPiDiagnostic({ message, severity: "warning", statusDetail: message });
+				reportPiDiagnosticOnce(`queued-control-finalization:${message}`, { message, severity: "warning", notify: true });
 			}
 		}
 	}
@@ -313,7 +323,7 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 		} catch (error) {
 			if (getTelegramRetryAfterMs(error) === undefined) {
 				const message = `Failed to retry queued Telegram compaction: ${errorMessage(error)}`;
-				reportPiDiagnostic({ message, severity: "warning", statusDetail: message });
+				reportPiDiagnosticOnce(`manual-compaction-retry:${message}`, { message, severity: "warning", notify: true });
 			}
 		}
 	}
@@ -340,8 +350,8 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 			logTerminalCleanupFailure: logTerminalRouteCleanupFailure,
 		});
 	}
-	function updateStatus(ctx: ExtensionContext, error?: string): void {
-		const text = telegramStatusText({ theme: ctx.ui.theme, visible: telegramStatusVisible, config, isBroker, brokerState, connectedRoute: clientHost?.getConnectedRoute(), error });
+	function updateStatus(ctx: ExtensionContext): void {
+		const text = telegramStatusText({ theme: ctx.ui.theme, visible: telegramStatusVisible, config, isBroker, brokerState, connectedRoute: clientHost?.getConnectedRoute() });
 		if (text !== undefined) ctx.ui.setStatus("telegram", text);
 	}
 	function showTelegramStatus(ctx: ExtensionContext): void {
@@ -796,7 +806,7 @@ export function createTelegramRuntime(pi: ExtensionAPI): TelegramRuntime {
 
 	function reportInvalidDurableState(path: string, error: unknown): void {
 		const message = `Invalid durable Telegram state at ${path}: ${errorMessage(error)}`;
-		reportPiDiagnostic({ message, severity: "warning", statusDetail: message });
+		reportPiDiagnosticOnce(`invalid-durable-state:${path}:${errorMessage(error)}`, { message, severity: "warning", notify: true });
 	}
 
 	async function readDisconnectRequest(targetSessionId: string): Promise<PendingDisconnectRequest | undefined> {

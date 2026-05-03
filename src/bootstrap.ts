@@ -130,7 +130,7 @@ export function registerTelegramBootstrap(pi: ExtensionAPI, options: TelegramBoo
 				await loaded.hooks.connectTelegram(ctx);
 			} catch (error) {
 				ctx.ui.notify(errorMessage(error), "error");
-				loaded.hooks.updateStatus(ctx, errorMessage(error));
+				loaded.hooks.updateStatus(ctx);
 			}
 		},
 	});
@@ -146,7 +146,7 @@ export function registerTelegramBootstrap(pi: ExtensionAPI, options: TelegramBoo
 				loaded.hooks.hideTelegramStatus(ctx);
 			} catch (error) {
 				ctx.ui.notify(errorMessage(error), "error");
-				loaded.hooks.updateStatus(ctx, errorMessage(error));
+				loaded.hooks.updateStatus(ctx);
 			}
 		},
 	});

@@ -2,7 +2,7 @@
   "meta": {
     "title": "pi-telegram",
     "version": "0.1.0",
-    "last_updated": "2026-05-02"
+    "last_updated": "2026-05-03"
   },
   "requirements": [
     {
@@ -1255,24 +1255,26 @@
     {
       "id": "SyRS-pi-safe-diagnostics",
       "origin": "derived",
-      "label": "Report diagnostics through pi",
-      "statement": "The system shall route user-visible extension diagnostics through pi-native notification, status, or session-message surfaces instead of raw terminal writes, while suppressing non-actionable transient coordination noise.",
+      "label": "Report diagnostics outside LLM",
+      "statement": "The system shall route user-visible extension diagnostics through pi-native notification or other non-LLM UI surfaces instead of raw terminal writes or LLM-visible session messages, while suppressing non-actionable transient coordination noise.",
       "traces_to": [
         "StRS-activity-final-feedback",
         "StRS-remote-session-supervision",
-        "StRS-delivery-continuity"
+        "StRS-delivery-continuity",
+        "StRS-pi-status-diagnostic-clarity"
       ],
-      "rationale": "Remote supervision depends on intelligible session feedback, and raw console output from extension background work can corrupt the pi TUI while also failing to become durable session context. Diagnostics should use pi surfaces when they are user-visible and should not spam the conversation for benign transient coordination states.",
-      "acceptance_criteria": "Tests or inspection show broker/client background diagnostics no longer call raw console warning paths for user-visible failures in interactive pi, transient takeover-lock contention is silent or status-only, and durable/actionable events such as broker stand-down or repeated unrecovered failure can be surfaced through pi-native notification/status or displayed session-message mechanisms without triggering an unintended agent turn.",
+      "rationale": "Remote and local supervision depend on intelligible bridge feedback that does not corrupt the pi TUI, spam the operator, or pollute future LLM context. The project owner clarified that event-like diagnostics should use the same user-facing mechanism as /telegram-status, which currently uses ctx.ui.notify, while the footer remains reserved for durable bridge state.",
+      "acceptance_criteria": "Tests or inspection show broker/client background diagnostics no longer call raw console warning paths for user-visible failures in interactive pi; diagnostic display paths do not use pi.sendMessage/custom messages for events that should not enter LLM context; actionable or user-facing diagnostics use ctx.ui.notify or an equivalent non-LLM UI surface consistent with /telegram-status; non-actionable transient coordination noise is suppressed or deduped; durable status updates are limited to durable bridge state rather than raw diagnostic detail.",
       "verification": {
         "method": "test"
       },
       "status": "ready",
       "created": "2026-04-30",
-      "updated": "2026-04-30",
+      "updated": "2026-05-03",
       "sources": {
         "inbox": [
-          "broker-heartbeat-logs-takeover"
+          "broker-heartbeat-logs-takeover",
+          "separate-durable-telegram-status"
         ]
       }
     },
@@ -1532,6 +1534,28 @@
       "sources": {
         "inbox": [
           "activity-message-restarts-during"
+        ]
+      }
+    },
+    {
+      "id": "SyRS-durable-pi-footer-status",
+      "origin": "derived",
+      "label": "Keep footer status durable",
+      "statement": "The system shall render the Telegram pi footer/statusbar from durable bridge configuration, broker, and route state without accepting transient diagnostic detail as a footer status override.",
+      "traces_to": [
+        "StRS-pi-status-diagnostic-clarity"
+      ],
+      "rationale": "The footer is a scarce always-visible local supervision surface. It should communicate durable overall bridge state such as not configured, disconnected, connected route, or broker session count, not briefly become an event log for polling errors or background diagnostic details.",
+      "acceptance_criteria": "Tests or inspection show the Telegram status formatter and update path have no raw transient-error/detail override; normal durable states such as not configured, broker with session count, connected route, and disconnected still render; poll-loop failures, setup/connect command failures, and diagnostic reporter events do not temporarily replace the footer with raw error text; clearing/hiding status behavior remains unchanged.",
+      "verification": {
+        "method": "test"
+      },
+      "status": "ready",
+      "created": "2026-05-03",
+      "updated": "2026-05-03",
+      "sources": {
+        "inbox": [
+          "separate-durable-telegram-status"
         ]
       }
     }

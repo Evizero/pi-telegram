@@ -19,12 +19,10 @@ export function telegramStatusText(options: {
 	isBroker: boolean;
 	brokerState?: StatusBrokerState;
 	connectedRoute?: StatusRoute;
-	error?: string;
 }): string | undefined {
 	if (!options.visible) return undefined;
-	const { theme, config, isBroker, brokerState, connectedRoute, error } = options;
+	const { theme, config, isBroker, brokerState, connectedRoute } = options;
 	const label = theme.fg("accent", "telegram");
-	if (error) return `${label} ${theme.fg("error", "error")} ${theme.fg("muted", error)}`;
 	if (!config.botToken) return `${label} ${theme.fg("muted", "not configured")}`;
 	if (isBroker) {
 		const count = brokerState ? Object.values(brokerState.sessions).filter((session) => session.status !== "offline").length : 0;

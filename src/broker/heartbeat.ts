@@ -6,9 +6,7 @@ export const BROKER_RENEWAL_CONTENTION_DIAGNOSTIC_THRESHOLD = 3;
 export interface BrokerDiagnosticEvent {
 	message: string;
 	severity: "info" | "warning" | "error";
-	statusDetail?: string;
 	notify?: boolean;
-	display?: boolean;
 }
 
 export interface BrokerHeartbeatState {
@@ -50,9 +48,7 @@ export async function runBrokerHeartbeatCycle(state: BrokerHeartbeatState, deps:
 				deps.reportDiagnostic({
 					message: "Telegram broker heartbeat is seeing repeated lease-renewal contention; the current broker remains active.",
 					severity: "warning",
-					statusDetail: "Broker heartbeat: repeated lease-renewal contention",
 					notify: true,
-					display: false,
 				});
 			}
 			return;
@@ -68,16 +64,14 @@ export async function runBrokerHeartbeatCycle(state: BrokerHeartbeatState, deps:
 		deps.reportDiagnostic({
 			message,
 			severity: state.failures >= 2 ? "error" : "warning",
-			statusDetail: message,
 			notify: state.failures >= 2,
-			display: state.failures >= 2,
 		});
 		if (state.failures >= 2) {
 			try {
 				await deps.stopBroker();
 			} catch (stopError) {
 				const stopMessage = `Failed to stop broker after heartbeat failure: ${errorMessage(stopError)}`;
-				deps.reportDiagnostic({ message: stopMessage, severity: "error", statusDetail: stopMessage, notify: true, display: true });
+				deps.reportDiagnostic({ message: stopMessage, severity: "error", notify: true });
 			}
 		}
 	} finally {

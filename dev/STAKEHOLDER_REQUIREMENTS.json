@@ -2,7 +2,7 @@
   "meta": {
     "title": "pi-telegram",
     "version": "0.1.0",
-    "last_updated": "2026-04-30"
+    "last_updated": "2026-05-03"
   },
   "requirements": [
     {
@@ -483,6 +483,32 @@
       "sources": {
         "inbox": [
           "split-shared-types-and"
+        ]
+      }
+    },
+    {
+      "id": "StRS-pi-status-diagnostic-clarity",
+      "origin": "imposed",
+      "label": "Separate status from diagnostics",
+      "statement": "Pi operators shall be able to distinguish durable Telegram bridge state from event-like bridge diagnostics in the local pi UI without transient diagnostics briefly overwriting the footer status.",
+      "rationale": "The project owner clarified that the footer/statusbar should show durable overall Telegram bridge state, while event-like diagnostics should work like /telegram-status by using the pi notification surface. This preserves local supervision clarity and avoids turning the footer into an event log.",
+      "stakeholders": [
+        "remote-pi-operator"
+      ],
+      "priority": 2,
+      "validation": {
+        "method": "review",
+        "criteria": "Review a pi-telegram session with normal connection state, /telegram-status output, and representative bridge diagnostics to confirm the footer remains a stable bridge-state indicator while diagnostics appear through the same user-facing notification mechanism as /telegram-status."
+      },
+      "status": "draft",
+      "created": "2026-05-03",
+      "updated": "2026-05-03",
+      "sources": {
+        "inbox": [
+          "separate-durable-telegram-status"
+        ],
+        "references": [
+          "use-telegram-status-notification-mechanism-for-diagnostics"
         ]
       }
     }

@@ -46,7 +46,7 @@ export interface ClientRuntimeDeps {
 	startNextTelegramTurn: () => void;
 	onManualCompactionSettled?: (operationId: string) => void;
 	readLease: () => Promise<BrokerLease | undefined>;
-	updateStatus: (ctx: ExtensionContext, detail?: string) => void;
+	updateStatus: (ctx: ExtensionContext) => void;
 }
 
 export class ClientRuntime {

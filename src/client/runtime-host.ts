@@ -75,7 +75,7 @@ export interface ClientRuntimeHostDeps {
 	clearAssistantPreviewInBroker: (turnId: string, chatId: number | string, messageThreadId: number | undefined, preserveOnFailure: boolean) => Promise<void>;
 	isRoutableRoute: (route: TelegramRoute | undefined) => route is TelegramRoute;
 	sendAssistantFinalToBroker: (payload: AssistantFinalPayload) => Promise<boolean>;
-	updateStatus: (ctx: ExtensionContext, detail?: string) => void;
+	updateStatus: (ctx: ExtensionContext) => void;
 }
 
 export class ClientRuntimeHost {
@@ -205,8 +205,8 @@ export class ClientRuntimeHost {
 			if (!this.clientServer) return;
 			if (leaseLive) await this.registerWithBroker(ctx, lease!.socketPath);
 			else await this.connectTelegram(ctx, false);
-		})().catch((error) => {
-			if (this.clientServer) this.deps.updateStatus(ctx, errorMessage(error));
+		})().catch(() => {
+			if (this.clientServer) this.deps.updateStatus(ctx);
 		}).finally(() => {
 			this.clientReconnectInFlight = false;
 		});

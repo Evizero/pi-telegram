@@ -72,6 +72,11 @@ The strongest drivers come directly from the intended purpose and requirements:
   (`StRS-activity-final-feedback`, `SyRS-activity-history-rendering`,
   `SyRS-final-preview-deduplication`, `SyRS-final-delivery-fifo-retry`,
   `SyRS-retry-aware-agent-finals`, `SyRS-final-text-before-error-metadata`);
+- the local pi UI must keep the Telegram footer/statusbar as durable bridge
+  state while surfacing event-like bridge diagnostics through the same
+  pi-native notification class as `/telegram-status`, without injecting those
+  diagnostics into future LLM context (`StRS-pi-status-diagnostic-clarity`,
+  `SyRS-durable-pi-footer-status`, `SyRS-pi-safe-diagnostics`);
 - broker lease loss is a normal multi-session lifecycle outcome; stale broker
   state writes must be blocked without allowing already-running broker
   maintenance to crash the pi session process
@@ -745,10 +750,13 @@ explicit outbound artifacts. It should not own Telegram Bot API mechanics or
 broker polling.
 
 `pi/diagnostics.ts` provides the pi-safe reporting adapter for extension
-background diagnostics. User-visible diagnostics should go through status,
-notification, or displayed custom session-message surfaces as appropriate rather
-than raw terminal writes; non-actionable transient coordination noise should stay
-silent or status-only.
+background diagnostics. The Telegram footer/statusbar is reserved for durable
+bridge state such as configuration, broker ownership, session count, route, and
+connection state. Event-like diagnostics should use the same pi-native
+notification class as `/telegram-status` or another explicit non-LLM UI surface
+rather than raw terminal writes or displayed custom session messages that enter
+future LLM context; non-actionable transient coordination noise should stay
+silent or be deduped before notification.
 
 Current-state note: pi-side activity construction uses shared activity-line
 formatters while `broker/activity.ts` owns Telegram rendering, debouncing, and

@@ -13,7 +13,7 @@ export interface PiFinalizationHookDeps {
 	prepareAssistantFinalForHandoff?: (payload: { turn: PendingTelegramTurn; text?: string; stopReason?: string; errorMessage?: string; attachments: QueuedAttachment[] }) => Promise<void>;
 	finalizeActiveTelegramTurn: (payload: { turn: PendingTelegramTurn; text?: string; stopReason?: string; errorMessage?: string; attachments: QueuedAttachment[] }) => Promise<"completed" | "deferred">;
 	startNextTelegramTurn: () => void;
-	updateStatus: (ctx: ExtensionContext, error?: string) => void;
+	updateStatus: (ctx: ExtensionContext) => void;
 }
 
 export function registerAssistantFinalizationHook(pi: ExtensionAPI, deps: PiFinalizationHookDeps): void {

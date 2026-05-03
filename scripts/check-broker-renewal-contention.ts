@@ -187,7 +187,6 @@ async function checkRepeatedContentionReportsPiSafeDiagnosticOnce(): Promise<voi
 	assert.equal(stopCalls, 0);
 	assert.equal(diagnostics.length, 1);
 	assert.equal(diagnostics[0]?.notify, true);
-	assert.equal(diagnostics[0]?.display, false);
 	assert.match(diagnostics[0]?.message ?? "", /repeated lease-renewal contention/);
 }
 
@@ -209,9 +208,7 @@ async function checkGenericHeartbeatFailuresUseDiagnosticsAndStandDownAfterTwo()
 	assert.equal(stopCalls, 1);
 	assert.equal(diagnostics.length, 2);
 	assert.equal(diagnostics[0]?.notify, false);
-	assert.equal(diagnostics[0]?.display, false);
 	assert.equal(diagnostics[1]?.notify, true);
-	assert.equal(diagnostics[1]?.display, true);
 }
 
 async function checkMaintenanceFailuresUseDiagnosticsAndStandDownAfterTwo(): Promise<void> {
@@ -232,7 +229,6 @@ async function checkMaintenanceFailuresUseDiagnosticsAndStandDownAfterTwo(): Pro
 	assert.equal(stopCalls, 1);
 	assert.equal(diagnostics.length, 2);
 	assert.equal(diagnostics[1]?.notify, true);
-	assert.equal(diagnostics[1]?.display, true);
 }
 
 async function checkRejectedStandDownIsReportedWithoutRejectingHeartbeatCycle(): Promise<void> {
@@ -252,7 +248,6 @@ async function checkRejectedStandDownIsReportedWithoutRejectingHeartbeatCycle():
 	assert.equal(diagnostics.length, 3);
 	assert.match(diagnostics[2]?.message ?? "", /Failed to stop broker after heartbeat failure: close failed/);
 	assert.equal(diagnostics[2]?.notify, true);
-	assert.equal(diagnostics[2]?.display, true);
 }
 
 async function checkHeartbeatCyclesDoNotOverlap(): Promise<void> {
