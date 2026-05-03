@@ -435,9 +435,19 @@
       "id": "inbox:telegram-activity-can-batch",
       "kind": "inbox",
       "slug": "telegram-activity-can-batch",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated into docs/internals/activity-rendering.md under Typing and live-update ordering. The docs record the historical activity-batching regression, the advisory/non-blocking typing design, per-turn in-flight typing suppression, abort-on-stop cleanup, and the supersession of the separate typing-loop inbox by the broader activity-batching task. Latest documentation review reported no findings."
+        }
+      ],
+      "processed_hash": "sha256:fa6e955919e74188db270251bf690f0e95d77da1f7db933ef13180acf7cc81e9",
+      "processed_at": "2026-05-03",
+      "processed_revision": "0205504f39441b01f30384f179de07cc04ef749e",
+      "note": "Processed by Telegram activity batching behind typing documentation chunk; latest review reported no findings."
     },
     "inbox:telegram-activity-can-stop": {
       "id": "inbox:telegram-activity-can-stop",
@@ -587,9 +597,19 @@
       "id": "inbox:typing-loop-should-not",
       "kind": "inbox",
       "slug": "typing-loop-should-not",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated into docs/internals/activity-rendering.md under Typing and live-update ordering. The docs record the historical activity-batching regression, the advisory/non-blocking typing design, per-turn in-flight typing suppression, abort-on-stop cleanup, and the supersession of the separate typing-loop inbox by the broader activity-batching task. Latest documentation review reported no findings."
+        }
+      ],
+      "processed_hash": "sha256:bd2073bd6ae14625ea453b003e78511dfd8aba460c385069d05782c5969dfca3",
+      "processed_at": "2026-05-03",
+      "processed_revision": "0205504f39441b01f30384f179de07cc04ef749e",
+      "note": "Processed by Telegram activity batching behind typing documentation chunk; latest review reported no findings."
     },
     "inbox:unify-telegram-api-error": {
       "id": "inbox:unify-telegram-api-error",
@@ -939,9 +959,19 @@
       "id": "task:prevent-telegram-activity-batching",
       "kind": "task",
       "slug": "prevent-telegram-activity-batching",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated into docs/internals/activity-rendering.md under Typing and live-update ordering. The docs record the historical activity-batching regression, the advisory/non-blocking typing design, per-turn in-flight typing suppression, abort-on-stop cleanup, and the supersession of the separate typing-loop inbox by the broader activity-batching task. Latest documentation review reported no findings."
+        }
+      ],
+      "processed_hash": "sha256:848b0499be23a3307334fb17f285fb5c05217e93c9246f19cc39ab4138119357",
+      "processed_at": "2026-05-03",
+      "processed_revision": "0205504f39441b01f30384f179de07cc04ef749e",
+      "note": "Processed by Telegram activity batching behind typing documentation chunk; latest review reported no findings."
     },
     "task:queue-telegram-input-during-compaction": {
       "id": "task:queue-telegram-input-during-compaction",

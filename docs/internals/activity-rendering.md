@@ -8,8 +8,9 @@ Source code anchors:
 - `src/pi/activity.ts` contains the split hook implementation for the non-bootstrap runtime-registration path and mirrors the same active-turn thinking/tool events.
 - `src/shared/activity-lines.ts` defines activity row text, compact argument extraction, and Telegram HTML formatting.
 - `src/broker/activity.ts` stores, debounces, renders, completes, and recovers activity messages.
+- `src/telegram/typing.ts` owns advisory typing loops, including per-turn in-flight suppression and abort-on-stop behavior.
 - `src/broker/finals.ts` completes activity before visible final-delivery steps.
-- `scripts/check-activity-rendering.ts` exercises the expected row formatting, escaping, completion, cleanup, retry, and stale-update behavior.
+- `scripts/check-activity-rendering.ts` exercises the expected row formatting, escaping, completion, cleanup, retry, typing, and stale-update behavior.
 
 ## Flow
 
@@ -19,6 +20,14 @@ Source code anchors:
 4. The assistant-final ledger calls activity completion before stopping the typing loop and before sending final text or attachments, so stale pre-final activity does not edit an old message after the final answer.
 
 Telegram activity sends use the same route/thread context as the turn. Rendering can lag or retry around Telegram limits, but the collected activity meaning should remain ordered and recoverable.
+
+## Typing and live-update ordering
+
+Telegram typing indicators are advisory; visible activity ingestion and rendering must not wait for them. `ActivityRenderer.handleUpdate()` starts typing in a detached promise, then records the activity row, persists active activity state, and schedules the debounced Telegram message flush. This preserves ordered activity history without letting a slow or rate-limited `sendChatAction` hold the serialized `ActivityReporter` IPC queue.
+
+The typing controller in `src/telegram/typing.ts` keeps at most one in-flight `sendChatAction` per turn. Interval ticks are skipped while a previous typing send is still pending, including while the retry-aware Telegram path is sleeping for `retry_after`. Stopping a turn aborts the current typing send and clears the interval, while live retry-aware calls still honor Telegram flood-control waits.
+
+The historical regression was that a blocked first typing send could make Telegram activity appear frozen during a busy turn and then arrive in a burst near final delivery. Current regression checks cover blocked typing startup, overlapping typing sends, abort-on-stop cleanup, and route/thread preservation for passive activity sends.
 
 ## Current row semantics
 
@@ -66,7 +75,14 @@ This page curates the 2026-04-25 activity-rendering backlog around:
 - `inbox:telegram-activity-edits-can`
 - `task:polish-telegram-activity-rendering`
 
-Two early directions were superseded by later implementation decisions:
+It also curates the 2026-04-27 live-update batching fix around:
+
+- `inbox:telegram-activity-can-batch`
+- `inbox:typing-loop-should-not`
+- `task:prevent-telegram-activity-batching`
+
+Three early directions were superseded by later implementation decisions:
 
 - The first fallback idea was to show untitled thinking as `🧠 thinking ...`. Hidden/empty provider thinking now uses transient `⏳ working ...` instead, because it reassures the Telegram user without pretending that pi recorded a visible thinking trace.
 - The first bash/read/write idea explored removing more visible tool labels. The final labels keep only bash label-less as `💻 $ <command>`, while read/write/edit keep explicit labels as `📖 read <path>`, `📝 write <path>`, and `📝 edit <path>`.
+- The typing-loop issue was initially captured as a separate retry-after overlap bug, then was resolved by the broader activity-batching task because typing startup sat in the activity IPC path. The current implementation treats typing as advisory and non-overlapping instead of a delivery prerequisite for activity rows.
