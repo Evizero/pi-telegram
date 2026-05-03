@@ -4,8 +4,8 @@ Telegram activity is live feedback for a routed pi turn. It helps the remote ope
 
 Source code anchors:
 
-- `src/bootstrap.ts` registers the lightweight always-present pi event hooks that delegate activity and finalization behavior once the runtime is loaded.
-- `src/pi/activity.ts` contains the split runtime hook implementation used by the full runtime boundary and mirrors the same active-turn thinking/tool events.
+- `src/bootstrap.ts` registers the lightweight always-present pi event hooks used by the package entrypoint; after the runtime is loaded, these hooks post activity and finalization updates for the active Telegram-routed turn.
+- `src/pi/activity.ts` contains the split hook implementation for the non-bootstrap runtime-registration path and mirrors the same active-turn thinking/tool events.
 - `src/shared/activity-lines.ts` defines activity row text, compact argument extraction, and Telegram HTML formatting.
 - `src/broker/activity.ts` stores, debounces, renders, completes, and recovers activity messages.
 - `src/broker/finals.ts` completes activity before visible final-delivery steps.
@@ -13,7 +13,7 @@ Source code anchors:
 
 ## Flow
 
-1. pi hooks listen for assistant `message_update`, `tool_call`, and `tool_result` events while a Telegram-originated turn is active.
+1. pi hooks listen for assistant `message_update`, `tool_call`, and `tool_result` events while a Telegram-routed turn is active. The active turn can originate from Telegram, or from a local interactive turn that is mirrored to Telegram after a route is connected or `/telegram-connect` attaches during busy work.
 2. The client-side `ActivityReporter` serializes activity updates over local IPC so event order is preserved even though Telegram rendering is debounced.
 3. The broker-side `ActivityRenderer` keeps a per-turn activity message model, starts the route-scoped typing loop, persists active activity refs in broker state, and sends or edits Telegram messages after the throttle window.
 4. The assistant-final ledger calls activity completion before stopping the typing loop and before sending final text or attachments, so stale pre-final activity does not edit an old message after the final answer.
