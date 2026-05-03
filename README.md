@@ -99,7 +99,11 @@ Inbound Telegram files are downloaded under:
 ~/.pi/agent/tmp/telegram/<session-id>
 ```
 
-Generated or local files are sent back only when pi explicitly calls the `telegram_attach` tool during an active Telegram turn. The attachment guard allows workspace files and bridge temp files, limits each file to 50 MB, limits a reply to 10 attachments, and blocks obvious secret paths.
+Generated or local files are sent back only when pi explicitly calls the
+`telegram_attach` tool during an active Telegram turn. The attachment guard
+canonicalizes paths, allows workspace files and bridge temp files, limits each
+file to 50 MB, limits a reply to 10 attachments, and blocks obvious secret paths
+such as `.env`, SSH keys, and common cloud/Kubernetes credential locations.
 
 ## Runtime files
 

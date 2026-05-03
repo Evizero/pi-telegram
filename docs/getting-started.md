@@ -153,8 +153,11 @@ Current outbound guardrails:
 
 - max 10 attachments per turn;
 - max 50 MB per local attachment;
-- allowed paths are the session workspace and bridge temp directory;
-- obvious secret paths such as `.env`, SSH keys, and cloud credential directories are blocked;
+- allowed paths are the session workspace and bridge temp directory after
+  canonical path resolution;
+- obvious secret paths such as `.env`, SSH keys, SSH/AWS/Azure/Kubernetes
+  credential directories, Google Cloud config, and application-default
+  credential files are blocked;
 - likely photos under Telegram's photo limit use `sendPhoto`; non-photos and photo-contract failures use `sendDocument`.
 
 ## 9. Disconnect and cleanup expectations
@@ -185,7 +188,10 @@ The session may have closed, lost heartbeat, or exceeded reconnect grace. Reconn
 
 ### File upload is rejected
 
-Check that the file is inside the workspace or bridge temp directory, is a regular file, is below 50 MB, and is not under a secret-looking path.
+Check that the file is inside the workspace or bridge temp directory after
+canonical path resolution, is a regular file, is below 50 MB, and is not under a
+secret-looking path. Symlinks resolve to their target, so a link inside the
+workspace to a blocked credential path is still rejected.
 
 ### Telegram activity or finals lag
 

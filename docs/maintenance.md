@@ -82,8 +82,12 @@ Before changing Bot API integration, read [`telegram-bot-api.md`](telegram-bot-a
 - Keep config, broker state, IPC sockets, and downloaded Telegram files private.
 - Treat Telegram attachments, filenames, MIME types, metadata, and content as untrusted.
 - Do not execute or trust attachment contents merely because they came from the paired user.
-- Allow outbound uploads only from the session workspace or bridge temp directory.
-- Block obvious secrets such as `.env`, SSH keys, and cloud credential directories.
+- Allow outbound uploads only from the session workspace or bridge temp directory
+  after canonical path resolution.
+- Block obvious secrets such as `.env`, SSH keys, SSH/AWS/Azure/Kubernetes
+  credential directories, Google Cloud config, and application-default
+  credential files; keep symlink/realpath behavior covered when changing this
+  guard.
 - Use `telegram_attach` for explicit artifact return; do not send local artifacts merely because a path appears in text.
 
 ## Common change areas and checks

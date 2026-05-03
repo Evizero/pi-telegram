@@ -106,9 +106,19 @@
       "id": "inbox:attachment-safety-check-fails",
       "kind": "inbox",
       "slug": "attachment-safety-check-fails",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the canonical path/realpath lesson into outbound attachment documentation: docs/telegram-bot-api.md now states that attachment allowlist and secret checks use realpath and that tests should compare canonical paths on macOS /var -> /private/var. No behavior-doc page change beyond preserving the maintenance lesson was needed; latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:90ae4b53b13b7021c96b8a97e73c126b06a5a7d42b3c5b52854970da8c76bd60",
+      "processed_at": "2026-05-03",
+      "processed_revision": "77c73279a9d8cd1b295b0d5c50b361627f5ea6cc",
+      "note": "Canonical-path test lesson curated into docs/telegram-bot-api.md; latest review reported No findings."
     },
     "inbox:broker-heartbeat-logs-takeover": {
       "id": "inbox:broker-heartbeat-logs-takeover",
@@ -316,9 +326,19 @@
       "id": "inbox:outbound-attachment-guard-should",
       "kind": "inbox",
       "slug": "outbound-attachment-guard-should",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the expanded outbound secret-path guard into user and maintainer docs: README.md, docs/getting-started.md, docs/maintenance.md, and docs/telegram-bot-api.md now name canonical path resolution and the current cloud/Kubernetes credential families blocked before upload. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:f7f37e67c9fd565c46dc3a7c3cce3f6d291ab8ac24f1452a96a236bce228a98d",
+      "processed_at": "2026-05-03",
+      "processed_revision": "77c73279a9d8cd1b295b0d5c50b361627f5ea6cc",
+      "note": "Expanded outbound attachment guardrails curated into README and docs; latest review reported No findings."
     },
     "inbox:pi-streams-assistant-text": {
       "id": "inbox:pi-streams-assistant-text",
@@ -788,9 +808,19 @@
       "id": "task:expand-outbound-attachment-secret-path",
       "kind": "task",
       "slug": "expand-outbound-attachment-secret-path",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the completed implementation decisions for expanded outbound attachment secret-path matching: docs now summarize the centralized realpath-bounded policy, allowed roots, explicit telegram_attach intent, and concrete secret families covered by scripts/check-security-setup-attachments.ts. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:41ae4d27ce8130a3815cfc2f52c217fba5a907a52ca5b6def5284e13180b338d",
+      "processed_at": "2026-05-03",
+      "processed_revision": "77c73279a9d8cd1b295b0d5c50b361627f5ea6cc",
+      "note": "Completed outbound attachment secret-path task curated into docs; latest review reported No findings."
     },
     "task:extract-client-runtime-host-from": {
       "id": "task:extract-client-runtime-host-from",

@@ -311,8 +311,14 @@ Bridge policy:
 - Cap outbound uploads conservatively unless/until local Bot API support is
   implemented.
 - Resolve outbound attachment paths against the pi session cwd unless absolute.
+- Canonicalize candidate paths with `realpath` before allowlist and secret-path
+  decisions. This blocks symlink escapes and means tests should compare
+  canonical paths on platforms such as macOS where `/var` may resolve under
+  `/private/var`.
 - Restrict attachment paths to the workspace or the bridge temp directory.
-- Block obvious secrets such as `.env`, SSH keys, and cloud credential dirs.
+- Block obvious secrets such as `.env`, `.env.*`, SSH key basenames,
+  SSH/AWS/Azure/Kubernetes credential directories, Google Cloud config under
+  `.config/gcloud`, and application-default credential files.
 
 ### Photos: `sendPhoto`
 
