@@ -268,9 +268,19 @@
       "id": "inbox:consolidate-durable-telegram-side",
       "kind": "inbox",
       "slug": "consolidate-durable-telegram-side",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-04",
+      "decisions": [
+        {
+          "date": "2026-05-04",
+          "decision": "Curated the implemented broker Telegram side-effect outbox into architecture, internals, and maintenance docs. The docs now describe the bounded cleanup-outbox scope, retry_after and per-job retry behavior, legacy cleanup-state migration, route-topic cleanup ordering, and the retained assistant-final ledger boundary; latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:c29efe9be9c6f61cdd8b26eb07fde70357d0bafb4539ec137dc952434983b8e5",
+      "processed_at": "2026-05-04",
+      "processed_revision": "9cdc8d267ffd23551640d213e9c4e66bc473997c",
+      "note": "Broker Telegram cleanup outbox curated into docs; latest review reported No findings."
     },
     "inbox:create-shared-lifecycle-state": {
       "id": "inbox:create-shared-lifecycle-state",
@@ -1264,9 +1274,19 @@
       "id": "task:introduce-broker-telegram-side-effect",
       "kind": "task",
       "slug": "introduce-broker-telegram-side-effect",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-04",
+      "decisions": [
+        {
+          "date": "2026-05-04",
+          "decision": "Curated the completed first outbox slice. Documentation identifies src/broker/telegram-outbox.ts as the broker-owned cleanup-oriented outbox for queued-control status edits and route-topic deletion, not assistant final delivery; it records idempotent jobs, retry_after barriers, legacy pendingRouteCleanups / queued-control retry migration, route cleanup ordering, diagnostic hooks, and validation coverage; latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:c4675907c69801476826d5a8de2ffbda261d798854484e96558679d91e466aae",
+      "processed_at": "2026-05-04",
+      "processed_revision": "9cdc8d267ffd23551640d213e9c4e66bc473997c",
+      "note": "Completed broker Telegram side-effect outbox task curated into docs; latest review reported No findings."
     },
     "task:keep-telegram-finals-pending-across-pi": {
       "id": "task:keep-telegram-finals-pending-across-pi",

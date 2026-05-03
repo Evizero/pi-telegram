@@ -110,7 +110,7 @@ Key broker files:
 | `src/broker/sessions.ts` | Offline/unregister lifecycle and route cleanup intent. |
 | `src/broker/activity.ts` | Activity collection/rendering to Telegram. |
 | `src/broker/finals.ts` | Durable assistant-final ledger and FIFO delivery. |
-| `src/broker/telegram-outbox.ts` | Retryable cleanup-oriented Telegram side effects. |
+| `src/broker/telegram-outbox.ts` | Retryable cleanup-oriented Telegram side effects for queued-control status edits and route-topic deletion; not assistant final delivery. |
 | `src/broker/model-command.ts` | `/model` command and picker orchestration. |
 | `src/broker/git-command.ts` | `/git` menu and repository controls. |
 | `src/broker/queued-turn-control-handler.ts` | Queued follow-up steer/cancel callback lifecycle and visible-control finalization entry points. |

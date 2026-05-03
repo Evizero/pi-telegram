@@ -731,12 +731,15 @@ and Telegram topic deletion to the broker Telegram outbox instead of performing
 ad hoc retry loops inline.
 
 `broker/telegram-outbox.ts` owns the broker-side persisted Telegram side-effect
-outbox for cleanup-oriented side effects. Its current scope is queued-control
-status-message finalization and Telegram forum-topic deletion after route
-cleanup. It provides idempotent job IDs, legacy-state migration from older
-`pendingRouteCleanups` and queued-control retry markers, serialized drain
-behavior, retry-at / `retry_after` handling, terminal topic-cleanup diagnostics,
-and broker-lease assertion hooks. It deliberately does not own assistant final
+outbox for cleanup-oriented side effects. Its current scope is deliberately
+bounded to queued-control status-message finalization and Telegram forum-topic
+deletion after route cleanup. It provides stable idempotent job IDs, legacy-state
+migration from older `pendingRouteCleanups` and queued-control retry markers,
+serialized drain behavior, retry-at / `retry_after` handling, terminal
+route-cleanup diagnostics, and broker-lease assertion hooks. Route-topic deletion
+is only drained through route cleanup paths that have first marked route-scoped
+queued controls for visible finalization, while immediate queued-control drains
+stay scoped to status-edit jobs. It deliberately does not own assistant final
 text chunk or attachment delivery; `broker/finals.ts` remains the FIFO final
 ledger for those higher-risk delivery steps.
 

@@ -161,7 +161,11 @@ Current outbox scope:
 - queued-control status-message finalization;
 - route topic deletion after route cleanup.
 
-The outbox stores idempotent job IDs, status, attempts, retry time, terminal reason, and completion time. It honors `retry_after` and asserts the current broker lease before side effects.
+The outbox stores idempotent job IDs, status, attempts, retry time, terminal reason, and completion time. It honors `retry_after`, fans rate-limit barriers across pending cleanup jobs, and accepts broker-lease assertion hooks on fenced maintenance paths before side effects. Ordinary transient edit/delete failures defer only the failed job, while Telegram `retry_after` can set a broker-wide outbox retry barrier so unrelated cleanup does not hammer the Bot API during the rate-limit window.
+
+Legacy cleanup state is migrated at drain time: terminal queued-control records with unfinalized status messages become status-edit jobs, pending route cleanups become route-topic-delete jobs, and an older queued-control cleanup retry marker seeds the outbox barrier only when there are no existing outbox jobs. Completed and terminal jobs are retained briefly for idempotency, but a fresh route cleanup may replace a finished route-topic job for the same cleanup identity so topic reuse during the retention window is not suppressed.
+
+Route topic deletion remains downstream of lifecycle decisions. Session/route cleanup records the `pendingRouteCleanups` intent after a route is detached or expires; route-cleanup drains first mark route-scoped queued controls for finalization, then let the outbox delete the topic after those visible status edits have completed or reached a terminal state. Immediate queued-control cleanup paths drain only status-edit jobs, preventing unrelated topic deletion before their routes' controls have been prepared.
 
 Assistant final delivery stays in `src/broker/finals.ts` because final chunks/attachments have stricter FIFO and visible-progress requirements.
 
