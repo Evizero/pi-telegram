@@ -171,11 +171,12 @@ Pi hooks should depend on shared contracts and injected callbacks, not low-level
 
 | File | Responsibility |
 | --- | --- |
-| `api.ts` | JSON/multipart Bot API calls and hosted file downloads. |
-| `api-errors.ts` | Structured Telegram API errors and retry signal extraction. |
+| `api.ts` | JSON/multipart Bot API calls and hosted file downloads; delegates error construction. |
+| `api-errors.ts` | `TelegramApiError`, API error construction, and retry signal extraction. |
+| `errors.ts` | Semantic Telegram classifiers for formatting, missing/edit/delete, cleanup, final, and photo-contract outcomes. |
 | `retry.ts` | Safe retry-after waiting wrappers. |
-| `message-ops.ts` | Shared send/edit/delete/callback operations. |
-| `text.ts` | Text reply formatting/chunking helpers. |
+| `message-ops.ts` | Shared send/edit/delete/callback operations, helper-level text splitting, edit fallback, and callback acknowledgement policy. |
+| `text.ts` | Compatibility re-exports for text message helpers. |
 | `attachments.ts` | Outbound photo/document selection and fallback. |
 | `turns.ts` | Telegram update/message to durable pi turn conversion. |
 | `previews.ts` | Legacy/in-flight preview compatibility and final detachment. |
@@ -183,7 +184,7 @@ Pi hooks should depend on shared contracts and injected callbacks, not low-level
 | `temp-files.ts` | Session-scoped Telegram download cleanup. |
 | `setup.ts` | Bot token setup and pairing prompt flow. |
 
-Feature modules should call these policy helpers instead of parsing Telegram errors or retry behavior locally.
+Feature modules should call these policy helpers instead of parsing Telegram errors or retry behavior locally. Runtime code outside `src/telegram/api.ts` should import `TelegramApiError`, API error construction, and retry-signal extraction from `src/telegram/api-errors.ts`; the low-level transport should not be the classifier or retry owner.
 
 ## Shared surfaces
 
@@ -220,6 +221,8 @@ Behavior checks under `scripts/check-*.ts` protect this architecture. Important 
 - `scripts/check-runtime-pi-hooks.ts`
 - `scripts/check-client-runtime-host.ts`
 - `scripts/check-telegram-command-routing.ts`
+- `scripts/check-telegram-io-policy.ts`
+- `scripts/check-telegram-error-boundary.ts`
 - `scripts/check-session-route-registration.ts`
 - `scripts/check-shared-boundaries.ts`
 - `scripts/check-ipc-policy.ts`

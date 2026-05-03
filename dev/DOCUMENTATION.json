@@ -224,9 +224,19 @@
       "id": "inbox:centralize-telegram-io-policy",
       "kind": "inbox",
       "slug": "centralize-telegram-io-policy",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the completed Telegram IO policy centralization into architecture and Bot API maintenance docs. The docs now identify src/telegram/api.ts as transport/download, api-errors.ts as TelegramApiError/error-construction/retry-signal owner, errors.ts as semantic classifier owner, message-ops.ts as shared send/edit/delete/callback operation owner, retry.ts as safe retry wrapper, and attachments.ts as photo/document upload policy owner. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:6c3182339b6e3e226a1f57b0228b5200eb3ac681edb1f6ffd47fa2a3f402f145",
+      "processed_at": "2026-05-03",
+      "processed_revision": "406c047f7416ea2944217bf88c9fbd96da71abf2",
+      "note": "Centralized Telegram IO policy seam curated into architecture/runtime/Bot API/maintenance docs; latest review reported No findings."
     },
     "inbox:clean-up-pi-hook": {
       "id": "inbox:clean-up-pi-hook",
@@ -852,9 +862,19 @@
       "id": "inbox:unify-telegram-api-error",
       "kind": "inbox",
       "slug": "unify-telegram-api-error",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the narrowed retry/error ownership finding. The docs state that non-JSON/HTTP retry handling is already handled through api-errors.ts and that the remaining ownership boundary is to keep retry/error primitives out of the low-level transport module. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:2f587e50e241ff3ed2088d1a9bb9fb6b63470d48c2ecced2fc5b4992e9ec5019",
+      "processed_at": "2026-05-03",
+      "processed_revision": "406c047f7416ea2944217bf88c9fbd96da71abf2",
+      "note": "Telegram retry/error ownership finding curated into docs; latest review reported No findings."
     },
     "inbox:unify-telegram-command-and": {
       "id": "inbox:unify-telegram-command-and",
@@ -948,9 +968,19 @@
       "id": "task:centralize-telegram-io-policy",
       "kind": "task",
       "slug": "centralize-telegram-io-policy",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the implemented IO-policy slice into durable docs. The docs preserve the boundary that reusable Bot API edge handling lives under src/telegram/ while feature modules keep lifecycle decisions, and they call out retry_after preservation, Markdown/edit/photo fallback limits, and the focused validation anchors. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:a07dabb76186436d8c9846bd517aa51f0e29d8c8b827feb19da391d730d95314",
+      "processed_at": "2026-05-03",
+      "processed_revision": "406c047f7416ea2944217bf88c9fbd96da71abf2",
+      "note": "Completed Telegram IO policy task curated into docs; latest review reported No findings."
     },
     "task:clean-up-pi-hook-boundaries": {
       "id": "task:clean-up-pi-hook-boundaries",
@@ -1276,9 +1306,19 @@
       "id": "task:move-telegram-retry-and-error",
       "kind": "task",
       "slug": "move-telegram-retry-and-error",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the completed retry/error ownership refactor. The docs now state runtime code outside src/telegram/api.ts imports TelegramApiError, API error construction, and retry-signal extraction from src/telegram/api-errors.ts, with scripts/check-telegram-error-boundary.ts as the validation guard. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:9131f08b60ca3c2698c4083eb2894dc704d2932c17c62e510a5cdd12fc69b241",
+      "processed_at": "2026-05-03",
+      "processed_revision": "406c047f7416ea2944217bf88c9fbd96da71abf2",
+      "note": "Completed retry/error ownership refactor curated into docs; latest review reported No findings."
     },
     "task:omit-main-branch-from-default-telegram": {
       "id": "task:omit-main-branch-from-default-telegram",

@@ -137,12 +137,15 @@ semantics, update-offset durability, file limits, text limits, draft eligibility
 forum-topic rules, and media-group batching.
 Telegram IO policy is centralized under `src/telegram/`: low-level API calls
 preserve structured and HTTP retry metadata through `api-errors.ts`, `errors.ts`
-owns Telegram error classification, and `message-ops.ts` owns shared
+owns semantic Telegram error classification, and `message-ops.ts` owns shared
 send/edit/delete/callback message operations. Broker and client feature modules
 should call those policy helpers instead of adding local regular-expression
-classifiers or fallback logic;
-in particular, fallback from Markdown, edit, or photo upload must never consume a
-rate-limit window signaled by Telegram.
+classifiers or fallback logic; in particular, fallback from Markdown, edit, or
+photo upload must never consume a rate-limit window signaled by Telegram. The
+transport boundary (`api.ts`) must not become the long-term owner for retry/error
+semantics; runtime code imports retry-signal extraction and `TelegramApiError`
+from `api-errors.ts` so classifier ownership can evolve independently of Bot API
+transport mechanics.
 
 ### Delivery durability without duplication
 
@@ -792,7 +795,21 @@ and delegates API error construction to the Telegram error owner.
 
 `telegram/api-errors.ts` owns `TelegramApiError`, Telegram API error construction,
 and retry-signal extraction from structured `retry_after`, HTTP `Retry-After`, and
-compatible generic error messages.
+compatible generic error messages. Runtime modules outside `telegram/api.ts`
+should import these primitives from `telegram/api-errors.ts`, not from the
+transport boundary.
+
+`telegram/errors.ts` owns semantic classifiers for formatting fallback,
+not-modified edits, missing edit/delete targets, retryable cleanup preservation,
+terminal final/topic cleanup failures, and photo-contract upload fallback.
+
+`telegram/message-ops.ts` owns shared text send/edit/delete/callback operations:
+helper-level text splitting, topic/thread body construction, Markdown-to-plain
+fallback only for formatting errors, edit-not-modified success, edit-or-send
+fallback for stale messages, delete-missing handling where the caller opts in,
+and best-effort callback acknowledgement that still propagates `retry_after`.
+Lifecycle owners such as `broker/finals.ts` keep their own progress-aware chunk
+ledgers when retry-safe ordering or deduplication depends on them.
 
 `telegram/retry.ts` centralizes retry-after sleeping behavior around Telegram
 requests that can be safely retried.
@@ -1366,6 +1383,8 @@ ownership.
 - `src/telegram/api.ts` — low-level Telegram Bot API calls and downloads.
 - `src/telegram/api-errors.ts` — Telegram API error type, API error construction,
   and retry-signal extraction.
+- `src/telegram/errors.ts` — semantic Telegram error classifiers.
+- `src/telegram/message-ops.ts` — shared send/edit/delete/callback message operations.
 - `src/telegram/retry.ts` — retry-after wrapper.
 - `src/telegram/previews.ts` — legacy/in-flight preview state cleanup and finalization compatibility.
 - `src/telegram/attachments.ts` — outbound attachment sending.

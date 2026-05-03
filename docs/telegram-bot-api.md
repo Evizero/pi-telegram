@@ -80,6 +80,41 @@ Implementation implications:
   response body or `Retry-After` header; convert those into retry-aware errors.
 - Polling, media group preparation, final delivery, and preview edits should all
   honor retry windows.
+- Keep retry/error primitives in `src/telegram/api-errors.ts`; do not make
+  `src/telegram/api.ts` the classifier owner just because it performs transport.
+
+## Project Telegram IO policy seam
+
+This repository keeps reusable Bot API edge handling under `src/telegram/`:
+
+- `api.ts` performs JSON/multipart calls and hosted-file downloads, then
+  delegates error construction.
+- `api-errors.ts` owns `TelegramApiError`, error construction, and retry-signal
+  extraction from structured `parameters.retry_after`, HTTP `Retry-After`, and
+  compatible generic error messages.
+- `errors.ts` owns semantic classifiers such as formatting/entity failures,
+  not-modified edits, missing edit/delete targets, retryable or terminal cleanup
+  failures, terminal final-delivery failures, and `sendPhoto` photo-contract
+  failures.
+- `message-ops.ts` owns shared text send/edit/delete/callback operations:
+  helper-level splitting below Telegram's text limit, topic-thread body
+  construction, Markdown-to-plain fallback only for formatting errors,
+  edit-not-modified success, stale-message edit-or-send fallback,
+  caller-selected missing-delete handling, and callback acknowledgement policy.
+  Durable final and preview flows may still own their progress-aware chunk lists
+  before delegating individual send/edit operations to shared helpers.
+- `retry.ts` wraps retry-aware Telegram requests that are safe to repeat.
+- `attachments.ts` owns photo/document upload selection and may fall back from
+  `sendPhoto` to `sendDocument` only for known photo-contract failures, never
+  for `retry_after`.
+
+Feature modules should call these helpers instead of duplicating Bot API regexes,
+retry extraction, generic text splitting, or edit/send fallback rules locally.
+When a lifecycle needs its own progress ledger, such as FIFO final delivery, keep
+that ledger with the lifecycle owner while reusing shared Telegram classifiers
+and message operations at the effect boundary. If a new Telegram method needs
+special fallback behavior, add or extend a named policy helper and a focused
+behavior check instead of catching arbitrary Bot API errors at the feature site.
 
 ## Polling with `getUpdates`
 

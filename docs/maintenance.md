@@ -97,7 +97,7 @@ Before changing Bot API integration, read [`telegram-bot-api.md`](telegram-bot-a
 | --- | --- | --- |
 | Lazy startup/bootstrap | `index.ts`, `src/bootstrap.ts`, `src/extension.ts` | `check-lazy-bootstrap.ts`, `check-runtime-pi-hooks.ts` |
 | Setup/pairing gate | `src/telegram/setup.ts`, `src/shared/pairing.ts`, `src/broker/updates.ts`, `src/shared/ui-status.ts` | `check-pairing-and-format.ts`, `check-session-topic-setup-and-offline-grace.ts` |
-| Telegram polling/API policy | `src/broker/updates.ts`, `src/telegram/*` | `check-telegram-io-policy.ts`, `check-callback-updates.ts`, `check-telegram-text-replies.ts` |
+| Telegram polling/API policy | `src/broker/updates.ts`, `src/telegram/api.ts`, `src/telegram/api-errors.ts`, `src/telegram/errors.ts`, `src/telegram/message-ops.ts`, `src/telegram/retry.ts`, `src/telegram/attachments.ts` | `check-telegram-io-policy.ts`, `check-telegram-error-boundary.ts`, `check-callback-updates.ts`, `check-telegram-text-replies.ts` |
 | Preview compatibility | `src/telegram/previews.ts`, `src/telegram/policy.ts`, `src/broker/finals.ts` | `check-preview-manager.ts`, `check-telegram-io-policy.ts`, `check-final-delivery.ts` |
 | Busy turns and queued controls | `src/broker/commands.ts`, `src/broker/queued-*`, `src/shared/queued-control-text.ts`, `src/client/turn-*` | `check-telegram-command-routing.ts`, `check-telegram-queued-controls.ts`, `check-client-turn-delivery.ts`, `check-manual-compaction.ts`, `check-session-unregister-cleanup.ts`, `check-telegram-outbox.ts` |
 | Pi hook boundary | `src/pi/hooks.ts`, `src/pi/*`, `src/shared/activity-lines.ts`, `src/broker/activity.ts` | `check-runtime-pi-hooks.ts`, `check-activity-rendering.ts` |
@@ -117,6 +117,7 @@ Before changing Bot API integration, read [`telegram-bot-api.md`](telegram-bot-a
 - Keep retry loops idempotent and state-backed.
 - Preserve route identity as session + route mode + chat + optional thread; do not reuse or clean up routes by chat ID alone.
 - Treat `retry_after` as scheduling state, not as an error to hide.
+- Keep Telegram retry/error primitives in `src/telegram/api-errors.ts`; do not reintroduce imports of those primitives from `src/telegram/api.ts` outside the transport boundary.
 - Preserve FIFO final delivery and visible progress records.
 - Do not make client-side final persistence a second broker final ledger.
 - Do not route Telegram controls as fake user conversation text unless the requirement explicitly says so.
