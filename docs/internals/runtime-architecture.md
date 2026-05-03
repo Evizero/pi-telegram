@@ -144,17 +144,23 @@ Key client files:
 
 ## pi integration boundary
 
-`src/pi/*` modules keep pi-facing behavior separate from Telegram mechanics:
+`src/pi/*` modules keep pi-facing behavior separate from Telegram mechanics. `src/pi/hooks.ts` is only a composition layer for focused registrars; it preserves the compatibility `RuntimePiHooksDeps` intersection type, while each registrar exposes a narrower dependency contract.
 
-- commands and local status notifications;
-- `telegram_attach` tool validation/execution;
-- prompt suffix guidance;
-- local user input mirroring;
-- activity and finalization hooks;
-- session lifecycle hooks;
-- pi-safe diagnostics.
+Key pi files:
 
-Pi hooks should depend on shared contracts and injected callbacks, not low-level Bot API details or broker persistence policy.
+| File | Responsibility |
+| --- | --- |
+| `src/pi/hooks.ts` | Compose focused pi hook/tool/command registrars. |
+| `src/pi/commands.ts` | Local `/telegram-*` pi commands and status notifications. |
+| `src/pi/attachments.ts` | `telegram_attach` validation, active-turn queueing, and explicit artifact intent. |
+| `src/pi/local-input.ts` | Mirror local interactive user input to Telegram when route and turn state allow it. |
+| `src/pi/prompt.ts` | Prompt-suffix guidance for Telegram-origin and local turns. |
+| `src/pi/activity.ts` | Translate pi thinking/tool events into shared activity lines through an injected reporter. |
+| `src/pi/finalization.ts` | Trigger retry-aware finalization and assistant-final handoff from pi agent-end events. |
+| `src/pi/lifecycle.ts` | Session shutdown, disconnect, replacement handoff, and broker stop hooks. |
+| `src/pi/diagnostics.ts` | Pi-safe diagnostic notifications outside LLM-visible conversation input. |
+
+Pi hooks should depend on shared contracts and injected callbacks, not low-level Bot API details or broker persistence policy. Activity text helpers live in `src/shared/activity-lines.ts`; broker-side `src/broker/activity.ts` remains the owner of Telegram rendering, debouncing, typing loops, and durable visible activity state.
 
 ## Telegram boundary
 

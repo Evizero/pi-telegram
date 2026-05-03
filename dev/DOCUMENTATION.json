@@ -80,9 +80,19 @@
       "id": "inbox:assess-and-restore-top",
       "kind": "inbox",
       "slug": "assess-and-restore-top",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the high-level coherence assessment through the completed pi hook boundary cleanup documentation. Runtime architecture now records the current pi integration boundary and focused hook-module map, preserving the decision that the concrete cleanup was safer than a broad shared type/config split. Maintenance docs now point pi hook boundary changes at the relevant source and behavior checks. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:2188212966a399fe4a3e3f915451f6bd565cd816a82081752141eba57774d374",
+      "processed_at": "2026-05-03",
+      "processed_revision": "dbc3c54d18c028cc7f1ac963f0cd80010c95b780",
+      "note": "Coherence assessment curated via the pi hook boundary documentation and validation anchors; latest review reported No findings."
     },
     "inbox:assistant-final-lost-with": {
       "id": "inbox:assistant-final-lost-with",
@@ -192,9 +202,19 @@
       "id": "inbox:clean-up-pi-hook",
       "kind": "inbox",
       "slug": "clean-up-pi-hook",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the pi hook dependency-bag audit into runtime architecture and maintenance docs. Docs now explain that src/pi/hooks.ts is a composition layer, focused pi registrars expose narrower dependencies, activity-line formatting belongs to src/shared/activity-lines.ts, and broker/activity.ts remains the Telegram rendering owner. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:d7d175a72a40a4093c0cd224f5927e3bcd18fd49065a495029acdbe0b711e5ba",
+      "processed_at": "2026-05-03",
+      "processed_revision": "dbc3c54d18c028cc7f1ac963f0cd80010c95b780",
+      "note": "Pi hook boundary audit curated into runtime architecture and maintenance anchors; latest review reported No findings."
     },
     "inbox:connected-session-notice-appears": {
       "id": "inbox:connected-session-notice-appears",
@@ -836,9 +856,19 @@
       "id": "task:clean-up-pi-hook-boundaries",
       "kind": "task",
       "slug": "clean-up-pi-hook-boundaries",
-      "status": "pending",
+      "status": "done",
       "created": "2026-05-03",
-      "updated": "2026-05-03"
+      "updated": "2026-05-03",
+      "decisions": [
+        {
+          "date": "2026-05-03",
+          "decision": "Curated the completed pi hook boundary refactor into docs/internals/runtime-architecture.md and docs/maintenance.md. The documentation covers focused pi hook modules, the compatibility RuntimePiHooksDeps intersection, shared activity-line formatting, broker activity rendering ownership, and check-runtime-pi-hooks/check-activity-rendering anchors. Latest review reported No findings."
+        }
+      ],
+      "processed_hash": "sha256:cc88918ad88a326ea1ab571eb1505042b465db26d9997c72fced3a370c6aa333",
+      "processed_at": "2026-05-03",
+      "processed_revision": "dbc3c54d18c028cc7f1ac963f0cd80010c95b780",
+      "note": "Completed pi hook boundary refactor curated into docs and maintenance checks; latest review reported No findings."
     },
     "task:clean-up-telegram-topics-when-sessions": {
       "id": "task:clean-up-telegram-topics-when-sessions",

@@ -100,6 +100,7 @@ Before changing Bot API integration, read [`telegram-bot-api.md`](telegram-bot-a
 | Telegram polling/API policy | `src/broker/updates.ts`, `src/telegram/*` | `check-telegram-io-policy.ts`, `check-callback-updates.ts`, `check-telegram-text-replies.ts` |
 | Preview compatibility | `src/telegram/previews.ts`, `src/telegram/policy.ts`, `src/broker/finals.ts` | `check-preview-manager.ts`, `check-telegram-io-policy.ts`, `check-final-delivery.ts` |
 | Busy turns and queued controls | `src/broker/commands.ts`, `src/broker/queued-*`, `src/client/turn-*` | `check-telegram-command-routing.ts`, `check-telegram-queued-controls.ts`, `check-client-turn-delivery.ts` |
+| Pi hook boundary | `src/pi/hooks.ts`, `src/pi/*`, `src/shared/activity-lines.ts`, `src/broker/activity.ts` | `check-runtime-pi-hooks.ts`, `check-activity-rendering.ts` |
 | Final delivery | `src/broker/finals.ts`, `src/client/final-handoff.ts`, `src/client/retry-aware-finalization.ts` | `check-final-delivery.ts`, `check-client-final-handoff.ts`, `check-retry-aware-finalization.ts` |
 | Session lifecycle/routes | `src/broker/session-registration.ts`, `src/broker/sessions.ts`, `src/client/session-replacement.ts` | `check-session-route-registration.ts`, `check-session-unregister-cleanup.ts`, `check-session-replacement-handoff.ts` |
 | Attachments/security | `src/shared/utils.ts`, `src/shared/config.ts`, `src/telegram/api.ts`, `src/telegram/attachments.ts`, `src/client/attachment-path.ts`, `src/pi/attachments.ts` | `check-security-setup-attachments.ts`, `check-telegram-temp-cleanup.ts` |
